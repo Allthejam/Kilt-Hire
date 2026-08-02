@@ -218,6 +218,7 @@ export default function KiltHireApp() {
   const [activeReturnPo, setActiveReturnPo] = useState<PurchaseOrder | null>(null);
   const [returnChecklist, setReturnChecklist] = useState<Record<string, {
     condition: 'GOOD_CLEAN' | 'NEEDS_REPAIR' | 'MISSING';
+    scanned?: boolean;
     notes: string;
   }>>({});
 
