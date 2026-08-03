@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import jsQR from 'jsqr';
 import { 
   KiltItem, 
   QRBatch, 
@@ -516,16 +517,26 @@ export default function KiltHireApp() {
     }));
   };
 
-  // Camera scanner handler simulation
+  // Camera scanner handler & real jsQR decoder loop
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const lastScanTimeRef = useRef<number>(0);
+
   const toggleCamera = async () => {
     if (activeCamera) {
+      if (videoRef.current && videoRef.current.srcObject) {
+        const stream = videoRef.current.srcObject as MediaStream;
+        stream.getTracks().forEach(track => track.stop());
+        videoRef.current.srcObject = null;
+      }
       setActiveCamera(false);
       return;
     }
     setActiveCamera(true);
     try {
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: { ideal: 'environment' } } 
+        });
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
@@ -534,6 +545,59 @@ export default function KiltHireApp() {
       console.warn('Camera stream not available, falling back to simulated scan picker', err);
     }
   };
+
+  // REAL-TIME FRAME-BY-FRAME QR CODE DECODER LOOP USING jsQR
+  useEffect(() => {
+    if (!activeCamera) return;
+
+    let animId: number;
+    let isActive = true;
+
+    const scanFrame = () => {
+      if (!isActive) return;
+
+      const video = videoRef.current;
+      if (video && video.readyState === video.HAVE_ENOUGH_DATA) {
+        if (!canvasRef.current) {
+          canvasRef.current = document.createElement('canvas');
+        }
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+        if (ctx) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: 'dontInvert'
+          });
+
+          if (code && code.data && code.data.trim().length > 0) {
+            const cleanQr = code.data.trim();
+            const now = Date.now();
+            // Debounce scan to avoid duplicate triggers within 2 seconds
+            if (now - lastScanTimeRef.current > 2000) {
+              lastScanTimeRef.current = now;
+              handleScanCode(cleanQr);
+            }
+          }
+        }
+      }
+
+      if (isActive) {
+        animId = requestAnimationFrame(scanFrame);
+      }
+    };
+
+    animId = requestAnimationFrame(scanFrame);
+
+    return () => {
+      isActive = false;
+      if (animId) cancelAnimationFrame(animId);
+    };
+  }, [activeCamera]);
 
   // Get default price & deposit for a category and sizeGroup
   const getDefaultPriceForCategory = (cat: ItemCategory, isKid: boolean) => {
@@ -2090,9 +2154,28 @@ export default function KiltHireApp() {
 
                         {activeCamera ? (
                           <div className="relative rounded-2xl overflow-hidden bg-black border-4 border-emerald-500 aspect-video flex items-center justify-center shadow-md">
-                            <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-                            <div className="absolute inset-0 border-2 border-dashed border-amber-400 m-8 rounded-xl pointer-events-none flex items-center justify-center">
-                              <span className="bg-black/80 px-4 py-1.5 rounded-lg text-xs font-bold text-amber-300">Aim at Iron-On QR Label</span>
+                            <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                            
+                            {/* PERFECT SQUARE TARGET FRAME WITH HIGH-CONTRAST CORNERS & LIVE SCANNER STATUS */}
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-4">
+                              <div className="relative w-56 h-56 border-2 border-emerald-400/40 rounded-2xl flex flex-col items-center justify-between p-3 bg-black/20 shadow-2xl">
+                                {/* TOP LEFT CORNER */}
+                                <div className="absolute top-0 left-0 w-7 h-7 border-t-4 border-l-4 border-amber-400 rounded-tl-xl shadow-sm" />
+                                {/* TOP RIGHT CORNER */}
+                                <div className="absolute top-0 right-0 w-7 h-7 border-t-4 border-r-4 border-amber-400 rounded-tr-xl shadow-sm" />
+                                {/* BOTTOM LEFT CORNER */}
+                                <div className="absolute bottom-0 left-0 w-7 h-7 border-b-4 border-l-4 border-amber-400 rounded-bl-xl shadow-sm" />
+                                {/* BOTTOM RIGHT CORNER */}
+                                <div className="absolute bottom-0 right-0 w-7 h-7 border-b-4 border-r-4 border-amber-400 rounded-br-xl shadow-sm" />
+
+                                <span className="bg-black/85 px-3 py-1 rounded-full text-[11px] font-extrabold text-amber-300 border border-amber-400/40 shadow-md mt-2">
+                                  Position QR Code Inside Square Frame
+                                </span>
+
+                                <span className="text-[10px] text-emerald-300 font-bold bg-emerald-950/90 px-3 py-0.5 rounded-full mb-2 border border-emerald-500/40 animate-pulse">
+                                  ⚡ jsQR Real-Time Decoder Active
+                                </span>
+                              </div>
                             </div>
                           </div>
                         ) : (
