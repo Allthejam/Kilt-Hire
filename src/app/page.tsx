@@ -2967,179 +2967,182 @@ export default function KiltHireApp() {
 
                       {/* BATCH PRINT PREVIEW & REPRINT MANAGER MODAL */}
                       {selectedBatchForPrint && (
-                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-                          <div className="bg-white border border-slate-200 rounded-3xl max-w-4xl w-full p-6 space-y-5 my-6 shadow-2xl">
+                        <div className="print-modal-overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+                          <div className="print-modal-content bg-white border border-slate-200 rounded-3xl max-w-4xl w-full p-6 space-y-5 my-6 shadow-2xl">
                             
-                            {/* MODAL HEADER */}
-                            <div className="flex items-start justify-between border-b border-slate-200 pb-4">
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <span className="px-3 py-1 bg-amber-100 text-amber-900 font-mono font-extrabold text-xs rounded-lg border border-amber-300">
-                                    {selectedBatchForPrint.id}
-                                  </span>
-                                  {selectedBatchForPrint.isPrinted ? (
-                                    <span className="px-2.5 py-0.5 text-xs font-extrabold bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-full flex items-center gap-1">
-                                      <Lock className="w-3.5 h-3.5 text-emerald-700" /> Sheet Printed on {selectedBatchForPrint.printedAt}
-                                    </span>
-                                  ) : (
-                                    <span className="px-2.5 py-0.5 text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 rounded-full">
-                                      Unprinted Initial Sheet
-                                    </span>
-                                  )}
-                                </div>
-                                <h3 className="text-lg font-extrabold text-slate-900 mt-1">
-                                  {selectedBatchForPrint.title} ({selectedBatchForPrint.count} {selectedBatchForPrint.sizeGroup} {selectedBatchForPrint.category} Tags)
-                                </h3>
-                              </div>
-
-                              <div className="flex items-center gap-2">
-                                {reprintPrintMode && (
-                                  <button
-                                    onClick={() => setReprintPrintMode(false)}
-                                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl transition"
-                                  >
-                                    View Full Sheet
-                                  </button>
-                                )}
-
-                                <button 
-                                  onClick={() => {
-                                    setSelectedBatchForPrint(null);
-                                    setSelectedCodesForReprint([]);
-                                    setReprintPrintMode(false);
-                                  }}
-                                  className="p-2 text-slate-400 hover:text-slate-700 rounded-lg"
-                                >
-                                  <X className="w-6 h-6" />
-                                </button>
-                              </div>
-                            </div>
-
-                            {/* SAFEGUARD BANNERS */}
-                            {!selectedBatchForPrint.isPrinted ? (
-                              <div className="bg-amber-50 border border-amber-300 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-amber-950">
-                                <div className="space-y-0.5 max-w-xl">
-                                  <span className="font-extrabold text-xs flex items-center gap-1.5 text-amber-900">
-                                    <ShieldCheck className="w-4 h-4 text-amber-600" /> Initial One-Time Sheet Printing Safeguard
-                                  </span>
-                                  <p className="text-xs text-amber-900">
-                                    Clicking print will authorize the 1st printing of this entire batch sheet. After printing, the full sheet will be <strong>LOCKED</strong> against duplicate full-prints.
-                                  </p>
-                                </div>
-
-                                <button
-                                  type="button"
-                                  onClick={() => handleInitialBatchPrint(selectedBatchForPrint)}
-                                  className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5"
-                                >
-                                  <Printer className="w-4 h-4" /> Authorize & Print Initial Sheet
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="bg-emerald-50 border border-emerald-300 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-emerald-950">
-                                <div className="space-y-0.5">
-                                  <span className="font-extrabold text-xs flex items-center gap-1.5 text-emerald-900">
-                                    <Lock className="w-4 h-4 text-emerald-600" /> One-Time Print Safeguard Active: Full Sheet Locked
-                                  </span>
-                                  <p className="text-xs text-emerald-800">
-                                    Initial sheet printed on {selectedBatchForPrint.printedAt} by {selectedBatchForPrint.printedBy}. Full sheet duplicate printing is locked. Select specific replacement tag numbers below for Admin PIN authorized reprints.
-                                  </p>
-                                </div>
-
-                                <span className="px-3 py-1.5 bg-slate-200 text-slate-600 font-extrabold text-xs rounded-xl flex items-center gap-1 border border-slate-300 cursor-not-allowed">
-                                  <Lock className="w-3.5 h-3.5" /> Full Sheet Locked
-                                </span>
-                              </div>
-                            )}
-
-                            {/* REPLACEMENT TAG REPRINT SELECTOR SECTION (ADMIN PIN PROTECTED) */}
-                            <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-3">
-                              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
+                            {/* NON-PRINTABLE MODAL CONTROLS & BANNERS */}
+                            <div className="no-print space-y-5">
+                              {/* MODAL HEADER */}
+                              <div className="flex items-start justify-between border-b border-slate-200 pb-4">
                                 <div>
-                                  <span className="font-extrabold text-xs text-slate-900 flex items-center gap-1.5">
-                                    <Key className="w-4 h-4 text-amber-600" /> Request Replacement Tag Reprint (Master Admin PIN Required)
-                                  </span>
-                                  <p className="text-[11px] text-slate-500">
-                                    If a tag on a garment is damaged or torn (e.g. KILT-1005), select 1 or more specific tag numbers below to reprint replacements.
-                                  </p>
-                                </div>
-
-                                {selectedCodesForReprint.length > 0 && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setSelectedCodesForReprint([])}
-                                    className="text-[11px] text-rose-600 hover:underline font-bold"
-                                  >
-                                    Clear Selection ({selectedCodesForReprint.length})
-                                  </button>
-                                )}
-                              </div>
-
-                              {/* TAG SELECTOR GRID */}
-                              <div className="space-y-2">
-                                <span className="text-[11px] font-extrabold text-slate-700 block">Select Code(s) for Reprint:</span>
-                                <div className="max-h-36 overflow-y-auto bg-white border border-slate-200 rounded-xl p-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5">
-                                  {selectedBatchForPrint.qrCodes.map(code => {
-                                    const isChecked = selectedCodesForReprint.includes(code);
-                                    return (
-                                      <label
-                                        key={code}
-                                        className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition text-xs font-mono font-bold ${
-                                          isChecked ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'hover:bg-slate-50 text-slate-800'
-                                        }`}
-                                      >
-                                        <input 
-                                          type="checkbox"
-                                          checked={isChecked}
-                                          onChange={e => {
-                                            if (e.target.checked) {
-                                              setSelectedCodesForReprint(prev => [...prev, code]);
-                                            } else {
-                                              setSelectedCodesForReprint(prev => prev.filter(c => c !== code));
-                                            }
-                                          }}
-                                        />
-                                        <span>{code}</span>
-                                      </label>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-
-                              {/* REPRINT ACTION BAR */}
-                              {selectedCodesForReprint.length > 0 && (
-                                <div className="pt-2 flex flex-wrap items-center justify-between gap-3 bg-amber-100/70 p-3 rounded-xl border border-amber-300">
-                                  <div>
-                                    <span className="font-extrabold text-xs text-amber-950 block">
-                                      Selected {selectedCodesForReprint.length} Replacement Tag(s): [{selectedCodesForReprint.join(', ')}]
+                                  <div className="flex items-center gap-2">
+                                    <span className="px-3 py-1 bg-amber-100 text-amber-900 font-mono font-extrabold text-xs rounded-lg border border-amber-300">
+                                      {selectedBatchForPrint.id}
                                     </span>
-                                    <span className="text-[10px] text-amber-900">Requires Master Admin PIN verification before printing.</span>
+                                    {selectedBatchForPrint.isPrinted ? (
+                                      <span className="px-2.5 py-0.5 text-xs font-extrabold bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-full flex items-center gap-1">
+                                        <Lock className="w-3.5 h-3.5 text-emerald-700" /> Sheet Printed on {selectedBatchForPrint.printedAt}
+                                      </span>
+                                    ) : (
+                                      <span className="px-2.5 py-0.5 text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 rounded-full">
+                                        Unprinted Initial Sheet
+                                      </span>
+                                    )}
+                                  </div>
+                                  <h3 className="text-lg font-extrabold text-slate-900 mt-1">
+                                    {selectedBatchForPrint.title} ({selectedBatchForPrint.count} {selectedBatchForPrint.sizeGroup} {selectedBatchForPrint.category} Tags)
+                                  </h3>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  {reprintPrintMode && (
+                                    <button
+                                      onClick={() => setReprintPrintMode(false)}
+                                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl transition"
+                                    >
+                                      View Full Sheet
+                                    </button>
+                                  )}
+
+                                  <button 
+                                    onClick={() => {
+                                      setSelectedBatchForPrint(null);
+                                      setSelectedCodesForReprint([]);
+                                      setReprintPrintMode(false);
+                                    }}
+                                    className="p-2 text-slate-400 hover:text-slate-700 rounded-lg"
+                                  >
+                                    <X className="w-6 h-6" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* SAFEGUARD BANNERS */}
+                              {!selectedBatchForPrint.isPrinted ? (
+                                <div className="bg-amber-50 border border-amber-300 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-amber-950">
+                                  <div className="space-y-0.5 max-w-xl">
+                                    <span className="font-extrabold text-xs flex items-center gap-1.5 text-amber-900">
+                                      <ShieldCheck className="w-4 h-4 text-amber-600" /> Initial One-Time Sheet Printing Safeguard
+                                    </span>
+                                    <p className="text-xs text-amber-900">
+                                      Clicking print will authorize the 1st printing of this entire batch sheet. After printing, the full sheet will be <strong>LOCKED</strong> against duplicate full-prints.
+                                    </p>
                                   </div>
 
                                   <button
                                     type="button"
-                                    onClick={() => setShowReprintPinModal(true)}
-                                    className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5"
+                                    onClick={() => handleInitialBatchPrint(selectedBatchForPrint)}
+                                    className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5"
                                   >
-                                    <Key className="w-4 h-4" /> Authorize & Reprint Selected Tags ({selectedCodesForReprint.length})
+                                    <Printer className="w-4 h-4" /> Authorize & Print Initial Sheet
                                   </button>
+                                </div>
+                              ) : (
+                                <div className="bg-emerald-50 border border-emerald-300 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-emerald-950">
+                                  <div className="space-y-0.5">
+                                    <span className="font-extrabold text-xs flex items-center gap-1.5 text-emerald-900">
+                                      <Lock className="w-4 h-4 text-emerald-600" /> One-Time Print Safeguard Active: Full Sheet Locked
+                                    </span>
+                                    <p className="text-xs text-emerald-800">
+                                      Initial sheet printed on {selectedBatchForPrint.printedAt} by {selectedBatchForPrint.printedBy}. Full sheet duplicate printing is locked. Select specific replacement tag numbers below for Admin PIN authorized reprints.
+                                    </p>
+                                  </div>
+
+                                  <span className="px-3 py-1.5 bg-slate-200 text-slate-600 font-extrabold text-xs rounded-xl flex items-center gap-1 border border-slate-300 cursor-not-allowed">
+                                    <Lock className="w-3.5 h-3.5" /> Full Sheet Locked
+                                  </span>
+                                </div>
+                              )}
+
+                              {/* REPLACEMENT TAG REPRINT SELECTOR SECTION (ADMIN PIN PROTECTED) */}
+                              <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
+                                  <div>
+                                    <span className="font-extrabold text-xs text-slate-900 flex items-center gap-1.5">
+                                      <Key className="w-4 h-4 text-amber-600" /> Request Replacement Tag Reprint (Master Admin PIN Required)
+                                    </span>
+                                    <p className="text-[11px] text-slate-500">
+                                      If a tag on a garment is damaged or torn (e.g. KILT-1005), select 1 or more specific tag numbers below to reprint replacements.
+                                    </p>
+                                  </div>
+
+                                  {selectedCodesForReprint.length > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedCodesForReprint([])}
+                                      className="text-[11px] text-rose-600 hover:underline font-bold"
+                                    >
+                                      Clear Selection ({selectedCodesForReprint.length})
+                                    </button>
+                                  )}
+                                </div>
+
+                                {/* TAG SELECTOR GRID */}
+                                <div className="space-y-2">
+                                  <span className="text-[11px] font-extrabold text-slate-700 block">Select Code(s) for Reprint:</span>
+                                  <div className="max-h-36 overflow-y-auto bg-white border border-slate-200 rounded-xl p-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5">
+                                    {selectedBatchForPrint.qrCodes.map(code => {
+                                      const isChecked = selectedCodesForReprint.includes(code);
+                                      return (
+                                        <label
+                                          key={code}
+                                          className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition text-xs font-mono font-bold ${
+                                            isChecked ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'hover:bg-slate-50 text-slate-800'
+                                          }`}
+                                        >
+                                          <input 
+                                            type="checkbox"
+                                            checked={isChecked}
+                                            onChange={e => {
+                                              if (e.target.checked) {
+                                                setSelectedCodesForReprint(prev => [...prev, code]);
+                                              } else {
+                                                setSelectedCodesForReprint(prev => prev.filter(c => c !== code));
+                                              }
+                                            }}
+                                          />
+                                          <span>{code}</span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+
+                                {/* REPRINT ACTION BAR */}
+                                {selectedCodesForReprint.length > 0 && (
+                                  <div className="pt-2 flex flex-wrap items-center justify-between gap-3 bg-amber-100/70 p-3 rounded-xl border border-amber-300">
+                                    <div>
+                                      <span className="font-extrabold text-xs text-amber-950 block">
+                                        Selected {selectedCodesForReprint.length} Replacement Tag(s): [{selectedCodesForReprint.join(', ')}]
+                                      </span>
+                                      <span className="text-[10px] text-amber-900">Requires Master Admin PIN verification before printing.</span>
+                                    </div>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => setShowReprintPinModal(true)}
+                                      className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5"
+                                    >
+                                      <Key className="w-4 h-4" /> Authorize & Reprint Selected Tags ({selectedCodesForReprint.length})
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* REPRINT HISTORY AUDIT LOG */}
+                              {selectedBatchForPrint.reprintHistory && selectedBatchForPrint.reprintHistory.length > 0 && (
+                                <div className="bg-amber-50/60 border border-amber-200 p-3 rounded-2xl text-xs space-y-1">
+                                  <span className="font-extrabold text-amber-900 block">📜 Audit Log of Authorized Tag Reprints:</span>
+                                  <div className="space-y-1 max-h-24 overflow-y-auto">
+                                    {selectedBatchForPrint.reprintHistory.map(log => (
+                                      <div key={log.id} className="text-[11px] text-slate-700 bg-white p-2 rounded-lg border border-amber-200">
+                                        <strong>{log.reprintedByStaff}</strong> authorized reprint of <strong>{log.reprintedCodes.length} tag(s)</strong> [{log.reprintedCodes.join(', ')}] on {log.reprintedAt}. Reason: <em>{log.reason}</em>
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
                               )}
                             </div>
-
-                            {/* REPRINT HISTORY AUDIT LOG */}
-                            {selectedBatchForPrint.reprintHistory && selectedBatchForPrint.reprintHistory.length > 0 && (
-                              <div className="bg-amber-50/60 border border-amber-200 p-3 rounded-2xl text-xs space-y-1">
-                                <span className="font-extrabold text-amber-900 block">📜 Audit Log of Authorized Tag Reprints:</span>
-                                <div className="space-y-1 max-h-24 overflow-y-auto">
-                                  {selectedBatchForPrint.reprintHistory.map(log => (
-                                    <div key={log.id} className="text-[11px] text-slate-700 bg-white p-2 rounded-lg border border-amber-200">
-                                      <strong>{log.reprintedByStaff}</strong> authorized reprint of <strong>{log.reprintedCodes.length} tag(s)</strong> [{log.reprintedCodes.join(', ')}] on {log.reprintedAt}. Reason: <em>{log.reason}</em>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
 
                             {/* PRINTABLE QR SHEET PREVIEW (EXACT A4 PAGE FORMAT: 4 ACROSS x 7 DOWN = 28 PER PAGE) */}
                             <div className="print-qr-container bg-slate-50 text-slate-950 p-6 rounded-2xl border border-slate-200 shadow-inner max-h-[50vh] overflow-y-auto print:max-h-none print:overflow-visible">
