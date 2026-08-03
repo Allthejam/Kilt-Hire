@@ -54,6 +54,14 @@ export interface KiltItem {
   retiredByStaff?: string;
 }
 
+export interface QRReprintLog {
+  id: string;
+  reprintedAt: string;
+  reprintedByStaff: string;
+  reprintedCodes: string[];
+  reason?: string;
+}
+
 export interface QRBatch {
   id: string;
   title: string;
@@ -63,6 +71,10 @@ export interface QRBatch {
   createdAt: string;
   createdByName: string;
   qrCodes: string[]; // List of generated QR string IDs
+  isPrinted?: boolean;
+  printedAt?: string;
+  printedBy?: string;
+  reprintHistory?: QRReprintLog[];
 }
 
 export interface POLineItem {
