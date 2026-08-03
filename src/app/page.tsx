@@ -1350,7 +1350,7 @@ export default function KiltHireApp() {
       )}
 
       {/* VERTICAL SIDEBAR NAVIGATION */}
-      <aside className={`
+      <aside className={`no-print
         fixed inset-y-0 left-0 z-50 w-72 bg-white border-r border-slate-200 flex flex-col justify-between transition-transform duration-300 shadow-lg lg:translate-x-0 lg:static lg:shadow-none
         ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
@@ -1561,7 +1561,7 @@ export default function KiltHireApp() {
 
       {/* MAIN WORKSPACE */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-white border-b border-slate-200 sticky top-0 z-30 px-6 py-4 flex items-center justify-between shadow-sm">
+        <header className="no-print bg-white border-b border-slate-200 sticky top-0 z-30 px-6 py-4 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMobileSidebarOpen(true)}
@@ -2885,7 +2885,7 @@ export default function KiltHireApp() {
                     </div>
                   ) : (
                     <>
-                      <div className="flex flex-wrap items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                      <div className="no-print flex flex-wrap items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
                         <div>
                           <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                             <Printer className="w-5 h-5 text-amber-600" /> Batch QR Code Generator & Iron-On Printing
@@ -2903,7 +2903,7 @@ export default function KiltHireApp() {
                         </button>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div className="no-print grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {batches.map(batch => (
                           <div key={batch.id} className={`bg-white border rounded-2xl p-5 shadow-sm transition ${
                             batch.isPrinted ? 'border-emerald-300 bg-emerald-50/20' : 'border-slate-200 hover:border-amber-400'
