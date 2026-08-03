@@ -166,14 +166,14 @@ export default function KiltHireApp() {
   // Interface Mode: 'admin_portal' (Full Office) vs 'shop_assistant' (Automated Floor Terminal)
   const [interfaceMode, setInterfaceMode] = useState<'admin_portal' | 'shop_assistant'>('shop_assistant');
 
-  // Shop Assistant Floor Tabs: 'scanner' | 'in_stock' | 'on_hire' | 'in_repair' | 'pos'
-  const [assistantTab, setAssistantTab] = useState<'scanner' | 'in_stock' | 'on_hire' | 'in_repair' | 'pos'>('scanner');
+  // Shop Assistant Floor Tabs: 'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'pos'
+  const [assistantTab, setAssistantTab] = useState<'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'pos'>('scanner');
   const [assistantSearch, setAssistantSearch] = useState('');
   const [assistantSizeFilter, setAssistantSizeFilter] = useState<'ALL' | 'Adult' | 'Kid'>('ALL');
 
-  // Inventory tab demographic filter & Retired Archive Tab in Admin
+  // Inventory tab demographic filter & Sub-Tabs in Admin
   const [inventorySizeFilter, setInventorySizeFilter] = useState<'ALL' | 'Adult' | 'Kid'>('ALL');
-  const [inventorySubTab, setInventorySubTab] = useState<'ACTIVE' | 'ARCHIVE'>('ACTIVE');
+  const [inventorySubTab, setInventorySubTab] = useState<'ACTIVE' | 'LAUNDRY' | 'REPAIR' | 'ARCHIVE'>('ACTIVE');
 
   // Auth state
   const [currentUser, setCurrentUser] = useState<StaffUser | null>(INITIAL_STAFF[0]);
@@ -197,8 +197,8 @@ export default function KiltHireApp() {
   const [regPin, setRegPin] = useState('');
   const [regError, setRegError] = useState('');
 
-  // Tab State for Admin: 'scanner' | 'batches' | 'inventory' | 'pos' | 'repairs' | 'pricing' | 'admin'
-  const [activeTab, setActiveTab] = useState<'scanner' | 'batches' | 'inventory' | 'pos' | 'repairs' | 'pricing' | 'admin'>('scanner');
+  // Tab State for Admin: 'scanner' | 'batches' | 'inventory' | 'pos' | 'laundry' | 'repairs' | 'pricing' | 'admin'
+  const [activeTab, setActiveTab] = useState<'scanner' | 'batches' | 'inventory' | 'pos' | 'laundry' | 'repairs' | 'pricing' | 'admin'>('scanner');
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Scanner & Selected QR State
@@ -218,7 +218,7 @@ export default function KiltHireApp() {
   // MULTI-ITEM PO RETURN CHECKLIST MODAL STATE
   const [activeReturnPo, setActiveReturnPo] = useState<PurchaseOrder | null>(null);
   const [returnChecklist, setReturnChecklist] = useState<Record<string, {
-    condition: 'GOOD_CLEAN' | 'NEEDS_REPAIR' | 'MISSING';
+    condition: 'GOOD_CLEAN' | 'NEEDS_CLEANING' | 'NEEDS_REPAIR' | 'MISSING';
     scanned?: boolean;
     notes: string;
   }>>({});
@@ -603,7 +603,7 @@ export default function KiltHireApp() {
   // OPEN MULTI-ITEM PO RETURN CHECKLIST WITH STRICT QR SCAN VERIFICATION
   const openPoReturnChecklist = (po: PurchaseOrder, triggerQrCode?: string) => {
     setActiveReturnPo(po);
-    const initialChecklist: Record<string, { condition: 'GOOD_CLEAN' | 'NEEDS_REPAIR' | 'MISSING'; scanned: boolean; notes: string }> = {};
+    const initialChecklist: Record<string, { condition: 'GOOD_CLEAN' | 'NEEDS_CLEANING' | 'NEEDS_REPAIR' | 'MISSING'; scanned: boolean; notes: string }> = {};
 
     po.items.forEach(li => {
       if (li.returned) {
@@ -797,6 +797,73 @@ export default function KiltHireApp() {
     showToast(`✓ Repair confirmed for ${item.id}. Returned to Available Stock!`, 'success');
   };
 
+  // Step 5: Confirm Dry Cleaning / Laundry Completed
+  const handleConfirmLaundryCleaned = (codeId: string) => {
+    if (!currentUser) return;
+    const item = items.find(i => i.id === codeId);
+    if (!item) return;
+
+    setItems(prev => prev.map(i => {
+      if (i.id === codeId) {
+        const history = i.laundryHistory || [];
+        const updatedHistory = history.map((h, idx) => {
+          if (idx === 0) {
+            return {
+              ...h,
+              dateReturned: new Date().toISOString().replace('T', ' ').slice(0, 16),
+              returnedByStaff: currentUser.name,
+              notes: 'Dry cleaned & ready for rotation.'
+            };
+          }
+          return h;
+        });
+        return {
+          ...i,
+          status: 'AVAILABLE',
+          laundryHistory: updatedHistory
+        };
+      }
+      return i;
+    }));
+
+    addAuditLog('LAUNDRY_COMPLETED', `Confirmed dry cleaning completed for ${item.name} (${item.id}). Returned to stock.`, item.id);
+    showToast(`✨ Laundry/Dry cleaning completed for ${item.id}. Returned to Available Stock!`, 'success');
+  };
+
+  // Bulk Confirm All Items at Dry Cleaners Cleaned & Available
+  const handleBulkConfirmLaundryCleaned = () => {
+    if (!currentUser) return;
+    const cleaningItems = items.filter(i => i.status === 'NEEDS_CLEANING');
+    if (cleaningItems.length === 0) return;
+
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    setItems(prev => prev.map(i => {
+      if (i.status === 'NEEDS_CLEANING') {
+        const history = i.laundryHistory || [];
+        const updatedHistory = history.map((h, idx) => {
+          if (idx === 0) {
+            return {
+              ...h,
+              dateReturned: now,
+              returnedByStaff: currentUser.name,
+              notes: 'Bulk confirmed dry cleaned & ready for rotation.'
+            };
+          }
+          return h;
+        });
+        return {
+          ...i,
+          status: 'AVAILABLE',
+          laundryHistory: updatedHistory
+        };
+      }
+      return i;
+    }));
+
+    addAuditLog('BULK_LAUNDRY_COMPLETED', `Confirmed dry cleaning completed for ${cleaningItems.length} garment(s). Returned to stock.`);
+    showToast(`✨ Bulk confirmed ${cleaningItems.length} garment(s) clean and back in Available Stock!`, 'success');
+  };
+
   // =========================================================================
   // AUTOMATED MULTI-ITEM PO BATCH RETURN PROCESSOR WITH DEPOSIT RETENTION LOGIC
   // =========================================================================
@@ -822,6 +889,28 @@ export default function KiltHireApp() {
           returned: true,
           returnedAt: now,
           returnCondition: 'GOOD_CLEAN',
+          depositAction: 'REFUNDED'
+        };
+      } else if (cond === 'NEEDS_CLEANING') {
+        totalRefundedDeposit += li.depositAmount;
+        // Update item in stock to NEEDS_CLEANING
+        const laundryEntry = {
+          id: `LAUN-${Date.now().toString().slice(-4)}`,
+          dateSent: now,
+          sentByStaff: currentUser.name,
+          notes: `Sent to dry cleaning after return from PO ${activeReturnPo.id}`
+        };
+        setItems(prev => prev.map(i => i.id === li.qrCodeId ? { 
+          ...i, 
+          status: 'NEEDS_CLEANING', 
+          currentPoId: undefined,
+          laundryHistory: [laundryEntry, ...(i.laundryHistory || [])]
+        } : i));
+        return {
+          ...li,
+          returned: true,
+          returnedAt: now,
+          returnCondition: 'NEEDS_CLEANING',
           depositAction: 'REFUNDED'
         };
       } else if (cond === 'NEEDS_REPAIR') {
@@ -1154,6 +1243,7 @@ export default function KiltHireApp() {
     { id: 'batches', label: 'QR Batch Printing', icon: Printer, badge: `${batches.length} Batches`, restricted: !isMasterAdmin },
     { id: 'inventory', label: 'Stock Inventory', icon: Layers, badge: `${items.filter(i=>i.status!=='RETIRED').length}`, restricted: false },
     { id: 'pos', label: 'Hire POs & PayPal', icon: CreditCard, badge: `${pos.length}`, restricted: false },
+    { id: 'laundry', label: 'Dry Cleaning Laundry', icon: Sparkles, badge: `${items.filter(i=>i.status==='NEEDS_CLEANING').length}`, restricted: false },
     { id: 'repairs', label: 'Repair Workshop', icon: Wrench, badge: `${items.filter(i=>i.status==='IN_REPAIR').length}`, restricted: false },
     { id: 'admin', label: 'Master Admin & Invites', icon: ShieldCheck, badge: invites.filter(i=>i.status==='PENDING').length ? `${invites.filter(i=>i.status==='PENDING').length} Invites` : null, restricted: false },
   ];
@@ -1679,6 +1769,22 @@ export default function KiltHireApp() {
                   </button>
 
                   <button
+                    onClick={() => setAssistantTab('needs_cleaning')}
+                    className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
+                      assistantTab === 'needs_cleaning' 
+                        ? 'bg-cyan-600 text-white shadow-sm' 
+                        : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Sparkles className="w-4 h-4 text-cyan-300" /> At Dry Cleaners
+                    <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${
+                      assistantTab === 'needs_cleaning' ? 'bg-white text-cyan-900' : 'bg-cyan-100 text-cyan-800'
+                    }`}>
+                      {items.filter(i => i.status === 'NEEDS_CLEANING').length}
+                    </span>
+                  </button>
+
+                  <button
                     onClick={() => setAssistantTab('pos')}
                     className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
                       assistantTab === 'pos' 
@@ -2010,6 +2116,28 @@ export default function KiltHireApp() {
                               </button>
                             </div>
                           )}
+
+                          {scItem && scItem.status === 'NEEDS_CLEANING' && (
+                            <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-5 space-y-4">
+                              <div className="flex items-center gap-2 text-cyan-950 font-bold text-sm">
+                                <Sparkles className="w-5 h-5 text-cyan-600" /> Item Currently Out at Dry Cleaners
+                              </div>
+                              
+                              {scItem.laundryHistory && scItem.laundryHistory.length > 0 && (
+                                <div className="bg-white p-3 rounded-lg text-xs space-y-1 border border-cyan-100 shadow-sm text-slate-700">
+                                  <p><span className="text-slate-500">Sent to Laundry:</span> <strong>{scItem.laundryHistory[0].dateSent}</strong> by {scItem.laundryHistory[0].sentByStaff}</p>
+                                  <p><span className="text-slate-500">Dispatch Notes:</span> {scItem.laundryHistory[0].notes || 'Regular laundry cycle'}</p>
+                                </div>
+                              )}
+
+                              <button
+                                onClick={() => handleConfirmLaundryCleaned(scItem.id)}
+                                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow flex items-center justify-center gap-2 transition"
+                              >
+                                <CheckCircle2 className="w-4 h-4" /> Confirm Returned Clean & Back in Available Stock
+                              </button>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <div className="bg-white border border-slate-200 rounded-3xl p-12 text-center text-slate-500 flex flex-col items-center justify-center min-h-[300px] shadow-sm">
@@ -2256,6 +2384,77 @@ export default function KiltHireApp() {
                       );
                     })}
                   </div>
+                </div>
+              )}
+
+              {/* AT DRY CLEANERS TAB */}
+              {assistantTab === 'needs_cleaning' && (
+                <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-3">
+                    <div>
+                      <h3 className="text-base font-extrabold text-cyan-950 flex items-center gap-2">
+                        <Sparkles className="w-5 h-5 text-cyan-600" /> Garments Out at Dry Cleaners ({items.filter(i => i.status === 'NEEDS_CLEANING').length})
+                      </h3>
+                      <p className="text-xs text-slate-500">Track garments currently being cleaned. Click confirm when laundered clean and ready in store.</p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {items.filter(i => i.status === 'NEEDS_CLEANING').length > 0 && (
+                        <button
+                          onClick={handleBulkConfirmLaundryCleaned}
+                          className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1.5"
+                        >
+                          <CheckCircle2 className="w-4 h-4" /> Bulk Confirm All Clean & Back in Stock
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {items.filter(i => i.status === 'NEEDS_CLEANING').length === 0 ? (
+                    <div className="p-8 text-center text-slate-500 text-xs bg-slate-50 rounded-2xl">
+                      🎉 No garments currently at dry cleaners. All garments are clean & in available stock!
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {getFilteredItems(items.filter(i => i.status === 'NEEDS_CLEANING'), assistantSizeFilter).map(item => {
+                        const laun = item.laundryHistory?.[0];
+                        return (
+                          <div key={item.id} className="p-4 bg-cyan-50/60 border border-cyan-200 rounded-2xl space-y-2 transition shadow-sm">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono font-extrabold text-cyan-900 text-xs bg-white px-2 py-0.5 rounded border border-cyan-200">
+                                  {item.id}
+                                </span>
+                                <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded ${item.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900' : 'bg-blue-100 text-blue-900'}`}>
+                                  {item.sizeGroup}
+                                </span>
+                              </div>
+                              <span className="px-2 py-0.5 text-[10px] font-bold bg-cyan-100 text-cyan-900 border border-cyan-300 rounded-full">
+                                🧼 At Dry Cleaners
+                              </span>
+                            </div>
+
+                            <div>
+                              <h4 className="font-bold text-slate-900 text-sm">{item.name}</h4>
+                              <p className="text-xs text-slate-600">{item.tartanOrColour} ({item.size})</p>
+                            </div>
+
+                            <div className="bg-white p-2.5 rounded-xl text-xs space-y-0.5 border border-cyan-100">
+                              <p><span className="text-slate-500">Dispatched:</span> <strong>{laun?.dateSent}</strong> by {laun?.sentByStaff}</p>
+                              <p><span className="text-slate-500">Notes:</span> {laun?.notes || 'Laundry cycle'}</p>
+                            </div>
+
+                            <button
+                              onClick={() => handleConfirmLaundryCleaned(item.id)}
+                              className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow transition flex items-center justify-center gap-1.5"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Confirm Clean & Back in Stock
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -3683,7 +3882,80 @@ export default function KiltHireApp() {
                 </div>
               )}
 
-              {/* TAB 5: REPAIRS */}
+              {/* TAB 5: DRY CLEANING LAUNDRY */}
+              {activeTab === 'laundry' && (
+                <div className="space-y-6">
+                  <div className="flex flex-wrap items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                    <div>
+                      <h2 className="text-lg font-bold text-cyan-950 flex items-center gap-2">
+                        <Sparkles className="w-5 h-5 text-cyan-600" /> Dry Cleaning & Laundry Dispatch Manager
+                      </h2>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Track garments currently dispatched to dry cleaners. Confirm return clean to restore to active stock rotation.
+                      </p>
+                    </div>
+
+                    {items.filter(i => i.status === 'NEEDS_CLEANING').length > 0 && (
+                      <button
+                        onClick={handleBulkConfirmLaundryCleaned}
+                        className="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-2"
+                      >
+                        <CheckCircle2 className="w-4 h-4" /> Bulk Confirm All Clean & Back in Stock
+                      </button>
+                    )}
+                  </div>
+
+                  {items.filter(i => i.status === 'NEEDS_CLEANING').length === 0 ? (
+                    <div className="bg-white border border-slate-200 rounded-3xl p-12 text-center text-slate-500 shadow-sm space-y-2">
+                      <Sparkles className="w-12 h-12 text-cyan-500 mx-auto" />
+                      <h3 className="text-base font-extrabold text-slate-800">All Garments Clean & Available</h3>
+                      <p className="text-xs text-slate-500 max-w-sm mx-auto">No garments are currently at the dry cleaners.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {items.filter(i => i.status === 'NEEDS_CLEANING').map(item => {
+                        const latestLaun = item.laundryHistory?.[0];
+                        return (
+                          <div key={item.id} className="bg-white border border-cyan-200 rounded-2xl p-5 shadow-sm space-y-3">
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-mono font-extrabold text-cyan-900 text-sm bg-cyan-50 px-2 py-0.5 rounded border border-cyan-200">
+                                    {item.id}
+                                  </span>
+                                  <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${item.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900' : 'bg-blue-100 text-blue-900'}`}>
+                                    {item.sizeGroup}
+                                  </span>
+                                </div>
+                                <h3 className="text-base font-bold text-slate-900 mt-1">{item.name}</h3>
+                                <p className="text-xs text-slate-500">{item.tartanOrColour} ({item.size})</p>
+                              </div>
+                              <span className="px-2.5 py-1 text-xs font-bold bg-cyan-100 text-cyan-900 rounded-full border border-cyan-300">
+                                🧼 At Laundry
+                              </span>
+                            </div>
+
+                            <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1 text-slate-700">
+                              <p><span className="text-slate-500">Dispatched:</span> <strong>{latestLaun?.dateSent}</strong></p>
+                              <p><span className="text-slate-500">Sent By:</span> {latestLaun?.sentByStaff}</p>
+                              <p><span className="text-slate-500">Notes:</span> {latestLaun?.notes || 'Laundry cycle'}</p>
+                            </div>
+
+                            <button
+                              onClick={() => handleConfirmLaundryCleaned(item.id)}
+                              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow flex items-center justify-center gap-2 transition"
+                            >
+                              <CheckCircle2 className="w-4 h-4" /> Confirm Clean & Return to Available Stock
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 6: REPAIRS */}
               {activeTab === 'repairs' && (
                 <div className="space-y-6">
                   <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
@@ -4290,7 +4562,20 @@ export default function KiltHireApp() {
                                       currentSetting.condition === 'GOOD_CLEAN' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600'
                                     }`}
                                   >
-                                    Clean
+                                    Good & Clean
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => setReturnChecklist(prev => ({
+                                      ...prev,
+                                      [li.qrCodeId]: { ...currentSetting, condition: 'NEEDS_CLEANING' }
+                                    }))}
+                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                                      currentSetting.condition === 'NEEDS_CLEANING' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-600'
+                                    }`}
+                                  >
+                                    🧼 Needs Cleaning
                                   </button>
 
                                   <button
@@ -4303,7 +4588,7 @@ export default function KiltHireApp() {
                                       currentSetting.condition === 'NEEDS_REPAIR' ? 'bg-rose-600 text-white shadow-sm' : 'text-slate-600'
                                     }`}
                                   >
-                                    Damaged
+                                    🔧 Damaged
                                   </button>
                                 </div>
                               </div>
@@ -4311,10 +4596,15 @@ export default function KiltHireApp() {
                           </div>
                         </div>
 
-                        {/* EXPLANATION BADGE IF NOT SCANNED OR DAMAGED */}
+                        {/* EXPLANATION BADGE IF NOT SCANNED OR DAMAGED OR NEEDS CLEANING */}
                         {!isScanned && (
                           <div className="mt-2 text-[11px] font-semibold text-amber-900 bg-amber-100/70 p-2 rounded-lg border border-amber-200">
                             🔒 Un-scanned Garment: Deposit of <strong>£{li.depositAmount}</strong> will be retained until this item's iron-on QR label is physically scanned in store.
+                          </div>
+                        )}
+                        {isScanned && currentSetting.condition === 'NEEDS_CLEANING' && (
+                          <div className="mt-2 text-[11px] font-bold text-cyan-950 bg-cyan-100/80 p-2 rounded-lg border border-cyan-300 flex items-center justify-between">
+                            <span>🧼 Needs Dry Cleaning: Sent to laundry dispatch. Customer deposit of <strong>£{li.depositAmount}</strong> is refunded.</span>
                           </div>
                         )}
                         {isScanned && isRepair && (

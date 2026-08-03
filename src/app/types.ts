@@ -10,7 +10,7 @@ export type ItemCategory =
   | 'Sgian-dubh (Knife)'
   | 'Miscellaneous';
 
-export type ItemStatus = 'AVAILABLE' | 'ON_HIRE' | 'IN_REPAIR' | 'RETIRED';
+export type ItemStatus = 'AVAILABLE' | 'ON_HIRE' | 'NEEDS_CLEANING' | 'IN_REPAIR' | 'RETIRED';
 
 export type SizeGroup = 'Adult' | 'Kid';
 
@@ -20,6 +20,16 @@ export interface CategoryPriceSetting {
   adultDeposit: number;
   kidHireRate: number;
   kidDeposit: number;
+}
+
+export interface LaundryRecord {
+  id: string;
+  dateSent: string;
+  sentByStaff: string;
+  cleanerName?: string;
+  dateReturned?: string;
+  returnedByStaff?: string;
+  notes?: string;
 }
 
 export interface RepairRecord {
@@ -48,6 +58,7 @@ export interface KiltItem {
   registeredAt: string;
   registeredByStaff?: string;
   conditionNotes?: string;
+  laundryHistory?: LaundryRecord[];
   repairHistory?: RepairRecord[];
   retiredReason?: string; // Audit explanation if retired from rotation (Sold, Stolen, Destroyed)
   retiredAt?: string;
@@ -87,7 +98,7 @@ export interface POLineItem {
   depositAmount: number;
   returned: boolean;
   returnedAt?: string;
-  returnCondition?: 'GOOD_CLEAN' | 'NEEDS_REPAIR' | 'MISSING';
+  returnCondition?: 'GOOD_CLEAN' | 'NEEDS_CLEANING' | 'NEEDS_REPAIR' | 'MISSING';
   depositAction?: 'REFUNDED' | 'HELD_FOR_REPAIR' | 'HELD_FOR_MISSING';
   notes?: string;
 }
