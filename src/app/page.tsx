@@ -92,6 +92,17 @@ const CATEGORIES: ItemCategory[] = [
   'Miscellaneous'
 ];
 
+const DEFAULT_TARTANS = [
+  'Royal Stewart',
+  'Spirit of Scotland',
+  'Black Watch',
+  'Highland Heritage',
+  'Midnight Black',
+  'Modern Douglas',
+  'Grey Granite',
+  'Lovat Blue'
+];
+
 // Helper function to calculate Overdue Return Status and Color Badges (Blue -> Amber -> Red)
 const getOverdueStatus = (dueDateStr: string | undefined, isReturned: boolean = false) => {
   if (!dueDateStr || isReturned) {
@@ -165,6 +176,11 @@ export default function KiltHireApp() {
 
   // Category Pricing Matrix State (Duplicated for Adults and Kids)
   const [pricingMatrix, setPricingMatrix] = useState<CategoryPriceSetting[]>(DEFAULT_PRICING_MATRIX);
+
+  // Pricing vs Products Sub-Tab & Custom Tartan Catalog State
+  const [pricingSubTab, setPricingSubTab] = useState<'PRICING' | 'PRODUCTS'>('PRICING');
+  const [tartanList, setTartanList] = useState<string[]>(DEFAULT_TARTANS);
+  const [newTartanInput, setNewTartanInput] = useState<string>('');
 
   // Interface Mode: 'admin_portal' (Full Office) vs 'shop_assistant' (Automated Floor Terminal)
   const [interfaceMode, setInterfaceMode] = useState<'admin_portal' | 'shop_assistant'>('shop_assistant');
@@ -319,6 +335,7 @@ export default function KiltHireApp() {
       const savedKidCap = localStorage.getItem('kilt_kid_max_rigout_cap');
       const savedPricing = localStorage.getItem('kilt_pricing_matrix');
       const savedMode = localStorage.getItem('kilt_interface_mode');
+      const savedTartans = localStorage.getItem('kilt_tartans');
 
       setItems(savedItems ? JSON.parse(savedItems) : INITIAL_ITEMS);
       setBatches(savedBatches ? JSON.parse(savedBatches) : INITIAL_BATCHES);
@@ -330,6 +347,7 @@ export default function KiltHireApp() {
       if (savedKidCap) setKidMaxRigoutCapPrice(Number(savedKidCap));
       if (savedPricing) setPricingMatrix(JSON.parse(savedPricing));
       if (savedMode === 'shop_assistant' || savedMode === 'admin_portal') setInterfaceMode(savedMode);
+      if (savedTartans) setTartanList(JSON.parse(savedTartans));
       if (savedUser) setCurrentUser(JSON.parse(savedUser));
     } catch {
       setItems(INITIAL_ITEMS);
@@ -339,6 +357,7 @@ export default function KiltHireApp() {
       setStaffList(INITIAL_STAFF);
       setInvites(INITIAL_INVITES);
       setPricingMatrix(DEFAULT_PRICING_MATRIX);
+      setTartanList(DEFAULT_TARTANS);
     }
     setIsLoaded(true);
   }, []);
@@ -356,8 +375,9 @@ export default function KiltHireApp() {
     localStorage.setItem('kilt_kid_max_rigout_cap', kidMaxRigoutCapPrice.toString());
     localStorage.setItem('kilt_pricing_matrix', JSON.stringify(pricingMatrix));
     localStorage.setItem('kilt_interface_mode', interfaceMode);
+    localStorage.setItem('kilt_tartans', JSON.stringify(tartanList));
     localStorage.setItem('kilt_current_user', JSON.stringify(currentUser));
-  }, [items, batches, pos, logs, staffList, invites, maxRigoutCapPrice, kidMaxRigoutCapPrice, pricingMatrix, interfaceMode, currentUser, isLoaded]);
+  }, [items, batches, pos, logs, staffList, invites, maxRigoutCapPrice, kidMaxRigoutCapPrice, pricingMatrix, interfaceMode, tartanList, currentUser, isLoaded]);
 
   // Reset to initial mock data
   const handleResetData = () => {
@@ -866,6 +886,32 @@ export default function KiltHireApp() {
 
     addAuditLog('SENT_TO_LAUNDRY', `Manually sent ${item.name} (${item.id}) to dry cleaners.`, item.id);
     showToast(`🧼 Sent ${item.name} (${item.id}) to Dry Cleaners. Tracked in Laundry tab!`, 'info');
+  };
+
+  // Add new Tartan / Colour to Master Catalog
+  const handleAddCustomTartan = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanName = newTartanInput.trim();
+    if (!cleanName) return;
+    if (tartanList.some(t => t.toLowerCase() === cleanName.toLowerCase())) {
+      showToast(`⚠️ "${cleanName}" already exists in the Tartan Catalog.`, 'warning');
+      return;
+    }
+    setTartanList(prev => [...prev, cleanName]);
+    setNewTartanInput('');
+    addAuditLog('ADDED_TARTAN', `Added new custom Tartan/Colour "${cleanName}" to product catalog.`);
+    showToast(`✨ Added "${cleanName}" to Tartan & Colour Catalog!`, 'success');
+  };
+
+  // Delete custom Tartan from catalog
+  const handleDeleteCustomTartan = (tartanName: string) => {
+    if (tartanList.length <= 1) {
+      showToast(`⚠️ At least one Tartan/Colour must remain in the catalog.`, 'warning');
+      return;
+    }
+    setTartanList(prev => prev.filter(t => t !== tartanName));
+    addAuditLog('DELETED_TARTAN', `Removed Tartan/Colour "${tartanName}" from product catalog.`);
+    showToast(`Deleted "${tartanName}" from catalog.`, 'info');
   };
 
   // Bulk Confirm All Items at Dry Cleaners Cleaned & Available
@@ -2729,7 +2775,7 @@ export default function KiltHireApp() {
                           className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
                         >
                           <option value="ALL">All Tartans & Colours</option>
-                          {Array.from(new Set(items.map(i => i.tartanOrColour))).map(t => (
+                          {tartanList.map(t => (
                             <option key={t} value={t}>{t}</option>
                           ))}
                         </select>
@@ -2928,7 +2974,7 @@ export default function KiltHireApp() {
           {/* ========================================================= */}
           {interfaceMode === 'admin_portal' && (
             <>
-              {/* TAB: PRICING SETTINGS MATRIX (ADULTS VS KIDS) */}
+              {/* TAB: PRICING SETTINGS MATRIX & PRODUCT CATALOG (ADULTS VS KIDS) */}
               {activeTab === 'pricing' && (
                 <div className="space-y-6">
                   {!isMasterAdmin ? (
@@ -2943,141 +2989,249 @@ export default function KiltHireApp() {
                     </div>
                   ) : (
                     <>
-                      {/* PRICING CAPS BANNER */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="bg-white border border-amber-300 p-5 rounded-3xl shadow-sm space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-extrabold text-amber-900 flex items-center gap-1.5">
-                              <Tag className="w-4 h-4 text-amber-600" /> Adult Full Rigout Price Cap
-                            </span>
-                            <span className="text-xs font-mono font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded">
-                              Adult Cap
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-500">Max total hire fee when an adult hires a full outfit.</p>
-                          <div className="flex items-center gap-2 pt-2">
-                            <span className="font-bold text-sm text-slate-700">£</span>
-                            <input 
-                              type="number"
-                              min={0}
-                              value={maxRigoutCapPrice}
-                              onChange={e => setMaxRigoutCapPrice(Number(e.target.value))}
-                              className="w-28 bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 font-mono font-extrabold text-base text-amber-800 outline-none focus:border-amber-500"
-                            />
-                            <span className="text-xs font-bold text-slate-500">Max Limit</span>
-                          </div>
-                        </div>
+                      {/* TOP SUB-TAB SWITCHER: PRICING vs PRODUCTS */}
+                      <div className="flex bg-slate-200 p-1.5 rounded-2xl border border-slate-300 w-fit">
+                        <button
+                          onClick={() => setPricingSubTab('PRICING')}
+                          className={`px-5 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
+                            pricingSubTab === 'PRICING'
+                              ? 'bg-amber-500 text-slate-950 shadow-sm'
+                              : 'text-slate-700 hover:text-slate-900 hover:bg-white/50'
+                          }`}
+                        >
+                          <PriceTag className="w-4 h-4" /> Category Hire Rates & Deposit Matrix
+                        </button>
 
-                        <div className="bg-white border border-purple-300 p-5 rounded-3xl shadow-sm space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-extrabold text-purple-900 flex items-center gap-1.5">
-                              <Users className="w-4 h-4 text-purple-600" /> Kids Full Rigout Price Cap
-                            </span>
-                            <span className="text-xs font-mono font-bold text-purple-800 bg-purple-100 px-2 py-0.5 rounded">
-                              Kids Cap
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-500">Max total hire fee when a child hires a full outfit.</p>
-                          <div className="flex items-center gap-2 pt-2">
-                            <span className="font-bold text-sm text-slate-700">£</span>
-                            <input 
-                              type="number"
-                              min={0}
-                              value={kidMaxRigoutCapPrice}
-                              onChange={e => setKidMaxRigoutCapPrice(Number(e.target.value))}
-                              className="w-28 bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 font-mono font-extrabold text-base text-purple-800 outline-none focus:border-purple-500"
-                            />
-                            <span className="text-xs font-bold text-slate-500">Max Limit</span>
-                          </div>
-                        </div>
+                        <button
+                          onClick={() => setPricingSubTab('PRODUCTS')}
+                          className={`px-5 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
+                            pricingSubTab === 'PRODUCTS'
+                              ? 'bg-amber-500 text-slate-950 shadow-sm'
+                              : 'text-slate-700 hover:text-slate-900 hover:bg-white/50'
+                          }`}
+                        >
+                          <Tag className="w-4 h-4" /> Tartan & Product Catalog ({tartanList.length})
+                        </button>
                       </div>
 
-                      {/* CATEGORY PRICING MATRIX TABLE */}
-                      <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
-                        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-                          <div>
-                            <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                              <PriceTag className="w-5 h-5 text-amber-600" /> Master Category Pricing Matrix (Adults vs Kids)
-                            </h3>
-                            <p className="text-xs text-slate-500">
-                              Set default rental rates and security deposits for all items. Garments automatically pre-fill these prices during registration.
-                            </p>
+                      {pricingSubTab === 'PRICING' ? (
+                        <>
+                          {/* PRICING CAPS BANNER */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="bg-white border border-amber-300 p-5 rounded-3xl shadow-sm space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-extrabold text-amber-900 flex items-center gap-1.5">
+                                  <Tag className="w-4 h-4 text-amber-600" /> Adult Full Rigout Price Cap
+                                </span>
+                                <span className="text-xs font-mono font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded">
+                                  Adult Cap
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-500">Max total hire fee when an adult hires a full outfit.</p>
+                              <div className="flex items-center gap-2 pt-2">
+                                <span className="font-bold text-sm text-slate-700">£</span>
+                                <input 
+                                  type="number"
+                                  min={0}
+                                  value={maxRigoutCapPrice}
+                                  onChange={e => setMaxRigoutCapPrice(Number(e.target.value))}
+                                  className="w-28 bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 font-mono font-extrabold text-base text-amber-800 outline-none focus:border-amber-500"
+                                />
+                                <span className="text-xs font-bold text-slate-500">Max Limit</span>
+                              </div>
+                            </div>
+
+                            <div className="bg-white border border-purple-300 p-5 rounded-3xl shadow-sm space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-extrabold text-purple-900 flex items-center gap-1.5">
+                                  <Users className="w-4 h-4 text-purple-600" /> Kids Full Rigout Price Cap
+                                </span>
+                                <span className="text-xs font-mono font-bold text-purple-800 bg-purple-100 px-2 py-0.5 rounded">
+                                  Kids Cap
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-500">Max total hire fee when a child hires a full outfit.</p>
+                              <div className="flex items-center gap-2 pt-2">
+                                <span className="font-bold text-sm text-slate-700">£</span>
+                                <input 
+                                  type="number"
+                                  min={0}
+                                  value={kidMaxRigoutCapPrice}
+                                  onChange={e => setKidMaxRigoutCapPrice(Number(e.target.value))}
+                                  className="w-28 bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 font-mono font-extrabold text-base text-purple-800 outline-none focus:border-purple-500"
+                                />
+                                <span className="text-xs font-bold text-slate-500">Max Limit</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* CATEGORY PRICING MATRIX TABLE */}
+                          <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
+                            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                              <div>
+                                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                                  <PriceTag className="w-5 h-5 text-amber-600" /> Master Category Pricing Matrix (Adults vs Kids)
+                                </h3>
+                                <p className="text-xs text-slate-500">
+                                  Set default rental rates and security deposits for all items. Garments automatically pre-fill these prices during registration.
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left text-xs text-slate-700">
+                                <thead className="bg-slate-50 text-slate-900 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px]">
+                                  <tr>
+                                    <th className="py-4 px-4">Garment Category</th>
+                                    <th className="py-4 px-4 bg-amber-50/50 text-amber-950 border-l border-amber-200">Adult Rental (£)</th>
+                                    <th className="py-4 px-4 bg-amber-50/50 text-amber-950">Adult Deposit (£)</th>
+                                    <th className="py-4 px-4 bg-purple-50/50 text-purple-950 border-l border-purple-200">Kids Rental (£)</th>
+                                    <th className="py-4 px-4 bg-purple-50/50 text-purple-950">Kids Deposit (£)</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 font-semibold">
+                                  {pricingMatrix.map(setting => (
+                                    <tr key={setting.category} className="hover:bg-slate-50 transition">
+                                      <td className="py-3 px-4 font-bold text-slate-900">{setting.category}</td>
+                                      <td className="py-3 px-4 bg-amber-50/30 border-l border-amber-100">
+                                        <div className="flex items-center gap-1">
+                                          <span className="text-slate-400">£</span>
+                                          <input 
+                                            type="number"
+                                            min={0}
+                                            value={setting.adultHireRate}
+                                            onChange={e => handleUpdatePriceSetting(setting.category, 'adultHireRate', Number(e.target.value))}
+                                            className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 font-mono font-bold text-amber-800 outline-none focus:border-amber-500 shadow-sm"
+                                          />
+                                        </div>
+                                      </td>
+                                      <td className="py-3 px-4 bg-amber-50/30">
+                                        <div className="flex items-center gap-1">
+                                          <span className="text-slate-400">£</span>
+                                          <input 
+                                            type="number"
+                                            min={0}
+                                            value={setting.adultDeposit}
+                                            onChange={e => handleUpdatePriceSetting(setting.category, 'adultDeposit', Number(e.target.value))}
+                                            className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 font-mono font-bold text-emerald-800 outline-none focus:border-amber-500 shadow-sm"
+                                          />
+                                        </div>
+                                      </td>
+                                      <td className="py-3 px-4 bg-purple-50/30 border-l border-purple-100">
+                                        <div className="flex items-center gap-1">
+                                          <span className="text-slate-400">£</span>
+                                          <input 
+                                            type="number"
+                                            min={0}
+                                            value={setting.kidHireRate}
+                                            onChange={e => handleUpdatePriceSetting(setting.category, 'kidHireRate', Number(e.target.value))}
+                                            className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 font-mono font-bold text-purple-800 outline-none focus:border-purple-500 shadow-sm"
+                                          />
+                                        </div>
+                                      </td>
+                                      <td className="py-3 px-4 bg-purple-50/30">
+                                        <div className="flex items-center gap-1">
+                                          <span className="text-slate-400">£</span>
+                                          <input 
+                                            type="number"
+                                            min={0}
+                                            value={setting.kidDeposit}
+                                            onChange={e => handleUpdatePriceSetting(setting.category, 'kidDeposit', Number(e.target.value))}
+                                            className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 font-mono font-bold text-emerald-800 outline-none focus:border-purple-500 shadow-sm"
+                                          />
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        /* PRODUCTS SUB-TAB: MASTER TARTANS & CATEGORY CATALOG MANAGER */
+                        <div className="space-y-6">
+                          {/* ADD NEW TARTAN CARD */}
+                          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+                            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-3">
+                              <div>
+                                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                                  <Tag className="w-5 h-5 text-amber-600" /> Master Tartan & Colour Catalog
+                                </h3>
+                                <p className="text-xs text-slate-500">
+                                  Manually add tartans and colours here. All dropdown filters across the app (Calendar, Stock Filters, Registration) populate automatically from this list!
+                                </p>
+                              </div>
+                            </div>
+
+                            <form onSubmit={handleAddCustomTartan} className="flex flex-wrap items-center gap-3">
+                              <input 
+                                type="text"
+                                required
+                                placeholder="Enter Tartan Name (e.g. Hebridean Heather, MacKenzie, Grey Granite)..."
+                                value={newTartanInput}
+                                onChange={e => setNewTartanInput(e.target.value)}
+                                className="flex-1 min-w-[260px] bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                              />
+
+                              <button
+                                type="submit"
+                                className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5"
+                              >
+                                <PlusCircle className="w-4 h-4" /> Add Tartan / Colour to Catalog
+                              </button>
+                            </form>
+                          </div>
+
+                          {/* TARTAN CATALOG GRID */}
+                          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+                            <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                              <Layers className="w-4 h-4 text-amber-600" /> Registered Tartans & Active Stock Count ({tartanList.length} Tartans)
+                            </h4>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                              {tartanList.map(tartan => {
+                                const itemCount = items.filter(i => i.tartanOrColour === tartan && i.status !== 'RETIRED').length;
+                                return (
+                                  <div key={tartan} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between shadow-sm hover:border-amber-300 transition">
+                                    <div>
+                                      <span className="font-bold text-slate-900 text-xs block">{tartan}</span>
+                                      <span className="text-[10px] text-amber-800 font-bold block">{itemCount} Stock Garment(s)</span>
+                                    </div>
+
+                                    <button
+                                      onClick={() => handleDeleteCustomTartan(tartan)}
+                                      title={`Delete ${tartan}`}
+                                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* ITEM CATEGORIES OVERVIEW */}
+                          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+                            <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                              <Package className="w-4 h-4 text-amber-600" /> Outfit Categories ({CATEGORIES.length} Categories)
+                            </h4>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                              {CATEGORIES.map(cat => {
+                                const count = items.filter(i => i.category === cat && i.status !== 'RETIRED').length;
+                                return (
+                                  <div key={cat} className="p-3.5 bg-amber-50/50 border border-amber-200 rounded-2xl text-xs space-y-1">
+                                    <span className="font-extrabold text-amber-950 block">{cat}</span>
+                                    <span className="text-[10px] text-amber-800 font-semibold block">{count} Registered Items</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
                         </div>
-
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-left text-xs text-slate-700">
-                            <thead className="bg-slate-50 text-slate-900 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px]">
-                              <tr>
-                                <th className="py-4 px-4">Garment Category</th>
-                                <th className="py-4 px-4 bg-amber-50/50 text-amber-950 border-l border-amber-200">Adult Rental (£)</th>
-                                <th className="py-4 px-4 bg-amber-50/50 text-amber-950">Adult Deposit (£)</th>
-                                <th className="py-4 px-4 bg-purple-50/50 text-purple-950 border-l border-purple-200">Kids Rental (£)</th>
-                                <th className="py-4 px-4 bg-purple-50/50 text-purple-950">Kids Deposit (£)</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 font-semibold">
-                              {pricingMatrix.map(setting => (
-                                <tr key={setting.category} className="hover:bg-slate-50 transition">
-                                  <td className="py-3 px-4 font-bold text-slate-900">{setting.category}</td>
-                                  
-                                  {/* Adult Rates */}
-                                  <td className="py-3 px-4 bg-amber-50/20 border-l border-amber-200">
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-slate-400">£</span>
-                                      <input 
-                                        type="number"
-                                        min={0}
-                                        value={setting.adultHireRate}
-                                        onChange={e => handleUpdatePriceSetting(setting.category, 'adultHireRate', Number(e.target.value))}
-                                        className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 font-mono font-bold text-slate-900 outline-none focus:border-amber-500 shadow-sm"
-                                      />
-                                    </div>
-                                  </td>
-                                  <td className="py-3 px-4 bg-amber-50/20">
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-slate-400">£</span>
-                                      <input 
-                                        type="number"
-                                        min={0}
-                                        value={setting.adultDeposit}
-                                        onChange={e => handleUpdatePriceSetting(setting.category, 'adultDeposit', Number(e.target.value))}
-                                        className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 font-mono font-bold text-emerald-800 outline-none focus:border-amber-500 shadow-sm"
-                                      />
-                                    </div>
-                                  </td>
-
-                                  {/* Kids Rates */}
-                                  <td className="py-3 px-4 bg-purple-50/20 border-l border-purple-200">
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-slate-400">£</span>
-                                      <input 
-                                        type="number"
-                                        min={0}
-                                        value={setting.kidHireRate}
-                                        onChange={e => handleUpdatePriceSetting(setting.category, 'kidHireRate', Number(e.target.value))}
-                                        className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 font-mono font-bold text-purple-900 outline-none focus:border-purple-500 shadow-sm"
-                                      />
-                                    </div>
-                                  </td>
-                                  <td className="py-3 px-4 bg-purple-50/20">
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-slate-400">£</span>
-                                      <input 
-                                        type="number"
-                                        min={0}
-                                        value={setting.kidDeposit}
-                                        onChange={e => handleUpdatePriceSetting(setting.category, 'kidDeposit', Number(e.target.value))}
-                                        className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 font-mono font-bold text-emerald-800 outline-none focus:border-purple-500 shadow-sm"
-                                      />
-                                    </div>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
+                      )}
                     </>
                   )}
                 </div>
