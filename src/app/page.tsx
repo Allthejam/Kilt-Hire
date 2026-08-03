@@ -75,6 +75,7 @@ import {
   RefreshCw as RestoreIcon,
   CheckCircle,
   HelpCircle,
+  BookOpen,
   BarChart3,
   TrendingUp
 } from 'lucide-react';
@@ -320,6 +321,10 @@ export default function KiltHireApp() {
 
   // Edit PO state
   const [editPoNotes, setEditPoNotes] = useState('');
+
+  // Staff User Guide & Operations Manual Modal State
+  const [showUserGuideModal, setShowUserGuideModal] = useState<boolean>(false);
+  const [guideTopic, setGuideTopic] = useState<'SCANNER' | 'CALENDAR' | 'QR_PRINTING' | 'BULK_BINS' | 'LAUNDRY' | 'ANALYTICS'>('SCANNER');
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -1751,6 +1756,13 @@ export default function KiltHireApp() {
           </div>
 
           <button 
+            onClick={() => setShowUserGuideModal(true)}
+            className="w-full py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm transition mb-2"
+          >
+            <BookOpen className="w-4 h-4 text-slate-950" /> Staff Operations Guide
+          </button>
+
+          <button 
             onClick={handleResetData}
             className="w-full py-2 bg-white hover:bg-slate-100 text-slate-600 rounded-lg border border-slate-200 text-[11px] font-bold flex items-center justify-center gap-1.5 shadow-sm transition"
           >
@@ -1800,6 +1812,13 @@ export default function KiltHireApp() {
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowUserGuideModal(true)}
+              className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-950 font-extrabold text-xs rounded-full shadow-sm transition flex items-center gap-1.5"
+            >
+              <BookOpen className="w-4 h-4 text-amber-600" /> User Guide & Manual
+            </button>
+
             <button
               onClick={() => setInterfaceMode(interfaceMode === 'admin_portal' ? 'shop_assistant' : 'admin_portal')}
               className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold flex items-center gap-1.5 border shadow-sm transition ${
@@ -6167,6 +6186,347 @@ export default function KiltHireApp() {
                 <DollarSign className="w-4 h-4" /> Process PayPal Payment & Issue Purchase Order ({newPoForm.selectedItemIds.length} Items)
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* STAFF USER GUIDE & OPERATIONS MANUAL MODAL */}
+      {showUserGuideModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-4xl w-full p-6 space-y-5 my-8 shadow-2xl">
+            
+            {/* MODAL HEADER */}
+            <div className="flex items-start justify-between border-b border-slate-200 pb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="px-3 py-1 bg-amber-100 text-amber-900 font-extrabold text-xs rounded-full border border-amber-300 flex items-center gap-1.5">
+                    <BookOpen className="w-4 h-4 text-amber-600" /> Highland Kilt Hire Operations Manual
+                  </span>
+                  <span className="px-2.5 py-0.5 text-[11px] font-bold bg-emerald-100 text-emerald-900 rounded-full">
+                    Official Staff SOP
+                  </span>
+                </div>
+                <h3 className="text-xl font-extrabold text-slate-900 mt-2">
+                  Staff User Guide & System Standard Operating Procedure
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Welcome to Highland Kilt Hire! Select a topic below to view step-by-step instructions.
+                </p>
+              </div>
+
+              <button
+                onClick={() => setShowUserGuideModal(false)}
+                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* TOP NAVIGATION SUB-TABS */}
+            <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200 overflow-x-auto">
+              <button
+                onClick={() => setGuideTopic('SCANNER')}
+                className={`px-4 py-2 rounded-xl text-xs font-extrabold shrink-0 flex items-center gap-1.5 transition ${
+                  guideTopic === 'SCANNER' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-600 hover:bg-white/60'
+                }`}
+              >
+                <Zap className="w-3.5 h-3.5" /> Floor QR Scanner
+              </button>
+
+              <button
+                onClick={() => setGuideTopic('CALENDAR')}
+                className={`px-4 py-2 rounded-xl text-xs font-extrabold shrink-0 flex items-center gap-1.5 transition ${
+                  guideTopic === 'CALENDAR' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-600 hover:bg-white/60'
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" /> Availability Calendar
+              </button>
+
+              <button
+                onClick={() => setGuideTopic('QR_PRINTING')}
+                className={`px-4 py-2 rounded-xl text-xs font-extrabold shrink-0 flex items-center gap-1.5 transition ${
+                  guideTopic === 'QR_PRINTING' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-600 hover:bg-white/60'
+                }`}
+              >
+                <Printer className="w-3.5 h-3.5" /> QR Label Printing
+              </button>
+
+              <button
+                onClick={() => setGuideTopic('BULK_BINS')}
+                className={`px-4 py-2 rounded-xl text-xs font-extrabold shrink-0 flex items-center gap-1.5 transition ${
+                  guideTopic === 'BULK_BINS' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-600 hover:bg-white/60'
+                }`}
+              >
+                <Package className="w-3.5 h-3.5" /> Bulk Storage Bins
+              </button>
+
+              <button
+                onClick={() => setGuideTopic('LAUNDRY')}
+                className={`px-4 py-2 rounded-xl text-xs font-extrabold shrink-0 flex items-center gap-1.5 transition ${
+                  guideTopic === 'LAUNDRY' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-600 hover:bg-white/60'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" /> Dry Cleaning & Repairs
+              </button>
+
+              <button
+                onClick={() => setGuideTopic('ANALYTICS')}
+                className={`px-4 py-2 rounded-xl text-xs font-extrabold shrink-0 flex items-center gap-1.5 transition ${
+                  guideTopic === 'ANALYTICS' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-600 hover:bg-white/60'
+                }`}
+              >
+                <BarChart3 className="w-3.5 h-3.5" /> Master Admin & ROI
+              </button>
+            </div>
+
+            {/* GUIDE CONTENT BODY */}
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+
+              {guideTopic === 'SCANNER' && (
+                <div className="space-y-4 text-xs text-slate-700">
+                  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
+                    <h4 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-emerald-600" /> Automated Floor Scanner Operations
+                    </h4>
+                    <p className="leading-relaxed">
+                      The Shop Assistant terminal is equipped with a zero-friction QR camera scanner. Staff can scan any garment or storage box to trigger automated actions instantly.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                      <span className="font-extrabold text-slate-900 block text-xs">1. Outgoing Hire Bag Assembly</span>
+                      <p className="text-slate-600 leading-relaxed">
+                        Scan the first garment QR code (e.g. <code>KILT-1001</code>). The PO Builder will open automatically. Keep scanning additional garments (Jacket, Sporran, Shoes) to build the complete outfit bag.
+                      </p>
+                    </div>
+
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                      <span className="font-extrabold text-slate-900 block text-xs">2. Customer Bag Returns</span>
+                      <p className="text-slate-600 leading-relaxed">
+                        Scanning any garment currently <strong>ON HIRE</strong> automatically opens that customer's PO Return Checklist. Scan each returned item to verify authentic QR labels before deposit refunding.
+                      </p>
+                    </div>
+
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                      <span className="font-extrabold text-slate-900 block text-xs">3. Registering New Stock</span>
+                      <p className="text-slate-600 leading-relaxed">
+                        Scanning an unregistered QR code label immediately pops up the <strong>New Stock Registration Form</strong>. Select Adult vs Kids sizing group and default category pricing fills automatically.
+                      </p>
+                    </div>
+
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                      <span className="font-extrabold text-slate-900 block text-xs">4. Quick Demo Pickers</span>
+                      <p className="text-slate-600 leading-relaxed">
+                        If testing without a camera, click any of the instant simulated scan buttons on the scanner panel (e.g. <code>KILT-1001</code>, <code>PO-9011</code>, <code>BIN-SGIAN-DUBH</code>).
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {guideTopic === 'CALENDAR' && (
+                <div className="space-y-4 text-xs text-slate-700">
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl space-y-2">
+                    <h4 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-blue-600" /> Availability & Booking Calendar Guide
+                    </h4>
+                    <p className="leading-relaxed">
+                      Store staff can look up future event dates (weddings, graduations) to check live stock availability before creating a customer booking.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                      <span className="font-extrabold text-slate-900 block text-xs">📅 Selecting Target Event Dates</span>
+                      <p className="text-slate-600 leading-relaxed">
+                        Use the date picker at the top of the Calendar view. The top summary cards automatically calculate how many garments are <strong>🟢 AVAILABLE</strong>, <strong>🔒 BOOKED ON DATE</strong>, or in <strong>🧼 LAUNDRY / REPAIR</strong> for that specific date.
+                      </p>
+                    </div>
+
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                      <span className="font-extrabold text-slate-900 block text-xs">🎯 Tartan & Category Filters</span>
+                      <p className="text-slate-600 leading-relaxed">
+                        Filter by specific tartans (e.g. *Royal Stewart*, *Spirit of Scotland*) or categories (*Kilts*, *Jackets*) to view specific outfit availability.
+                      </p>
+                    </div>
+
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                      <span className="font-extrabold text-slate-900 block text-xs">⚡ 1-Click Hire Booking</span>
+                      <p className="text-slate-600 leading-relaxed">
+                        Clicking <strong>"Book Hire for [GARMENT-ID]"</strong> on any available garment pre-fills the PO Builder with that garment and sets the event date automatically!
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {guideTopic === 'QR_PRINTING' && (
+                <div className="space-y-4 text-xs text-slate-700">
+                  <div className="p-4 bg-purple-50 border border-purple-200 rounded-2xl space-y-2">
+                    <h4 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                      <Printer className="w-4 h-4 text-purple-600" /> QR Batch Label Generation & Printing Safeguards
+                    </h4>
+                    <p className="leading-relaxed">
+                      Highland Kilt Hire uses high-durability thermal transfer QR labels (iron-on labels for kilts/jackets, waterproof stickers for shoes/sporrans).
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                      <span className="font-extrabold text-slate-900 block text-xs">🏷️ Creating New Label Batches</span>
+                      <p className="text-slate-600 leading-relaxed">
+                        Master Admin Allan can generate batches of up to 100 QR codes (e.g. <code>KILT-1001</code> to <code>KILT-1100</code>) specifying Adult vs Kids sizing groups.
+                      </p>
+                    </div>
+
+                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl space-y-2">
+                      <span className="font-extrabold text-slate-900 block text-xs">🔒 1-Time Printing Safeguard</span>
+                      <p className="text-amber-900 leading-relaxed">
+                        Once a batch sheet is printed, the full sheet is automatically <strong>LOCKED</strong> to prevent accidental duplicate full prints.
+                      </p>
+                    </div>
+
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                      <span className="font-extrabold text-slate-900 block text-xs">🔑 Replacement Single Tag Reprints</span>
+                      <p className="text-slate-600 leading-relaxed">
+                        If a single tag becomes damaged or lost, click the tag number in the batch list and enter Master Admin PIN (<code>1234</code>) to authorize a single replacement reprint. Every reprint is recorded in the audit log.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {guideTopic === 'BULK_BINS' && (
+                <div className="space-y-4 text-xs text-slate-700">
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl space-y-2">
+                    <h4 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                      <Package className="w-4 h-4 text-amber-600" /> Serialized Garments vs Bulk Storage Bins
+                    </h4>
+                    <p className="leading-relaxed">
+                      Our hybrid inventory system handles individual high-value garments and bulk accessory bins seamlessly.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                      <span className="font-extrabold text-slate-900 block text-xs">👕 Serialized Garments</span>
+                      <p className="text-slate-600 leading-relaxed">
+                        Kilts, Jackets, Waistcoats, Shirts, Shoes, Sporrans have individual QR codes. Tracked individually when going out and coming back.
+                      </p>
+                    </div>
+
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                      <span className="font-extrabold text-slate-900 block text-xs">📦 Bulk Storage Box Bins</span>
+                      <p className="text-slate-600 leading-relaxed">
+                        Sgian-dubhs, Kilt Pins, Belts & Buckles, Garters are stored in master bins with 1 QR sticker on the box (e.g. <code>BIN-SGIAN-DUBH</code>).
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-1">
+                    <span className="font-extrabold text-slate-900 block text-xs">⚡ Automatic Inventory Pool Adjustments</span>
+                    <p className="text-slate-700 leading-relaxed">
+                      Adding a Sgian-dubh to a PO automatically reduces the bin count (`150 ➔ 149`). On customer return, checking <code>[✓] Returned Clean</code> adds +1 back to the bin count.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {guideTopic === 'LAUNDRY' && (
+                <div className="space-y-4 text-xs text-slate-700">
+                  <div className="p-4 bg-cyan-50 border border-cyan-200 rounded-2xl space-y-2">
+                    <h4 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-cyan-600" /> Dry Cleaning Laundry & Repair Workshop
+                    </h4>
+                    <p className="leading-relaxed">
+                      Highland Kilt Hire maintains strict hygiene and garment repair standards.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                      <span className="font-extrabold text-slate-900 block text-xs">🧼 Processing Dry Cleaning Returns</span>
+                      <p className="text-slate-600 leading-relaxed">
+                        In the PO Return Checklist, select <strong>🧼 Needs Cleaning</strong>. The customer's deposit is <strong>REFUNDED</strong> (normal wear-and-tear) and the item is dispatched to the Dry Cleaning tab.
+                      </p>
+                    </div>
+
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                      <span className="font-extrabold text-slate-900 block text-xs">🔧 Repair Workshop Dispatches</span>
+                      <p className="text-slate-600 leading-relaxed">
+                        If a garment has tears, broken buckles, or moth damage, select <strong>🔧 Needs Repair</strong> in the return checklist. The security deposit is <strong>HELD</strong> until seamstress repairs are completed.
+                      </p>
+                    </div>
+
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                      <span className="font-extrabold text-slate-900 block text-xs">✨ Bulk Dry Cleaning Check-In</span>
+                      <p className="text-slate-600 leading-relaxed">
+                        When the dry cleaner returns a batch of garments, click <strong>"Bulk Confirm All Clean"</strong> in the Laundry tab to return all items to <code>AVAILABLE</code> stock in 1 click!
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {guideTopic === 'ANALYTICS' && (
+                <div className="space-y-4 text-xs text-slate-700">
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl space-y-2">
+                    <h4 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                      <BarChart3 className="w-4 h-4 text-amber-600" /> Master Admin Analytics & Garment ROI Dashboard
+                    </h4>
+                    <p className="leading-relaxed">
+                      Restricted exclusively to Allan (Master Admin - PIN <code>1234</code>). Provides high-level business intelligence and garment financial tracking.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                      <span className="font-extrabold text-slate-900 block text-xs">📈 Gross Revenue & Deposits</span>
+                      <p className="text-slate-600 leading-relaxed">
+                        Tracks total hire fees earned, deposits refunded to customers, and deposits retained due to damages or missing items.
+                      </p>
+                    </div>
+
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                      <span className="font-extrabold text-slate-900 block text-xs">🏆 Tartan Popularity Leaderboard</span>
+                      <p className="text-slate-600 leading-relaxed">
+                        Visual progress bars showing revenue generated by each tartan (*Royal Stewart*, *Spirit of Scotland*, *Black Watch*, etc.).
+                      </p>
+                    </div>
+
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                      <span className="font-extrabold text-slate-900 block text-xs">🏷️ Individual Garment ROI Ledger</span>
+                      <p className="text-slate-600 leading-relaxed">
+                        Lists purchase cost vs total rental earnings for every garment, showing lifetime profit and fleet ROI %.
+                      </p>
+                    </div>
+
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                      <span className="font-extrabold text-slate-900 block text-xs">🛡️ Staff Security Invites</span>
+                      <p className="text-slate-600 leading-relaxed">
+                        Generate secure 1-time invite codes to onboard new store assistants with custom PIN credentials.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+            </div>
+
+            {/* MODAL FOOTER */}
+            <div className="border-t border-slate-100 pt-3 flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-slate-500">
+                Master Admin Allan • Highland Kilt Hire SOP v2.4
+              </span>
+              <button
+                onClick={() => setShowUserGuideModal(false)}
+                className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow transition"
+              >
+                Close Guide
+              </button>
+            </div>
+
           </div>
         </div>
       )}
