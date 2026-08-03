@@ -456,6 +456,7 @@ export default function KiltHireApp() {
 
   // ─── AUTH STATE LISTENER ─────────────────────────────────────────────────────
   useEffect(() => {
+    if (!auth) return; // not on server
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser && isLoaded) {
         // Restore current user from Firestore profile or localStorage
@@ -540,6 +541,7 @@ export default function KiltHireApp() {
     setLoginError('');
 
     try {
+      if (!auth) throw new Error('auth/not-available');
       // Firebase Auth: email + PIN as password
       const credential = await signInWithEmailAndPassword(auth, loginEmail.trim(), loginPin.trim());
       // Load staff profile from Firestore
@@ -599,6 +601,10 @@ export default function KiltHireApp() {
     }
 
     try {
+      if (!auth) {
+        setRegError('Authentication service unavailable. Please try again in a moment.');
+        return;
+      }
       // Create Firebase Auth account
       const credential = await createUserWithEmailAndPassword(auth, cleanEmail, regPassword);
       const uid = credential.user.uid;
@@ -681,6 +687,10 @@ export default function KiltHireApp() {
     }
 
     try {
+      if (!auth) {
+        setMasterRegError('Authentication service unavailable. Please try again in a moment.');
+        return;
+      }
       // Create Firebase Auth account
       const credential = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPassword);
       const uid = credential.user.uid;

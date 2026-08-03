@@ -3,14 +3,10 @@ import {
   doc,
   getDocs,
   setDoc,
-  updateDoc,
   deleteDoc,
-  addDoc,
   query,
   orderBy,
   limit,
-  serverTimestamp,
-  Timestamp,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import {
@@ -23,101 +19,106 @@ import {
   CategoryPriceSetting,
 } from '../app/types';
 
+// Guard: throw a helpful error if called server-side
+function requireDb() {
+  if (!db) throw new Error('Firestore is only available on the client side.');
+  return db;
+}
+
 // --- STAFF PROFILES ----------------------------------------------------------
 
 export async function getStaffProfiles(): Promise<StaffUser[]> {
-  const snap = await getDocs(collection(db, 'users'));
+  const snap = await getDocs(collection(requireDb(), 'users'));
   return snap.docs.map(d => d.data() as StaffUser);
 }
 
 export async function upsertStaffProfile(uid: string, data: StaffUser): Promise<void> {
-  await setDoc(doc(db, 'users', uid), data, { merge: true });
+  await setDoc(doc(requireDb(), 'users', uid), data, { merge: true });
 }
 
 // --- INVITES -----------------------------------------------------------------
 
 export async function getInvites(): Promise<StaffInvite[]> {
-  const snap = await getDocs(collection(db, 'invites'));
+  const snap = await getDocs(collection(requireDb(), 'invites'));
   return snap.docs.map(d => d.data() as StaffInvite);
 }
 
 export async function upsertInvite(invite: StaffInvite): Promise<void> {
-  await setDoc(doc(db, 'invites', invite.id), invite, { merge: true });
+  await setDoc(doc(requireDb(), 'invites', invite.id), invite, { merge: true });
 }
 
 // --- INVENTORY ITEMS ----------------------------------------------------------
 
 export async function getItems(): Promise<KiltItem[]> {
-  const snap = await getDocs(collection(db, 'items'));
+  const snap = await getDocs(collection(requireDb(), 'items'));
   return snap.docs.map(d => d.data() as KiltItem);
 }
 
 export async function upsertItem(item: KiltItem): Promise<void> {
-  await setDoc(doc(db, 'items', item.id), item, { merge: true });
+  await setDoc(doc(requireDb(), 'items', item.id), item, { merge: true });
 }
 
 export async function deleteItem(id: string): Promise<void> {
-  await deleteDoc(doc(db, 'items', id));
+  await deleteDoc(doc(requireDb(), 'items', id));
 }
 
 // --- QR BATCHES ---------------------------------------------------------------
 
 export async function getBatches(): Promise<QRBatch[]> {
-  const snap = await getDocs(collection(db, 'batches'));
+  const snap = await getDocs(collection(requireDb(), 'batches'));
   return snap.docs.map(d => d.data() as QRBatch);
 }
 
 export async function upsertBatch(batch: QRBatch): Promise<void> {
-  await setDoc(doc(db, 'batches', batch.id), batch, { merge: true });
+  await setDoc(doc(requireDb(), 'batches', batch.id), batch, { merge: true });
 }
 
 // --- PURCHASE ORDERS ----------------------------------------------------------
 
 export async function getPurchaseOrders(): Promise<PurchaseOrder[]> {
-  const snap = await getDocs(collection(db, 'purchase_orders'));
+  const snap = await getDocs(collection(requireDb(), 'purchase_orders'));
   return snap.docs.map(d => d.data() as PurchaseOrder);
 }
 
 export async function upsertPurchaseOrder(po: PurchaseOrder): Promise<void> {
-  await setDoc(doc(db, 'purchase_orders', po.id), po, { merge: true });
+  await setDoc(doc(requireDb(), 'purchase_orders', po.id), po, { merge: true });
 }
 
 // --- AUDIT LOGS ---------------------------------------------------------------
 
 export async function getAuditLogs(): Promise<AuditLog[]> {
-  const q = query(collection(db, 'audit_logs'), orderBy('timestamp', 'desc'), limit(500));
+  const q = query(collection(requireDb(), 'audit_logs'), orderBy('timestamp', 'desc'), limit(500));
   const snap = await getDocs(q);
   return snap.docs.map(d => d.data() as AuditLog);
 }
 
 export async function addAuditLogFS(log: AuditLog): Promise<void> {
-  await setDoc(doc(db, 'audit_logs', log.id), log);
+  await setDoc(doc(requireDb(), 'audit_logs', log.id), log);
 }
 
 // --- PRICING ------------------------------------------------------------------
 
 export async function getPricing(): Promise<CategoryPriceSetting[] | null> {
-  const snap = await getDocs(collection(db, 'settings'));
+  const snap = await getDocs(collection(requireDb(), 'settings'));
   const pricingDoc = snap.docs.find(d => d.id === 'pricing');
   return pricingDoc ? (pricingDoc.data().matrix as CategoryPriceSetting[]) : null;
 }
 
 export async function savePricing(matrix: CategoryPriceSetting[]): Promise<void> {
-  await setDoc(doc(db, 'settings', 'pricing'), { matrix }, { merge: true });
+  await setDoc(doc(requireDb(), 'settings', 'pricing'), { matrix }, { merge: true });
 }
 
 // --- SEED HELPER -------------------------------------------------------------
-// Call once on first launch to populate Firestore from mock data
 
 export async function seedCollectionIfEmpty<T extends { id: string }>(
   collectionName: string,
   items: T[],
   upsertFn: (item: T) => Promise<void>
 ): Promise<boolean> {
-  const snap = await getDocs(collection(db, collectionName));
+  const snap = await getDocs(collection(requireDb(), collectionName));
   if (snap.empty) {
     await Promise.all(items.map(item => upsertFn(item)));
-    return true; // seeded
+    return true;
   }
-  return false; // already had data
+  return false;
 }
