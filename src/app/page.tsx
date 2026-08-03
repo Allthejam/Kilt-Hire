@@ -1696,7 +1696,7 @@ export default function KiltHireApp() {
                   <input 
                     type="password"
                     required
-                    placeholder="Enter 4-digit PIN (Demo: 1234)"
+                    placeholder="Enter your PIN code"
                     value={loginPin}
                     onChange={e => setLoginPin(e.target.value)}
                     className="w-full bg-white border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-slate-900 outline-none focus:border-amber-500 shadow-sm"
@@ -1711,27 +1711,7 @@ export default function KiltHireApp() {
                 Sign In to Back Office
               </button>
 
-              <div className="pt-4 border-t border-slate-100">
-                <span className="block text-[11px] font-bold text-slate-500 mb-2 text-center">⚡ Instant Demo Quick Login:</span>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setCurrentUser(staffList[0])}
-                    className="p-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-left transition"
-                  >
-                    <span className="font-bold block text-slate-900 text-[11px]">Allan</span>
-                    <span className="text-[10px] text-amber-700 font-semibold">Master Admin</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentUser(staffList[1])}
-                    className="p-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-left transition"
-                  >
-                    <span className="font-bold block text-slate-900 text-[11px]">Fiona MacLean</span>
-                    <span className="text-[10px] text-slate-500">Staff Member</span>
-                  </button>
-                </div>
-              </div>
+
             </form>
           )}
 
@@ -1785,11 +1765,24 @@ export default function KiltHireApp() {
               </div>
 
               <div>
-                <label className="block text-slate-700 font-bold mb-1">Set Staff PIN Code</label>
+                <label className="block text-slate-700 font-bold mb-1">Account Password <span className="text-slate-500 font-normal">(min 6 characters — for login from any device)</span></label>
                 <input 
                   type="password"
                   required
-                  placeholder="Set 4-digit PIN (e.g. 1234)"
+                  minLength={6}
+                  placeholder="Set a secure login password"
+                  value={regPassword}
+                  onChange={e => setRegPassword(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 outline-none focus:border-amber-500 shadow-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Override PIN Code <span className="text-slate-500 font-normal">(4 digits — for in-app actions)</span></label>
+                <input 
+                  type="password"
+                  required
+                  placeholder="Set 4-digit PIN"
                   value={regPin}
                   onChange={e => setRegPin(e.target.value)}
                   className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 outline-none focus:border-amber-500 shadow-sm"
@@ -1800,7 +1793,7 @@ export default function KiltHireApp() {
                 type="submit"
                 className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold rounded-xl shadow-md transition"
               >
-                Validate Invite & Register Account
+                Validate Invite & Create Account
               </button>
             </form>
           )}
@@ -2047,12 +2040,14 @@ export default function KiltHireApp() {
             <BookOpen className="w-4 h-4 text-slate-950" /> Staff Operations Guide
           </button>
 
+{currentUser?.role === 'Master Admin' && (
           <button 
             onClick={handleResetData}
-            className="w-full py-2 bg-white hover:bg-slate-100 text-slate-600 rounded-lg border border-slate-200 text-[11px] font-bold flex items-center justify-center gap-1.5 shadow-sm transition"
+            className="w-full py-2 bg-white hover:bg-slate-100 text-slate-500 rounded-lg border border-slate-200 text-[11px] font-bold flex items-center justify-center gap-1.5 shadow-sm transition"
           >
-            <RotateCcw className="w-3.5 h-3.5" /> Reset Demo State
+            <RotateCcw className="w-3.5 h-3.5" /> Reset to Mock Data
           </button>
+          )}
         </div>
       </aside>
 
@@ -2391,7 +2386,7 @@ export default function KiltHireApp() {
                                 </span>
 
                                 <span className="text-[10px] text-emerald-300 font-bold bg-emerald-950/90 px-3 py-0.5 rounded-full mb-2 border border-emerald-500/40 animate-pulse">
-                                  ⚡ jsQR Real-Time Decoder Active
+                                  🟢 Camera Active — Scanning...
                                 </span>
                               </div>
                             </div>
@@ -2409,83 +2404,30 @@ export default function KiltHireApp() {
                           <div className="flex gap-2">
                             <input 
                               type="text"
-                              placeholder="Type or scan QR code (e.g. KILT-1001, KILT-KID-501)..."
+                              placeholder="Manual QR entry — or use camera above"
                               value={simulatedInput}
                               onChange={e => setSimulatedInput(e.target.value)}
                               onKeyDown={e => {
-                                if (e.key === 'Enter') handleScanCode(simulatedInput);
+                                if (e.key === 'Enter') { handleScanCode(simulatedInput); setSimulatedInput(''); }
                               }}
                               className="flex-1 bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm font-mono font-bold text-slate-900 outline-none focus:border-amber-500 shadow-sm"
                             />
                             <button
-                              onClick={() => handleScanCode(simulatedInput)}
+                              onClick={() => { handleScanCode(simulatedInput); setSimulatedInput(''); }}
                               className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold rounded-xl text-xs shadow transition"
                             >
                               Scan
                             </button>
                           </div>
 
-                          {/* ORGANIZED DEMO SCAN PICKERS */}
-                          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
-                            <span className="text-xs font-extrabold text-slate-900 block">⚡ Instant Demo QR Scans (Try All 3 Modes):</span>
-                            
-                            {/* OUTGOING HIRE BAG ASSEMBLY DEMO */}
-                            <div className="space-y-1">
-                              <span className="text-[10px] font-bold text-emerald-800 uppercase block">1. Outgoing Hire PO (Scan Available Garment)</span>
-                              <div className="grid grid-cols-2 gap-2">
-                                <button
-                                  onClick={() => {
-                                    handleScanCode('KILT-1005');
-                                  }}
-                                  className="p-2.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-950 font-mono font-bold text-xs rounded-xl border border-emerald-300 text-left transition flex items-center justify-between"
-                                >
-                                  <span>KILT-1005</span>
-                                  <span className="text-[10px] bg-white px-1.5 py-0.5 rounded text-emerald-800 font-sans font-bold">+ Build Outgoing PO</span>
-                                </button>
-
-                                <button
-                                  onClick={() => handleScanCode('BIN-SGIAN-DUBH')}
-                                  className="p-2.5 bg-amber-100 hover:bg-amber-200 text-amber-950 font-mono font-bold text-xs rounded-xl border border-amber-300 text-left transition flex items-center justify-between"
-                                >
-                                  <span>BIN-SGIAN-DUBH</span>
-                                  <span className="text-[10px] bg-white px-1.5 py-0.5 rounded text-amber-800 font-sans font-bold">142 in Bin</span>
-                                </button>
-                              </div>
-                            </div>
-
-                            {/* CUSTOMER RETURN DEMO */}
-                            <div className="space-y-1 pt-1">
-                              <span className="text-[10px] font-bold text-blue-800 uppercase block">2. Customer Bag Return (Scan On-Hire Garment)</span>
-                              <div className="grid grid-cols-2 gap-2">
-                                <button
-                                  onClick={() => handleScanCode('KILT-1001')}
-                                  className="p-2.5 bg-blue-100 hover:bg-blue-200 text-blue-950 font-mono font-bold text-xs rounded-xl border border-blue-300 text-left transition flex items-center justify-between"
-                                >
-                                  <span>KILT-1001</span>
-                                  <span className="text-[10px] bg-white px-1.5 py-0.5 rounded text-blue-800 font-sans font-bold">PO-9011 Return</span>
-                                </button>
-
-                                <button
-                                  onClick={() => handleScanCode('KILT-KIDS-501')}
-                                  className="p-2.5 bg-purple-100 hover:bg-purple-200 text-purple-950 font-mono font-bold text-xs rounded-xl border border-purple-300 text-left transition flex items-center justify-between"
-                                >
-                                  <span>KILT-KIDS-501</span>
-                                  <span className="text-[10px] bg-white px-1.5 py-0.5 rounded text-purple-800 font-sans font-bold">PO-8802 Kids Return</span>
-                                </button>
-                              </div>
-                            </div>
-
-                            {/* UNREGISTERED NEW STOCK DEMO */}
-                            <div className="space-y-1 pt-1">
-                              <span className="text-[10px] font-bold text-slate-600 uppercase block">3. Register New Stock (Scan New QR Label)</span>
-                              <button
-                                onClick={() => handleScanCode('KILT-KID-8839')}
-                                className="w-full p-2.5 bg-slate-200 hover:bg-slate-300 text-slate-900 font-mono font-bold text-xs rounded-xl border border-slate-300 text-left transition flex items-center justify-between"
-                              >
-                                <span>KILT-KID-8839</span>
-                                <span className="text-[10px] bg-white px-1.5 py-0.5 rounded text-slate-700 font-sans font-bold">Pop Up Registration Form</span>
-                              </button>
-                            </div>
+                          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-600 space-y-1.5">
+                            <p className="font-bold text-slate-800 flex items-center gap-1.5"><Camera className="w-3.5 h-3.5 text-amber-600" /> How to Scan</p>
+                            <ul className="list-disc list-inside space-y-1 text-[11px]">
+                              <li>Click <strong>Start Camera</strong> above and point at an iron-on QR label</li>
+                              <li>Hold steady inside the amber square frame — it scans automatically</li>
+                              <li>Or connect a USB barcode scanner gun and scan directly into the text field</li>
+                              <li>Each scan triggers the correct action based on garment status</li>
+                            </ul>
                           </div>
                         </div>
                       </div>
@@ -3799,8 +3741,15 @@ export default function KiltHireApp() {
                       {activeCamera ? (
                         <div className="relative rounded-xl overflow-hidden bg-black border-2 border-amber-500 aspect-video flex items-center justify-center">
                           <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-                          <div className="absolute inset-0 border-2 border-dashed border-amber-400/70 m-8 rounded-lg pointer-events-none flex items-center justify-center">
-                            <span className="bg-black/70 px-3 py-1 rounded text-xs text-amber-300">Align QR Code Here</span>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                            <div className="relative w-40 h-40">
+                              <div className="absolute top-0 left-0 w-7 h-7 border-t-4 border-l-4 border-amber-400 rounded-tl-xl" />
+                              <div className="absolute top-0 right-0 w-7 h-7 border-t-4 border-r-4 border-amber-400 rounded-tr-xl" />
+                              <div className="absolute bottom-0 left-0 w-7 h-7 border-b-4 border-l-4 border-amber-400 rounded-bl-xl" />
+                              <div className="absolute bottom-0 right-0 w-7 h-7 border-b-4 border-r-4 border-amber-400 rounded-br-xl" />
+                            </div>
+                            <span className="mt-3 bg-black/80 px-3 py-1 rounded-full text-[11px] font-bold text-amber-300 border border-amber-400/40">Position QR Code Inside Frame</span>
+                            <span className="mt-1 text-[10px] text-emerald-300 font-bold bg-emerald-950/90 px-3 py-0.5 rounded-full border border-emerald-500/40 animate-pulse">🟢 Camera Active — Scanning...</span>
                           </div>
                         </div>
                       ) : (
@@ -3808,61 +3757,35 @@ export default function KiltHireApp() {
                           <div className="w-12 h-12 mx-auto mb-2 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 shadow-sm">
                             <QrCode className="w-6 h-6" />
                           </div>
-                          <p className="text-xs text-slate-600 mb-2">Scan iron-on QR label on garment or pick a demo code below.</p>
+                          <p className="text-xs text-slate-600 mb-1 font-semibold">Click <strong>Use Camera</strong> above and point at an iron-on QR label.</p>
+                          <p className="text-[11px] text-slate-400">Or type a QR code manually in the field below.</p>
                         </div>
                       )}
 
                       <div className="mt-4 pt-4 border-t border-slate-100">
                         <label className="block text-xs font-bold text-slate-700 mb-2">
-                          ⚡ Instant Demo Scan Picker:
+                          Manual QR Entry
                         </label>
                         
-                        <div className="flex gap-2 mb-3">
+                        <div className="flex gap-2">
                           <input 
                             type="text"
-                            placeholder="Type or paste QR code (e.g. KILT-1001, KILT-KIDS-501)"
+                            placeholder="Type or paste QR code manually"
                             value={simulatedInput}
                             onChange={(e) => setSimulatedInput(e.target.value)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
                                 handleScanCode(simulatedInput);
+                                setSimulatedInput('');
                               }
                             }}
                             className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-mono font-semibold text-slate-900 outline-none focus:border-amber-500 shadow-sm"
                           />
                           <button
-                            onClick={() => handleScanCode(simulatedInput)}
+                            onClick={() => { handleScanCode(simulatedInput); setSimulatedInput(''); }}
                             className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-lg text-xs shadow-sm transition"
                           >
                             Scan
-                          </button>
-                        </div>
-
-                        <div className="flex flex-wrap gap-1.5">
-                          <span className="text-[11px] text-slate-500 self-center">Quick Scans:</span>
-                          <button
-                            onClick={() => handleScanCode('KILT-1001')}
-                            className="px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-800 rounded text-[11px] font-mono border border-blue-300 font-bold"
-                          >
-                            KILT-1001 (PO-9011)
-                          </button>
-                          <button
-                            onClick={() => handleScanCode('KILT-KIDS-501')}
-                            className="px-2 py-1 bg-purple-100 hover:bg-purple-200 text-purple-800 rounded text-[11px] font-mono border border-purple-300 font-bold"
-                          >
-                            KILT-KIDS-501 (Kids PO)
-                          </button>
-                          <button
-                            onClick={() => handleScanCode('JKT-2002')}
-                            className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[11px] font-mono border border-slate-200 font-semibold"
-                          >
-                            JKT-2002 (In Repair)
-                          </button>
-                          <button
-                            onClick={() => handleScanCode('KILT-KID-8839')}
-                            className="px-2 py-1 bg-purple-100 hover:bg-purple-200 text-purple-900 rounded text-[11px] font-mono border border-purple-300 font-bold"
-                          >
-                            KILT-KID-8839 (New Kids QR)
                           </button>
                         </div>
                       </div>
@@ -5795,9 +5718,9 @@ export default function KiltHireApp() {
                     <span className="text-[11px] font-bold text-slate-500 self-center">Press Enter or Aim Scanner</span>
                   </div>
 
-                  {/* QUICK DEMO SCANNER BUTTONS */}
+                  {/* QUICK SCAN BUTTONS — real codes from this PO */}
                   <div className="flex flex-wrap gap-1.5 mt-2">
-                    <span className="text-[10px] font-bold text-slate-500 self-center">Quick Demo QR Scans:</span>
+                    <span className="text-[10px] font-bold text-slate-500 self-center">Items on this PO:</span>
                     {activeReturnPo.items.map(li => {
                       const isScanned = returnChecklist[li.qrCodeId]?.scanned;
                       return (
@@ -5811,7 +5734,7 @@ export default function KiltHireApp() {
                               : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
                           }`}
                         >
-                          {isScanned ? '✓ ' : '🔍 Scan '}{li.qrCodeId}
+                          {isScanned ? '✓ ' : ''}{li.qrCodeId}
                         </button>
                       );
                     })}
@@ -6401,9 +6324,9 @@ export default function KiltHireApp() {
                 <span className="text-[11px] font-bold text-slate-500 self-center">Press Enter / Aim Scanner</span>
               </div>
 
-              {/* QUICK SCAN DEMO BUTTONS FOR AVAILABLE STOCK */}
+              {/* AVAILABLE STOCK — scan or tap to add to PO */}
               <div className="flex flex-wrap gap-1.5 pt-1">
-                <span className="text-[10px] font-bold text-blue-800 self-center">Quick Demo Available Stock Scans:</span>
+                <span className="text-[10px] font-bold text-slate-600 self-center">Available to add:</span>
                 {items.filter(i => i.status === 'AVAILABLE').slice(0, 8).map(item => {
                   const isSelected = newPoForm.selectedItemIds.includes(item.id);
                   return (
@@ -6414,10 +6337,10 @@ export default function KiltHireApp() {
                       className={`px-2 py-1 rounded text-[11px] font-mono font-bold border transition ${
                         isSelected 
                           ? 'bg-emerald-100 text-emerald-900 border-emerald-300' 
-                          : 'bg-white text-slate-700 border-slate-300 hover:bg-blue-100'
+                          : 'bg-white text-slate-700 border-slate-300 hover:bg-amber-50'
                       }`}
                     >
-                      {isSelected ? '✓ ' : '➕ Add '}{item.id}
+                      {isSelected ? '✓ ' : '+ '}{item.id}
                     </button>
                   );
                 })}
