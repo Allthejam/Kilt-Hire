@@ -322,6 +322,9 @@ export default function KiltHireApp() {
   // Edit PO state
   const [editPoNotes, setEditPoNotes] = useState('');
 
+  // Express Bag Assembly Mode State (Scan -> Details)
+  const [isAssemblyMode, setIsAssemblyMode] = useState<boolean>(false);
+
   // Staff User Guide & Operations Manual Modal State
   const [showUserGuideModal, setShowUserGuideModal] = useState<boolean>(false);
   const [guideTopic, setGuideTopic] = useState<'SCANNER' | 'CALENDAR' | 'QR_PRINTING' | 'BULK_BINS' | 'LAUNDRY' | 'ANALYTICS'>('SCANNER');
@@ -1989,13 +1992,14 @@ export default function KiltHireApp() {
                         </span>
                         <h2 className="text-xl font-extrabold tracking-tight">Zero-Friction Smart QR Scanner — Outgoing Hires & Returns</h2>
                         <p className="text-xs text-emerald-100 max-w-2xl leading-relaxed">
-                          Handles <strong>BOTH Outgoing Customer Hires</strong> (creating new POs by scanning items) and <strong>Customer Bag Returns</strong>! Scanning an available item builds an outgoing order; scanning an on-hire item loads the return checklist.
+                          Handles <strong>BOTH Outgoing Customer Hires</strong> (Scan items to build bag, then enter customer details) and <strong>Customer Bag Returns</strong>!
                         </p>
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">
                         <button
                           onClick={() => {
+                            setIsAssemblyMode(true);
                             setNewPoForm({
                               customerName: '',
                               customerEmail: '',
@@ -2006,22 +2010,68 @@ export default function KiltHireApp() {
                               notes: '',
                               selectedItemIds: []
                             });
-                            setShowCreatePoModal(true);
+                            if (!activeCamera) toggleCamera();
+                            showToast(`⚡ Started New Order Bag Assembly! Aim camera & scan garments...`, 'info');
                           }}
-                          className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5"
+                          className="px-5 py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-lg transition flex items-center gap-2"
                         >
-                          <PlusCircle className="w-4 h-4" /> Start Outgoing Hire PO
+                          <PlusCircle className="w-4 h-4" /> Start New Order (Scan ➔ Details)
                         </button>
 
                         <button
                           onClick={toggleCamera}
-                          className="px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs rounded-xl shadow flex items-center gap-1.5 transition"
+                          className="px-4 py-3 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs rounded-xl shadow flex items-center gap-1.5 transition"
                         >
                           <Camera className="w-4 h-4" />
                           {activeCamera ? 'Stop Camera' : 'Launch Camera'}
                         </button>
                       </div>
                     </div>
+
+                    {/* LIVE EXPRESS BAG ASSEMBLY BAR */}
+                    {(isAssemblyMode || newPoForm.selectedItemIds.length > 0) && (
+                      <div className="bg-white/10 backdrop-blur border border-white/20 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-4 mt-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-emerald-400 rounded-xl flex items-center justify-center text-slate-950 font-extrabold text-lg shadow-sm">
+                            {newPoForm.selectedItemIds.length}
+                          </div>
+                          <div>
+                            <span className="font-extrabold text-amber-300 text-xs block">⚡ Express Bag Assembly Active</span>
+                            <span className="text-[11px] text-emerald-100 font-semibold block">
+                              {newPoForm.selectedItemIds.length === 0 ? 'Aim camera to scan first garment...' : `${newPoForm.selectedItemIds.length} Item(s) Scanned into Bag (${newPoForm.selectedItemIds.join(', ')})`}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              if (newPoForm.selectedItemIds.length === 0) {
+                                showToast(`⚠️ Please scan at least 1 item into the bag first.`, 'warning');
+                                return;
+                              }
+                              setIsAssemblyMode(false);
+                              if (activeCamera) toggleCamera();
+                              setShowCreatePoModal(true);
+                            }}
+                            className="px-5 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5"
+                          >
+                            <CheckCircle2 className="w-4 h-4 text-emerald-800" /> Finish Scanning & Enter Customer Details
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setIsAssemblyMode(false);
+                              setNewPoForm(prev => ({ ...prev, selectedItemIds: [] }));
+                              showToast(`Cancelled bag assembly.`, 'info');
+                            }}
+                            className="px-3 py-2.5 bg-white/20 hover:bg-white/30 text-white font-bold text-xs rounded-xl transition"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
