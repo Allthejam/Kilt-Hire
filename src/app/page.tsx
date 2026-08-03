@@ -3896,10 +3896,18 @@ export default function KiltHireApp() {
                               </div>
 
                               <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => window.print()}
+                                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5"
+                                >
+                                  <Printer className="w-4 h-4" /> Send Sheet to Printer
+                                </button>
+
                                 {reprintPrintMode && (
                                   <button
                                     onClick={() => setReprintPrintMode(false)}
-                                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl transition"
+                                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl transition"
                                   >
                                     View Full Sheet
                                   </button>
@@ -3932,7 +3940,7 @@ export default function KiltHireApp() {
                                         <ShieldCheck className="w-4 h-4 text-amber-600" /> Initial One-Time Sheet Printing Safeguard
                                       </span>
                                       <p className="text-xs text-amber-900">
-                                        Clicking print will authorize the 1st printing of this entire batch sheet. After printing, the full sheet will be <strong>LOCKED</strong> against duplicate full-prints.
+                                        Clicking print will authorize the 1st printing of this entire batch sheet.
                                       </p>
                                     </div>
 
@@ -3948,16 +3956,20 @@ export default function KiltHireApp() {
                                   <div className="bg-emerald-50 border border-emerald-300 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-emerald-950">
                                     <div className="space-y-0.5">
                                       <span className="font-extrabold text-xs flex items-center gap-1.5 text-emerald-900">
-                                        <Lock className="w-4 h-4 text-emerald-600" /> One-Time Print Safeguard Active: Full Sheet Locked
+                                        <Lock className="w-4 h-4 text-emerald-600" /> Sheet Printed & Active
                                       </span>
                                       <p className="text-xs text-emerald-800">
-                                        Initial sheet printed on {selectedBatchForPrint.printedAt} by {selectedBatchForPrint.printedBy}. Full sheet duplicate printing is locked. Select specific replacement tag numbers below for Admin PIN authorized reprints.
+                                        Initial sheet printed on {selectedBatchForPrint.printedAt} by {selectedBatchForPrint.printedBy}. Click below or use the top button to re-send to printer anytime.
                                       </p>
                                     </div>
 
-                                    <span className="px-3 py-1.5 bg-slate-200 text-slate-600 font-extrabold text-xs rounded-xl flex items-center gap-1 border border-slate-300 cursor-not-allowed">
-                                      <Lock className="w-3.5 h-3.5" /> Full Sheet Locked
-                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => window.print()}
+                                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5"
+                                    >
+                                      <Printer className="w-4 h-4" /> Send Sheet to Printer
+                                    </button>
                                   </div>
                                 )}
 
