@@ -914,6 +914,22 @@ export default function KiltHireApp() {
     showToast(`Deleted "${tartanName}" from catalog.`, 'info');
   };
 
+  // Update Bulk Bin Pool Quantity
+  const handleUpdateBulkBinQuantity = (binId: string, newTotal: number, newAvailable: number) => {
+    setItems(prev => prev.map(i => {
+      if (i.id === binId) {
+        return {
+          ...i,
+          bulkTotal: Math.max(0, newTotal),
+          bulkQuantity: Math.max(0, newAvailable)
+        };
+      }
+      return i;
+    }));
+    addAuditLog('UPDATED_BULK_BIN', `Updated bulk storage bin (${binId}): ${newAvailable} available / ${newTotal} total.`, binId);
+    showToast(`📦 Adjusted ${binId} bin pool count to ${newAvailable} available.`, 'success');
+  };
+
   // Bulk Confirm All Items at Dry Cleaners Cleaned & Available
   const handleBulkConfirmLaundryCleaned = () => {
     if (!currentUser) return;
@@ -3225,6 +3241,103 @@ export default function KiltHireApp() {
                                   <div key={cat} className="p-3.5 bg-amber-50/50 border border-amber-200 rounded-2xl text-xs space-y-1">
                                     <span className="font-extrabold text-amber-950 block">{cat}</span>
                                     <span className="text-[10px] text-amber-800 font-semibold block">{count} Registered Items</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* BULK ACCESSORY MASTER STORAGE BINS */}
+                          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+                            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-3">
+                              <div>
+                                <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                                  <Package className="w-4 h-4 text-amber-600" /> Bulk Storage Bins & Accessory Pools ({items.filter(i => i.isBulkPool).length} Master Bins)
+                                </h4>
+                                <p className="text-xs text-slate-500">
+                                  Master storage boxes for non-serialized accessories (Sgian-dubhs, Kilt Pins, Belts & Buckles, Garters). Update stock pools or print bin stickers!
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {items.filter(i => i.isBulkPool).map(bin => {
+                                const onHireCount = (bin.bulkTotal || 0) - (bin.bulkQuantity || 0);
+                                return (
+                                  <div key={bin.id} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 shadow-sm hover:border-amber-300 transition">
+                                    <div className="flex items-start justify-between">
+                                      <div>
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-mono font-extrabold text-amber-900 bg-amber-100 px-2.5 py-0.5 rounded text-xs border border-amber-300">
+                                            {bin.id}
+                                          </span>
+                                          <span className="text-[10px] font-extrabold bg-blue-100 text-blue-900 px-2 py-0.5 rounded">
+                                            {bin.category}
+                                          </span>
+                                        </div>
+                                        <h5 className="font-bold text-slate-900 text-sm mt-1">{bin.name}</h5>
+                                        <p className="text-xs text-slate-500">{bin.tartanOrColour}</p>
+                                      </div>
+
+                                      <div className="text-right">
+                                        <span className="text-xs font-mono font-extrabold text-emerald-800 block">
+                                          {bin.bulkQuantity} In Store
+                                        </span>
+                                        <span className="text-[10px] text-slate-400 block font-semibold">
+                                          of {bin.bulkTotal} Total Pool
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {/* STOCK POOL PROGRESS BAR */}
+                                    <div className="space-y-1">
+                                      <div className="flex justify-between text-[10px] font-bold text-slate-600">
+                                        <span>Available Bin Stock:</span>
+                                        <span>{bin.bulkQuantity} In Store | {onHireCount} Out on Hire</span>
+                                      </div>
+                                      <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                                        <div 
+                                          className="h-full bg-emerald-500 transition-all duration-500"
+                                          style={{ width: `${Math.min(100, Math.max(0, ((bin.bulkQuantity || 0) / (bin.bulkTotal || 1)) * 100))}%` }}
+                                        />
+                                      </div>
+                                    </div>
+
+                                    {/* QUICK ACTION BUTTONS */}
+                                    <div className="flex items-center gap-2 pt-1">
+                                      <button
+                                        onClick={() => {
+                                          const addStr = prompt(`Add new stock count to ${bin.name} (${bin.id}) total pool:`, '10');
+                                          if (addStr && !isNaN(Number(addStr))) {
+                                            const added = Number(addStr);
+                                            handleUpdateBulkBinQuantity(bin.id, (bin.bulkTotal || 0) + added, (bin.bulkQuantity || 0) + added);
+                                          }
+                                        }}
+                                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center gap-1"
+                                      >
+                                        <PlusCircle className="w-3.5 h-3.5" /> Add Stock to Pool
+                                      </button>
+
+                                      <button
+                                        onClick={() => {
+                                          setSelectedBatchForPrint({
+                                            id: `BIN-STICKER-${bin.id}`,
+                                            title: bin.name,
+                                            category: bin.category,
+                                            sizeGroup: 'Adult',
+                                            count: 1,
+                                            createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+                                            createdByName: currentUser?.name || 'Allan',
+                                            qrCodes: [bin.id],
+                                            isPrinted: false
+                                          });
+                                          setTimeout(() => window.print(), 300);
+                                        }}
+                                        className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl shadow-sm transition flex items-center gap-1"
+                                      >
+                                        <Printer className="w-3.5 h-3.5 text-amber-600" /> Print Box Sticker
+                                      </button>
+                                    </div>
                                   </div>
                                 );
                               })}

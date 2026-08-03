@@ -61,6 +61,9 @@ export interface KiltItem {
   conditionNotes?: string;
   laundryHistory?: LaundryRecord[];
   repairHistory?: RepairRecord[];
+  isBulkPool?: boolean; // True for bulk bin items (Sgian-dubhs, Kilt Pins, Belts, Garters)
+  bulkQuantity?: number; // Current available count in shop bin
+  bulkTotal?: number; // Total pool inventory count
   retiredReason?: string; // Audit explanation if retired from rotation (Sold, Stolen, Destroyed)
   retiredAt?: string;
   retiredByStaff?: string;
