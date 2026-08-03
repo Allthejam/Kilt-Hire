@@ -2,6 +2,30 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import jsQR from 'jsqr';
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+} from 'firebase/auth';
+import { auth } from '../lib/firebase';
+import {
+  getStaffProfiles,
+  upsertStaffProfile,
+  getInvites,
+  upsertInvite,
+  getItems,
+  upsertItem,
+  getBatches,
+  upsertBatch,
+  getPurchaseOrders,
+  upsertPurchaseOrder,
+  getAuditLogs,
+  addAuditLogFS,
+  getPricing,
+  savePricing,
+  seedCollectionIfEmpty,
+} from '../lib/firestore';
 import { 
   KiltItem, 
   QRBatch, 
@@ -337,51 +361,126 @@ export default function KiltHireApp() {
     name: 'Allan',
     email: 'admin@kilt-hire.co.uk',
     pin: '1234',
+    password: '',
     role: 'Master Admin' as const
   });
+  const [masterRegError, setMasterRegError] = useState('');
+  const [regPassword, setRegPassword] = useState('');
 
-  // Load from localStorage on mount
+  // ─── LOAD DATA: Firestore first, fall back to localStorage cache ─────────────
   useEffect(() => {
-    try {
-      const savedItems = localStorage.getItem('kilt_items');
-      const savedBatches = localStorage.getItem('kilt_batches');
-      const savedPos = localStorage.getItem('kilt_pos');
-      const savedLogs = localStorage.getItem('kilt_logs');
-      const savedStaff = localStorage.getItem('kilt_staff');
-      const savedInvites = localStorage.getItem('kilt_invites');
-      const savedUser = localStorage.getItem('kilt_current_user');
-      const savedCap = localStorage.getItem('kilt_max_rigout_cap');
-      const savedKidCap = localStorage.getItem('kilt_kid_max_rigout_cap');
-      const savedPricing = localStorage.getItem('kilt_pricing_matrix');
-      const savedMode = localStorage.getItem('kilt_interface_mode');
-      const savedTartans = localStorage.getItem('kilt_tartans');
+    const savedMode = localStorage.getItem('kilt_interface_mode');
+    if (savedMode === 'shop_assistant' || savedMode === 'admin_portal') setInterfaceMode(savedMode);
+    const savedCap = localStorage.getItem('kilt_max_rigout_cap');
+    const savedKidCap = localStorage.getItem('kilt_kid_max_rigout_cap');
+    if (savedCap) setMaxRigoutCapPrice(Number(savedCap));
+    if (savedKidCap) setKidMaxRigoutCapPrice(Number(savedKidCap));
+    const savedTartans = localStorage.getItem('kilt_tartans');
+    if (savedTartans) setTartanList(JSON.parse(savedTartans));
 
-      setItems(savedItems ? JSON.parse(savedItems) : INITIAL_ITEMS);
-      setBatches(savedBatches ? JSON.parse(savedBatches) : INITIAL_BATCHES);
-      setPos(savedPos ? JSON.parse(savedPos) : INITIAL_POS);
-      setLogs(savedLogs ? JSON.parse(savedLogs) : INITIAL_LOGS);
-      setStaffList(savedStaff ? JSON.parse(savedStaff) : INITIAL_STAFF);
-      setInvites(savedInvites ? JSON.parse(savedInvites) : INITIAL_INVITES);
-      if (savedCap) setMaxRigoutCapPrice(Number(savedCap));
-      if (savedKidCap) setKidMaxRigoutCapPrice(Number(savedKidCap));
-      if (savedPricing) setPricingMatrix(JSON.parse(savedPricing));
-      if (savedMode === 'shop_assistant' || savedMode === 'admin_portal') setInterfaceMode(savedMode);
-      if (savedTartans) setTartanList(JSON.parse(savedTartans));
-      if (savedUser) setCurrentUser(JSON.parse(savedUser));
-    } catch {
-      setItems(INITIAL_ITEMS);
-      setBatches(INITIAL_BATCHES);
-      setPos(INITIAL_POS);
-      setLogs(INITIAL_LOGS);
-      setStaffList(INITIAL_STAFF);
-      setInvites(INITIAL_INVITES);
-      setPricingMatrix(DEFAULT_PRICING_MATRIX);
-      setTartanList(DEFAULT_TARTANS);
+    async function loadFromFirestore() {
+      try {
+        // Seed Firestore if empty (first run only)
+        await seedCollectionIfEmpty('items', INITIAL_ITEMS, upsertItem);
+        await seedCollectionIfEmpty('batches', INITIAL_BATCHES, upsertBatch);
+        await seedCollectionIfEmpty('purchase_orders', INITIAL_POS, upsertPurchaseOrder);
+        await seedCollectionIfEmpty('invites', INITIAL_INVITES, upsertInvite);
+
+        // Load all collections in parallel
+        const [fsItems, fsBatches, fsPOs, fsLogs, fsStaff, fsInvites, fsPricing] = await Promise.all([
+          getItems(),
+          getBatches(),
+          getPurchaseOrders(),
+          getAuditLogs(),
+          getStaffProfiles(),
+          getInvites(),
+          getPricing(),
+        ]);
+
+        if (fsItems.length > 0) setItems(fsItems);
+        else setItems(INITIAL_ITEMS);
+
+        if (fsBatches.length > 0) setBatches(fsBatches);
+        else setBatches(INITIAL_BATCHES);
+
+        if (fsPOs.length > 0) setPos(fsPOs);
+        else setPos(INITIAL_POS);
+
+        if (fsLogs.length > 0) setLogs(fsLogs);
+        else setLogs(INITIAL_LOGS);
+
+        if (fsStaff.length > 0) setStaffList(fsStaff);
+        else setStaffList(INITIAL_STAFF);
+
+        if (fsInvites.length > 0) setInvites(fsInvites);
+        else setInvites(INITIAL_INVITES);
+
+        if (fsPricing) setPricingMatrix(fsPricing);
+        else setPricingMatrix(DEFAULT_PRICING_MATRIX);
+
+      } catch (err) {
+        console.warn('Firestore load failed, using localStorage cache:', err);
+        // Fall back to localStorage
+        try {
+          const savedItems = localStorage.getItem('kilt_items');
+          const savedBatches = localStorage.getItem('kilt_batches');
+          const savedPos = localStorage.getItem('kilt_pos');
+          const savedLogs = localStorage.getItem('kilt_logs');
+          const savedStaff = localStorage.getItem('kilt_staff');
+          const savedInvites = localStorage.getItem('kilt_invites');
+          const savedPricing = localStorage.getItem('kilt_pricing_matrix');
+          setItems(savedItems ? JSON.parse(savedItems) : INITIAL_ITEMS);
+          setBatches(savedBatches ? JSON.parse(savedBatches) : INITIAL_BATCHES);
+          setPos(savedPos ? JSON.parse(savedPos) : INITIAL_POS);
+          setLogs(savedLogs ? JSON.parse(savedLogs) : INITIAL_LOGS);
+          setStaffList(savedStaff ? JSON.parse(savedStaff) : INITIAL_STAFF);
+          setInvites(savedInvites ? JSON.parse(savedInvites) : INITIAL_INVITES);
+          if (savedPricing) setPricingMatrix(JSON.parse(savedPricing));
+        } catch {
+          setItems(INITIAL_ITEMS);
+          setBatches(INITIAL_BATCHES);
+          setPos(INITIAL_POS);
+          setLogs(INITIAL_LOGS);
+          setStaffList(INITIAL_STAFF);
+          setInvites(INITIAL_INVITES);
+          setPricingMatrix(DEFAULT_PRICING_MATRIX);
+          setTartanList(DEFAULT_TARTANS);
+        }
+      } finally {
+        setIsLoaded(true);
+      }
     }
-    setIsLoaded(true);
+
+    loadFromFirestore();
   }, []);
 
-  // Save to localStorage when state changes
+  // ─── AUTH STATE LISTENER ─────────────────────────────────────────────────────
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser && isLoaded) {
+        // Restore current user from Firestore profile or localStorage
+        const savedUser = localStorage.getItem('kilt_current_user');
+        if (savedUser) {
+          setCurrentUser(JSON.parse(savedUser));
+        } else {
+          try {
+            const profiles = await getStaffProfiles();
+            const match = profiles.find(p => p.email.toLowerCase() === firebaseUser.email?.toLowerCase());
+            if (match) {
+              setCurrentUser(match);
+              localStorage.setItem('kilt_current_user', JSON.stringify(match));
+            }
+          } catch { /* silent */ }
+        }
+      } else if (!firebaseUser) {
+        setCurrentUser(null);
+        localStorage.removeItem('kilt_current_user');
+      }
+    });
+    return () => unsubscribe();
+  }, [isLoaded]);
+
+  // ─── SAVE: localStorage cache + Firestore mirror ──────────────────────────────
   useEffect(() => {
     if (!isLoaded) return;
     localStorage.setItem('kilt_items', JSON.stringify(items));
@@ -435,25 +534,48 @@ export default function KiltHireApp() {
     setLogs(prev => [newLog, ...prev]);
   };
 
-  // LOGIN Handler
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  // LOGIN Handler — Firebase Auth + PIN secondary check
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
 
-    const found = staffList.find(s => 
-      s.email.toLowerCase() === loginEmail.toLowerCase().trim() && s.pin === loginPin.trim()
-    );
-
-    if (found) {
-      setCurrentUser(found);
-      addAuditLog('STAFF_LOGIN', `${found.name} (${found.role}) logged into back office.`);
-    } else {
-      setLoginError('Invalid Email or PIN code. (Demo PIN is 1234)');
+    try {
+      // Firebase Auth: email + PIN as password
+      const credential = await signInWithEmailAndPassword(auth, loginEmail.trim(), loginPin.trim());
+      // Load staff profile from Firestore
+      const profiles = await getStaffProfiles();
+      const profile = profiles.find(p => p.email.toLowerCase() === loginEmail.toLowerCase().trim());
+      if (profile) {
+        setCurrentUser(profile);
+        localStorage.setItem('kilt_current_user', JSON.stringify(profile));
+        addAuditLog('STAFF_LOGIN', `${profile.name} (${profile.role}) logged into back office.`);
+      } else {
+        // Auth succeeded but no Firestore profile — use local staffList lookup
+        const found = staffList.find(s =>
+          s.email.toLowerCase() === loginEmail.toLowerCase().trim()
+        );
+        if (found) {
+          setCurrentUser(found);
+          localStorage.setItem('kilt_current_user', JSON.stringify(found));
+          addAuditLog('STAFF_LOGIN', `${found.name} (${found.role}) logged into back office.`);
+        }
+      }
+    } catch {
+      // Firebase Auth failed — fall back to local PIN check (for offline/demo use)
+      const found = staffList.find(s =>
+        s.email.toLowerCase() === loginEmail.toLowerCase().trim() && s.pin === loginPin.trim()
+      );
+      if (found) {
+        setCurrentUser(found);
+        addAuditLog('STAFF_LOGIN', `${found.name} (${found.role}) logged in (offline mode).`);
+      } else {
+        setLoginError('Invalid Email or PIN. If this is your first login, use the PIN you set during account creation.');
+      }
     }
   };
 
-  // REGISTER WITH INVITE CODE Handler
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  // REGISTER WITH INVITE CODE Handler — Firebase Auth + Firestore
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setRegError('');
 
@@ -461,35 +583,62 @@ export default function KiltHireApp() {
     const inviteMatch = invites.find(inv => inv.code === cleanCode && inv.status === 'PENDING');
 
     if (!inviteMatch) {
-      setRegError('Invalid or expired Invite Code. Please request a new invite link from Master Admin (Allan).');
+      setRegError('Invalid or expired Invite Code. Please request a new invite from Allan (Master Admin).');
       return;
     }
 
-    if (staffList.some(s => s.email.toLowerCase() === regEmail.toLowerCase().trim())) {
+    if (!regPassword || regPassword.length < 6) {
+      setRegError('Please set a password of at least 6 characters for your account login.');
+      return;
+    }
+
+    const cleanEmail = regEmail.trim().toLowerCase();
+    if (staffList.some(s => s.email.toLowerCase() === cleanEmail)) {
       setRegError('A staff member with this email is already registered.');
       return;
     }
 
-    const newStaffUser: StaffUser = {
-      id: `STAFF-${Date.now().toString().slice(-4)}`,
-      name: regName.trim(),
-      role: inviteMatch.role,
-      email: regEmail.trim(),
-      pin: regPin.trim() || '1234',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      registeredAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
-    };
+    try {
+      // Create Firebase Auth account
+      const credential = await createUserWithEmailAndPassword(auth, cleanEmail, regPassword);
+      const uid = credential.user.uid;
 
-    setInvites(prev => prev.map(inv => inv.code === cleanCode ? {
-      ...inv,
-      status: 'REGISTERED' as const,
-      usedAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
-    } : inv));
+      const newStaffUser: StaffUser = {
+        id: uid,
+        name: regName.trim(),
+        role: inviteMatch.role,
+        email: cleanEmail,
+        pin: regPin.trim() || '1234',
+        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+        registeredAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
+      };
 
-    setStaffList(prev => [...prev, newStaffUser]);
-    setCurrentUser(newStaffUser);
+      // Save to Firestore
+      await upsertStaffProfile(uid, newStaffUser);
 
-    addAuditLog('STAFF_REGISTERED_INVITE', `Staff member ${newStaffUser.name} registered account using invite code ${cleanCode}`);
+      const updatedInvite = {
+        ...inviteMatch,
+        status: 'REGISTERED' as const,
+        usedAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
+      };
+      await upsertInvite(updatedInvite);
+
+      setInvites(prev => prev.map(inv => inv.code === cleanCode ? updatedInvite : inv));
+      setStaffList(prev => [...prev, newStaffUser]);
+      setCurrentUser(newStaffUser);
+      localStorage.setItem('kilt_current_user', JSON.stringify(newStaffUser));
+
+      addAuditLog('STAFF_REGISTERED_INVITE', `Staff member ${newStaffUser.name} registered using invite code ${cleanCode}. Firebase UID: ${uid}`);
+    } catch (err: unknown) {
+      const errorCode = (err as { code?: string }).code;
+      if (errorCode === 'auth/email-already-in-use') {
+        setRegError('This email is already registered. Please log in instead.');
+      } else if (errorCode === 'auth/weak-password') {
+        setRegError('Password is too weak. Please use at least 6 characters.');
+      } else {
+        setRegError('Registration failed. Please check your details and try again.');
+      }
+    }
   };
 
   // MASTER ADMIN: Send Staff Invite
@@ -517,37 +666,56 @@ export default function KiltHireApp() {
     setNewInviteEmail('');
   };
 
-  // CREATE / CLAIM REAL MASTER ADMIN ACCOUNT HANDLER
-  const handleRegisterMasterAdminSubmit = (e: React.FormEvent) => {
+  // CREATE / CLAIM REAL MASTER ADMIN ACCOUNT HANDLER — Firebase Auth + Firestore
+  const handleRegisterMasterAdminSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setMasterRegError('');
     const cleanEmail = masterRegForm.email.trim().toLowerCase();
     const cleanName = masterRegForm.name.trim() || 'Allan';
     const cleanPin = masterRegForm.pin.trim() || '1234';
+    const cleanPassword = masterRegForm.password.trim();
 
-    const realMasterUser: StaffUser = {
-      id: `ADMIN-${Date.now().toString().slice(-4)}`,
-      name: cleanName,
-      role: 'Master Admin',
-      email: cleanEmail,
-      pin: cleanPin,
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      registeredAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
-    };
-
-    const updatedStaff = [realMasterUser, ...staffList.filter(s => s.email.toLowerCase() !== cleanEmail)];
-    setStaffList(updatedStaff);
-    setCurrentUser(realMasterUser);
-
-    try {
-      localStorage.setItem('kilt_staff', JSON.stringify(updatedStaff));
-      localStorage.setItem('kilt_current_user', JSON.stringify(realMasterUser));
-    } catch {
-      console.warn('localStorage save warning');
+    if (!cleanPassword || cleanPassword.length < 6) {
+      setMasterRegError('Please set a secure password (min 6 characters). Your PIN remains separate for in-app overrides.');
+      return;
     }
 
-    addAuditLog('CREATED_REAL_MASTER_ADMIN', `Created real Master Admin account for ${cleanName} (${cleanEmail})`);
-    setShowMasterAdminRegModal(false);
-    showToast(`👑 Real Master Admin Account created for ${cleanName} (${cleanEmail})! Saved securely.`, 'success');
+    try {
+      // Create Firebase Auth account
+      const credential = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPassword);
+      const uid = credential.user.uid;
+
+      const realMasterUser: StaffUser = {
+        id: uid,
+        name: cleanName,
+        role: 'Master Admin',
+        email: cleanEmail,
+        pin: cleanPin,
+        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+        registeredAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
+      };
+
+      // Save profile to Firestore /users/{uid}
+      await upsertStaffProfile(uid, realMasterUser);
+
+      const updatedStaff = [realMasterUser, ...staffList.filter(s => s.email.toLowerCase() !== cleanEmail)];
+      setStaffList(updatedStaff);
+      setCurrentUser(realMasterUser);
+      localStorage.setItem('kilt_staff', JSON.stringify(updatedStaff));
+      localStorage.setItem('kilt_current_user', JSON.stringify(realMasterUser));
+
+      addAuditLog('CREATED_REAL_MASTER_ADMIN', `Real Master Admin account created for ${cleanName} (${cleanEmail}). Firebase UID: ${uid}`);
+      setShowMasterAdminRegModal(false);
+      showToast(`👑 Master Admin account created & saved to Firebase for ${cleanName}!`, 'success');
+    } catch (err: unknown) {
+      const errorCode = (err as { code?: string }).code;
+      if (errorCode === 'auth/email-already-in-use') {
+        setMasterRegError('This email already has a Firebase account. Use the Login tab instead, or go to Firebase Console to reset.');
+      } else {
+        setMasterRegError('Account creation failed. Please check your details and try again.');
+        console.error(err);
+      }
+    }
   };
 
   // Update Pricing Matrix Entry
@@ -6825,7 +6993,21 @@ export default function KiltHireApp() {
               </div>
 
               <div>
-                <label className="block text-slate-700 font-bold mb-1">Security PIN Code (Used for Overrides & Reprints)</label>
+                <label className="block text-slate-700 font-bold mb-1">Account Password <span className="text-slate-500 font-normal">(for login — min 6 characters)</span></label>
+                <input 
+                  type="password" 
+                  required
+                  minLength={6}
+                  placeholder="Set a secure login password"
+                  value={masterRegForm.password}
+                  onChange={e => setMasterRegForm({ ...masterRegForm, password: e.target.value })}
+                  className="w-full bg-white border border-slate-300 rounded-xl p-3 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                />
+                <p className="text-slate-500 mt-1 text-[11px]">Keep this safe — used to log in from any device. Your PIN is separate for in-app overrides.</p>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Security PIN Code <span className="text-slate-500 font-normal">(for reprints & admin unlocks)</span></label>
                 <input 
                   type="text" 
                   required
@@ -6847,6 +7029,10 @@ export default function KiltHireApp() {
                 />
               </div>
 
+              {masterRegError && (
+                <p className="text-red-600 font-semibold text-xs bg-red-50 p-3 rounded-xl border border-red-200">{masterRegError}</p>
+              )}
+
               <div className="pt-2 flex items-center justify-end gap-2">
                 <button
                   type="button"
@@ -6859,7 +7045,7 @@ export default function KiltHireApp() {
                   type="submit"
                   className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5"
                 >
-                  <ShieldCheck className="w-4 h-4 text-slate-950" /> Save & Activate Account
+                  <ShieldCheck className="w-4 h-4 text-slate-950" /> Save to Firebase & Activate
                 </button>
               </div>
             </form>
