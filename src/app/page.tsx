@@ -1980,24 +1980,48 @@ export default function KiltHireApp() {
               {/* FLOOR SCANNER TAB */}
               {assistantTab === 'scanner' && (
                 <div className="space-y-6">
-                  <div className="bg-gradient-to-r from-emerald-600 via-emerald-700 to-slate-900 text-white rounded-3xl p-6 shadow-xl flex flex-wrap items-center justify-between gap-4">
-                    <div className="space-y-1">
-                      <span className="px-3 py-1 bg-white/20 backdrop-blur rounded-full text-[11px] font-extrabold uppercase tracking-wider text-amber-300 inline-flex items-center gap-1">
-                        <Zap className="w-3.5 h-3.5" /> Automated Multi-Item PO Batch Scanner Active
-                      </span>
-                      <h2 className="text-xl font-extrabold tracking-tight">Scan Any Item in a Returned Hire Bag</h2>
-                      <p className="text-xs text-emerald-100 max-w-xl">
-                        Scanning ANY single item on a PO immediately locates the customer's order and loads ALL items into a multi-item return checklist with missing item handling!
-                      </p>
-                    </div>
+                  {/* DUAL-MODE SMART SCANNER BANNER */}
+                  <div className="bg-gradient-to-r from-emerald-700 via-slate-900 to-amber-900 text-white rounded-3xl p-6 shadow-xl space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <span className="px-3 py-1 bg-white/20 backdrop-blur rounded-full text-[11px] font-extrabold uppercase tracking-wider text-amber-300 inline-flex items-center gap-1">
+                          <Zap className="w-3.5 h-3.5" /> Zero-Friction Multi-Mode Smart Scanner
+                        </span>
+                        <h2 className="text-xl font-extrabold tracking-tight">Zero-Friction Smart QR Scanner — Outgoing Hires & Returns</h2>
+                        <p className="text-xs text-emerald-100 max-w-2xl leading-relaxed">
+                          Handles <strong>BOTH Outgoing Customer Hires</strong> (creating new POs by scanning items) and <strong>Customer Bag Returns</strong>! Scanning an available item builds an outgoing order; scanning an on-hire item loads the return checklist.
+                        </p>
+                      </div>
 
-                    <button
-                      onClick={toggleCamera}
-                      className="px-6 py-3 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs rounded-2xl shadow-md flex items-center gap-2 transition"
-                    >
-                      <Camera className="w-5 h-5" />
-                      {activeCamera ? 'Stop Camera Scanner' : 'Launch Camera Scanner'}
-                    </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          onClick={() => {
+                            setNewPoForm({
+                              customerName: '',
+                              customerEmail: '',
+                              customerPhone: '',
+                              eventDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+                              hireStartDate: new Date().toISOString().split('T')[0],
+                              hireEndDate: new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0],
+                              notes: '',
+                              selectedItemIds: []
+                            });
+                            setShowCreatePoModal(true);
+                          }}
+                          className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5"
+                        >
+                          <PlusCircle className="w-4 h-4" /> Start Outgoing Hire PO
+                        </button>
+
+                        <button
+                          onClick={toggleCamera}
+                          className="px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs rounded-xl shadow flex items-center gap-1.5 transition"
+                        >
+                          <Camera className="w-4 h-4" />
+                          {activeCamera ? 'Stop Camera' : 'Launch Camera'}
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -2026,7 +2050,7 @@ export default function KiltHireApp() {
                             <div className="w-14 h-14 mx-auto mb-2 rounded-2xl bg-amber-100 flex items-center justify-center text-amber-600 shadow-sm">
                               <QrCode className="w-7 h-7" />
                             </div>
-                            <p className="text-xs font-semibold text-slate-700 mb-1">Click below to simulate scanning an iron-on QR label:</p>
+                            <p className="text-xs font-semibold text-slate-700 mb-1">Click below or aim camera to scan an iron-on QR label:</p>
                           </div>
                         )}
 
@@ -2050,36 +2074,65 @@ export default function KiltHireApp() {
                             </button>
                           </div>
 
-                          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                            <span className="text-xs font-bold text-slate-700 block">⚡ Instant Demo Scan Pickers:</span>
-                            <div className="grid grid-cols-2 gap-2">
-                              <button
-                                onClick={() => handleScanCode('KILT-1001')}
-                                className="p-2.5 bg-blue-100 hover:bg-blue-200 text-blue-950 font-mono font-bold text-xs rounded-xl border border-blue-300 text-left transition flex items-center justify-between"
-                              >
-                                <span>KILT-1001</span>
-                                <span className="text-[10px] bg-white px-1.5 py-0.5 rounded text-blue-800 font-sans font-bold">PO-9011 (4 Items)</span>
-                              </button>
-                              <button
-                                onClick={() => handleScanCode('KILT-KIDS-501')}
-                                className="p-2.5 bg-purple-100 hover:bg-purple-200 text-purple-950 font-mono font-bold text-xs rounded-xl border border-purple-300 text-left transition flex items-center justify-between"
-                              >
-                                <span>KILT-KIDS-501</span>
-                                <span className="text-[10px] bg-white px-1.5 py-0.5 rounded text-purple-800 font-sans font-bold">PO-8802 (Kids 3 Items)</span>
-                              </button>
-                              <button
-                                onClick={() => handleScanCode('JKT-2002')}
-                                className="p-2.5 bg-rose-100 hover:bg-rose-200 text-rose-950 font-mono font-bold text-xs rounded-xl border border-rose-300 text-left transition flex items-center justify-between"
-                              >
-                                <span>JKT-2002</span>
-                                <span className="text-[10px] bg-white px-1.5 py-0.5 rounded text-rose-800 font-sans font-bold">In Repair Workshop</span>
-                              </button>
+                          {/* ORGANIZED DEMO SCAN PICKERS */}
+                          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                            <span className="text-xs font-extrabold text-slate-900 block">⚡ Instant Demo QR Scans (Try All 3 Modes):</span>
+                            
+                            {/* OUTGOING HIRE BAG ASSEMBLY DEMO */}
+                            <div className="space-y-1">
+                              <span className="text-[10px] font-bold text-emerald-800 uppercase block">1. Outgoing Hire PO (Scan Available Garment)</span>
+                              <div className="grid grid-cols-2 gap-2">
+                                <button
+                                  onClick={() => {
+                                    handleScanCode('KILT-1005');
+                                  }}
+                                  className="p-2.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-950 font-mono font-bold text-xs rounded-xl border border-emerald-300 text-left transition flex items-center justify-between"
+                                >
+                                  <span>KILT-1005</span>
+                                  <span className="text-[10px] bg-white px-1.5 py-0.5 rounded text-emerald-800 font-sans font-bold">+ Build Outgoing PO</span>
+                                </button>
+
+                                <button
+                                  onClick={() => handleScanCode('BIN-SGIAN-DUBH')}
+                                  className="p-2.5 bg-amber-100 hover:bg-amber-200 text-amber-950 font-mono font-bold text-xs rounded-xl border border-amber-300 text-left transition flex items-center justify-between"
+                                >
+                                  <span>BIN-SGIAN-DUBH</span>
+                                  <span className="text-[10px] bg-white px-1.5 py-0.5 rounded text-amber-800 font-sans font-bold">142 in Bin</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* CUSTOMER RETURN DEMO */}
+                            <div className="space-y-1 pt-1">
+                              <span className="text-[10px] font-bold text-blue-800 uppercase block">2. Customer Bag Return (Scan On-Hire Garment)</span>
+                              <div className="grid grid-cols-2 gap-2">
+                                <button
+                                  onClick={() => handleScanCode('KILT-1001')}
+                                  className="p-2.5 bg-blue-100 hover:bg-blue-200 text-blue-950 font-mono font-bold text-xs rounded-xl border border-blue-300 text-left transition flex items-center justify-between"
+                                >
+                                  <span>KILT-1001</span>
+                                  <span className="text-[10px] bg-white px-1.5 py-0.5 rounded text-blue-800 font-sans font-bold">PO-9011 Return</span>
+                                </button>
+
+                                <button
+                                  onClick={() => handleScanCode('KILT-KIDS-501')}
+                                  className="p-2.5 bg-purple-100 hover:bg-purple-200 text-purple-950 font-mono font-bold text-xs rounded-xl border border-purple-300 text-left transition flex items-center justify-between"
+                                >
+                                  <span>KILT-KIDS-501</span>
+                                  <span className="text-[10px] bg-white px-1.5 py-0.5 rounded text-purple-800 font-sans font-bold">PO-8802 Kids Return</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* UNREGISTERED NEW STOCK DEMO */}
+                            <div className="space-y-1 pt-1">
+                              <span className="text-[10px] font-bold text-slate-600 uppercase block">3. Register New Stock (Scan New QR Label)</span>
                               <button
                                 onClick={() => handleScanCode('KILT-KID-8839')}
-                                className="p-2.5 bg-purple-100 hover:bg-purple-200 text-purple-950 font-mono font-bold text-xs rounded-xl border border-purple-300 text-left transition flex items-center justify-between"
+                                className="w-full p-2.5 bg-slate-200 hover:bg-slate-300 text-slate-900 font-mono font-bold text-xs rounded-xl border border-slate-300 text-left transition flex items-center justify-between"
                               >
                                 <span>KILT-KID-8839</span>
-                                <span className="text-[10px] bg-white px-1.5 py-0.5 rounded text-purple-800 font-sans font-bold">New Unregistered QR</span>
+                                <span className="text-[10px] bg-white px-1.5 py-0.5 rounded text-slate-700 font-sans font-bold">Pop Up Registration Form</span>
                               </button>
                             </div>
                           </div>
