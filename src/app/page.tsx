@@ -13,7 +13,8 @@ import {
   ItemCategory, 
   ItemStatus,
   SizeGroup,
-  CategoryPriceSetting
+  CategoryPriceSetting,
+  LaundryRecord
 } from './types';
 import { 
   INITIAL_STAFF, 
@@ -836,6 +837,35 @@ export default function KiltHireApp() {
 
     addAuditLog('LAUNDRY_COMPLETED', `Confirmed dry cleaning completed for ${item.name} (${item.id}). Returned to stock.`, item.id);
     showToast(`✨ Laundry/Dry cleaning completed for ${item.id}. Returned to Available Stock!`, 'success');
+  };
+
+  // Manual Send Item to Dry Cleaners (Shop Floor Assistant Action)
+  const handleManualSendToLaundry = (codeId: string) => {
+    if (!currentUser) return;
+    const item = items.find(i => i.id === codeId);
+    if (!item) return;
+
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const newRecord: LaundryRecord = {
+      id: `LAUN-${Date.now()}`,
+      dateSent: now,
+      sentByStaff: currentUser.name,
+      notes: 'Manually sent to dry cleaners from store floor'
+    };
+
+    setItems(prev => prev.map(i => {
+      if (i.id === codeId) {
+        return {
+          ...i,
+          status: 'NEEDS_CLEANING',
+          laundryHistory: [newRecord, ...(i.laundryHistory || [])]
+        };
+      }
+      return i;
+    }));
+
+    addAuditLog('SENT_TO_LAUNDRY', `Manually sent ${item.name} (${item.id}) to dry cleaners.`, item.id);
+    showToast(`🧼 Sent ${item.name} (${item.id}) to Dry Cleaners. Tracked in Laundry tab!`, 'info');
   };
 
   // Bulk Confirm All Items at Dry Cleaners Cleaned & Available
@@ -2088,6 +2118,20 @@ export default function KiltHireApp() {
                                 </button>
                               </div>
 
+                              {/* OPTION C: SEND TO DRY CLEANERS */}
+                              <button
+                                onClick={() => handleManualSendToLaundry(scItem.id)}
+                                className="w-full p-3 bg-cyan-50 border border-cyan-300 hover:bg-cyan-100 rounded-xl text-left transition shadow-sm group flex items-center gap-3"
+                              >
+                                <div className="p-2 bg-cyan-600 text-white rounded-lg group-hover:scale-105 transition">
+                                  <Sparkles className="w-4 h-4 text-cyan-200" />
+                                </div>
+                                <div>
+                                  <h4 className="font-bold text-cyan-950 text-xs">Option C: Send Garment to Dry Cleaners</h4>
+                                  <p className="text-[10px] text-cyan-800">Dispatch item for professional dry cleaning</p>
+                                </div>
+                              </button>
+
                               <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
                                 <button
                                   onClick={() => setShowEditItemModal(scItem)}
@@ -2276,6 +2320,12 @@ export default function KiltHireApp() {
                               className="py-1.5 px-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[11px] rounded-lg border border-rose-200 transition flex items-center justify-center gap-1"
                             >
                               <Trash2 className="w-3 h-3 text-rose-600" /> Remove Stock
+                            </button>
+                            <button
+                              onClick={() => handleManualSendToLaundry(item.id)}
+                              className="py-1.5 px-2 bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-[11px] rounded-lg shadow-sm transition text-center col-span-2 flex items-center justify-center gap-1"
+                            >
+                              <Sparkles className="w-3 h-3 text-cyan-200" /> Send to Dry Cleaners
                             </button>
                           </div>
                         </div>
