@@ -269,6 +269,7 @@ export default function KiltHireApp() {
 
   const [selectedBatchForPrint, setSelectedBatchForPrint] = useState<QRBatch | null>(null);
   const [selectedCodesForReprint, setSelectedCodesForReprint] = useState<string[]>([]);
+  const [reprintSearchQuery, setReprintSearchQuery] = useState<string>('');
   const [reprintPinInput, setReprintPinInput] = useState<string>('');
   const [reprintReason, setReprintReason] = useState<string>('');
   const [showReprintPinModal, setShowReprintPinModal] = useState<boolean>(false);
@@ -3062,49 +3063,88 @@ export default function KiltHireApp() {
                                       <Key className="w-4 h-4 text-amber-600" /> Request Replacement Tag Reprint (Master Admin PIN Required)
                                     </span>
                                     <p className="text-[11px] text-slate-500">
-                                      If a tag on a garment is damaged or torn (e.g. KILT-1005), select 1 or more specific tag numbers below to reprint replacements.
+                                      If a tag on a garment is damaged or torn (e.g. VST-9696), select 1 or more specific tag numbers below to reprint replacements.
                                     </p>
                                   </div>
 
                                   {selectedCodesForReprint.length > 0 && (
                                     <button
                                       type="button"
-                                      onClick={() => setSelectedCodesForReprint([])}
-                                      className="text-[11px] text-rose-600 hover:underline font-bold"
+                                      onClick={() => {
+                                        setSelectedCodesForReprint([]);
+                                        setReprintPrintMode(false);
+                                      }}
+                                      className="text-[11px] bg-rose-100 text-rose-800 hover:bg-rose-200 px-2.5 py-1 rounded-lg border border-rose-300 font-bold transition"
                                     >
                                       Clear Selection ({selectedCodesForReprint.length})
                                     </button>
                                   )}
                                 </div>
 
-                                {/* TAG SELECTOR GRID */}
+                                {/* TAG SEARCH FILTER INPUT FOR LARGE BATCHES (e.g. 100 CODES) */}
+                                <div className="flex items-center gap-2">
+                                  <div className="relative flex-1">
+                                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                                    <input 
+                                      type="text"
+                                      placeholder="🔍 Search tag code number (e.g. VST-9696, 9696)..."
+                                      value={reprintSearchQuery}
+                                      onChange={e => setReprintSearchQuery(e.target.value)}
+                                      className="w-full bg-white border border-slate-300 rounded-xl pl-8 pr-3 py-1.5 text-xs font-mono font-semibold text-slate-900 outline-none focus:border-amber-500 shadow-sm"
+                                    />
+                                  </div>
+
+                                  {reprintSearchQuery && (
+                                    <button 
+                                      type="button"
+                                      onClick={() => setReprintSearchQuery('')}
+                                      className="px-2 py-1 bg-slate-200 text-slate-700 rounded-lg text-xs font-bold"
+                                    >
+                                      Clear Search
+                                    </button>
+                                  )}
+                                </div>
+
+                                {/* TAG SELECTOR CHECKBOX GRID */}
                                 <div className="space-y-2">
-                                  <span className="text-[11px] font-extrabold text-slate-700 block">Select Code(s) for Reprint:</span>
+                                  <div className="flex items-center justify-between text-[11px]">
+                                    <span className="font-extrabold text-slate-700">Select Replacement Code(s):</span>
+                                    <span className="text-slate-500 font-mono">
+                                      Showing {selectedBatchForPrint.qrCodes.filter(c => !reprintSearchQuery || c.toLowerCase().includes(reprintSearchQuery.toLowerCase())).length} of {selectedBatchForPrint.count} Codes
+                                    </span>
+                                  </div>
+
                                   <div className="max-h-36 overflow-y-auto bg-white border border-slate-200 rounded-xl p-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5">
-                                    {selectedBatchForPrint.qrCodes.map(code => {
-                                      const isChecked = selectedCodesForReprint.includes(code);
-                                      return (
-                                        <label
-                                          key={code}
-                                          className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition text-xs font-mono font-bold ${
-                                            isChecked ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'hover:bg-slate-50 text-slate-800'
-                                          }`}
-                                        >
-                                          <input 
-                                            type="checkbox"
-                                            checked={isChecked}
-                                            onChange={e => {
-                                              if (e.target.checked) {
-                                                setSelectedCodesForReprint(prev => [...prev, code]);
-                                              } else {
-                                                setSelectedCodesForReprint(prev => prev.filter(c => c !== code));
-                                              }
-                                            }}
-                                          />
-                                          <span>{code}</span>
-                                        </label>
-                                      );
-                                    })}
+                                    {selectedBatchForPrint.qrCodes
+                                      .filter(code => !reprintSearchQuery || code.toLowerCase().includes(reprintSearchQuery.toLowerCase()))
+                                      .map(code => {
+                                        const isChecked = selectedCodesForReprint.includes(code);
+                                        return (
+                                          <label
+                                            key={code}
+                                            className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition text-xs font-mono font-bold ${
+                                              isChecked ? 'bg-amber-500 text-slate-950 border border-amber-600 shadow-sm' : 'hover:bg-slate-50 text-slate-800 border border-transparent'
+                                            }`}
+                                          >
+                                            <input 
+                                              type="checkbox"
+                                              checked={isChecked}
+                                              onChange={e => {
+                                                if (e.target.checked) {
+                                                  setSelectedCodesForReprint(prev => [...prev, code]);
+                                                } else {
+                                                  const remaining = selectedCodesForReprint.filter(c => c !== code);
+                                                  setSelectedCodesForReprint(remaining);
+                                                  if (remaining.length === 0) {
+                                                    setReprintPrintMode(false);
+                                                  }
+                                                }
+                                              }}
+                                            />
+                                            <span>{code}</span>
+                                          </label>
+                                        );
+                                      })}
                                   </div>
                                 </div>
 
@@ -3147,27 +3187,53 @@ export default function KiltHireApp() {
                             {/* PRINTABLE QR SHEET PREVIEW (EXACT A4 PAGE FORMAT: 4 ACROSS x 7 DOWN = 28 PER PAGE) */}
                             <div className="print-qr-container bg-slate-50 text-slate-950 p-6 rounded-2xl border border-slate-200 shadow-inner max-h-[50vh] overflow-y-auto print:max-h-none print:overflow-visible">
                               <div className="text-center mb-4 pb-2 border-b border-slate-300 no-print">
-                                <h4 className="font-extrabold text-sm uppercase tracking-wide">
-                                  Highland Kilt & Outfit Hire - {reprintPrintMode ? 'REPLACEMENT QR LABELS REPRINT' : 'QR Iron-On Fabric Labels (A4 Sheet)'}
-                                </h4>
+                                <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+                                  <h4 className="font-extrabold text-sm uppercase tracking-wide">
+                                    Highland Kilt & Outfit Hire - {selectedCodesForReprint.length > 0 ? `REPLACEMENT REPRINT (${selectedCodesForReprint.length} TAGS)` : 'FULL BATCH QR SHEET'}
+                                  </h4>
+
+                                  {selectedCodesForReprint.length > 0 && (
+                                    <div className="flex bg-slate-200 p-1 rounded-lg text-xs font-bold">
+                                      <button
+                                        type="button"
+                                        onClick={() => setReprintPrintMode(true)}
+                                        className={`px-3 py-1 rounded transition ${reprintPrintMode ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-700'}`}
+                                      >
+                                        Only Selected Replacement Tags ({selectedCodesForReprint.length})
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setReprintPrintMode(false)}
+                                        className={`px-3 py-1 rounded transition ${!reprintPrintMode ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-700'}`}
+                                      >
+                                        Full Batch Sheet ({selectedBatchForPrint.count})
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+
                                 <p className="text-[10px] text-slate-600">
                                   Batch: {selectedBatchForPrint.id} • Category: {selectedBatchForPrint.category} ({selectedBatchForPrint.sizeGroup}) • Layout: 4 Across × 7 Down (28 Labels per A4 Sheet)
-                                  {reprintPrintMode && <strong className="text-amber-900 block mt-0.5">⚠️ AUTHORIZED REPLACEMENT REPRINT FOR SPECIFIC TAGS: [{selectedCodesForReprint.join(', ')}]</strong>}
+                                  {selectedCodesForReprint.length > 0 && (
+                                    <strong className="text-amber-900 block mt-0.5">
+                                      SELECTED REPLACEMENT CODES: [{selectedCodesForReprint.join(', ')}]
+                                    </strong>
+                                  )}
                                 </p>
                               </div>
 
                               <div className="qr-label-grid grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 print:grid-cols-4">
-                                {(reprintPrintMode ? selectedBatchForPrint.qrCodes.filter(c => selectedCodesForReprint.includes(c)) : selectedBatchForPrint.qrCodes).map((code, index) => {
+                                {( (reprintPrintMode && selectedCodesForReprint.length > 0) ? selectedBatchForPrint.qrCodes.filter(c => selectedCodesForReprint.includes(c)) : selectedBatchForPrint.qrCodes).map((code, index) => {
                                   const matrix = generateQrMatrix(code);
                                   const isReg = items.some(i => i.id === code && i.status !== 'RETIRED');
-                                  const isReprinted = reprintPrintMode || selectedCodesForReprint.includes(code);
+                                  const isSelectedForReprint = selectedCodesForReprint.includes(code);
                                   const isPageBreak = (index + 1) % 28 === 0;
 
                                   return (
                                     <div 
                                       key={code} 
                                       className={`qr-label-card border-2 border-dashed p-2.5 rounded flex flex-col items-center justify-between text-center bg-white min-h-[140px] shadow-sm ${
-                                        isReprinted ? 'border-amber-500 bg-amber-50/40' : 'border-slate-300'
+                                        isSelectedForReprint ? 'border-amber-500 bg-amber-50/40' : 'border-slate-300'
                                       } ${isPageBreak ? 'page-break-after-28' : ''}`}
                                     >
                                       <span className="text-[9px] font-bold text-slate-800 uppercase tracking-tight line-clamp-1">
@@ -3182,7 +3248,7 @@ export default function KiltHireApp() {
                                         {code}
                                       </span>
                                       <span className="text-[8px] font-semibold text-slate-500">
-                                        {isReg ? 'REGISTERED' : 'UNREGISTERED'} {isReprinted && '• REPRINT'}
+                                        {isReg ? 'REGISTERED' : 'UNREGISTERED'} {isSelectedForReprint && '• REPRINT'}
                                       </span>
                                     </div>
                                   );
