@@ -1339,7 +1339,7 @@ export default function KiltHireApp() {
       
       {/* TOAST NOTIFICATION FOR AUTOMATED ACTIONS */}
       {scanToast && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-2xl shadow-2xl border text-xs font-bold flex items-center gap-2 animate-bounce ${
+        <div className={`no-print fixed top-4 right-4 z-50 px-4 py-3 rounded-2xl shadow-2xl border text-xs font-bold flex items-center gap-2 animate-bounce ${
           scanToast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-500' :
           scanToast.type === 'info' ? 'bg-blue-600 text-white border-blue-500' :
           'bg-amber-500 text-slate-950 border-amber-400'
