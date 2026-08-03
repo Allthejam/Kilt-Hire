@@ -168,8 +168,8 @@ export default function KiltHireApp() {
   // Interface Mode: 'admin_portal' (Full Office) vs 'shop_assistant' (Automated Floor Terminal)
   const [interfaceMode, setInterfaceMode] = useState<'admin_portal' | 'shop_assistant'>('shop_assistant');
 
-  // Shop Assistant Floor Tabs: 'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'pos'
-  const [assistantTab, setAssistantTab] = useState<'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'pos'>('scanner');
+  // Shop Assistant Floor Tabs: 'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'calendar' | 'pos'
+  const [assistantTab, setAssistantTab] = useState<'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'calendar' | 'pos'>('scanner');
   const [assistantSearch, setAssistantSearch] = useState('');
   const [assistantSizeFilter, setAssistantSizeFilter] = useState<'ALL' | 'Adult' | 'Kid'>('ALL');
 
@@ -277,6 +277,11 @@ export default function KiltHireApp() {
   const [showReprintPinModal, setShowReprintPinModal] = useState<boolean>(false);
   const [reprintPrintMode, setReprintPrintMode] = useState<boolean>(false);
   const [analyticsSearchQuery, setAnalyticsSearchQuery] = useState<string>('');
+
+  // Availability & Booking Calendar state (Shop Assistant Mode)
+  const [calSelectedDate, setCalSelectedDate] = useState<string>('2026-08-05');
+  const [calTartanFilter, setCalTartanFilter] = useState<string>('ALL');
+  const [calCategoryFilter, setCalCategoryFilter] = useState<string>('ALL');
 
   // Invite creation form state
   const [newInviteEmail, setNewInviteEmail] = useState('');
@@ -1613,6 +1618,21 @@ export default function KiltHireApp() {
                   {pos.length}
                 </span>
               </button>
+
+              <button
+                onClick={() => setAssistantTab('calendar')}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition ${
+                  assistantTab === 'calendar' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Calendar className="w-4 h-4 text-amber-600" />
+                  <span>Availability Calendar</span>
+                </div>
+                <span className="px-2 py-0.5 text-[10px] rounded-full font-bold bg-amber-100 text-amber-900">
+                  {pos.filter(p => !p.items.every(i => i.returned)).length} Active Hires
+                </span>
+              </button>
             </nav>
           )}
         </div>
@@ -1801,6 +1821,22 @@ export default function KiltHireApp() {
                       assistantTab === 'pos' ? 'bg-slate-950 text-amber-400' : 'bg-amber-100 text-amber-900'
                     }`}>
                       {pos.length}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => setAssistantTab('calendar')}
+                    className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
+                      assistantTab === 'calendar' 
+                        ? 'bg-amber-500 text-slate-950 shadow-sm' 
+                        : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Calendar className="w-4 h-4" /> Availability Calendar
+                    <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${
+                      assistantTab === 'calendar' ? 'bg-slate-950 text-amber-400' : 'bg-amber-100 text-amber-900'
+                    }`}>
+                      📅 Live
                     </span>
                   </button>
                 </div>
@@ -2607,6 +2643,230 @@ export default function KiltHireApp() {
                       );
                     })}
                   </div>
+                </div>
+              )}
+
+              {/* SHOP ASSISTANT AVAILABILITY & BOOKING CALENDAR */}
+              {assistantTab === 'calendar' && (
+                <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
+                  {/* CALENDAR HEADER & FILTER CONTROLS */}
+                  <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                    <div>
+                      <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                        <Calendar className="w-5 h-5 text-amber-600" /> Garment Availability & Booking Schedule
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        Check live outfit availability for customer wedding dates, prevent double-bookings, and view hire schedules.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase">Target Event Date</label>
+                        <input 
+                          type="date"
+                          value={calSelectedDate}
+                          onChange={e => setCalSelectedDate(e.target.value)}
+                          className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase">Filter Tartan</label>
+                        <select
+                          value={calTartanFilter}
+                          onChange={e => setCalTartanFilter(e.target.value)}
+                          className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                        >
+                          <option value="ALL">All Tartans & Colours</option>
+                          {Array.from(new Set(items.map(i => i.tartanOrColour))).map(t => (
+                            <option key={t} value={t}>{t}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase">Category</label>
+                        <select
+                          value={calCategoryFilter}
+                          onChange={e => setCalCategoryFilter(e.target.value)}
+                          className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                        >
+                          <option value="ALL">All Categories</option>
+                          {CATEGORIES.map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* REAL-TIME AVAILABILITY SUMMARY BANNER */}
+                  {(() => {
+                    const selDate = new Date(calSelectedDate);
+                    selDate.setHours(0, 0, 0, 0);
+
+                    // Find all POs active on calSelectedDate
+                    const activePosOnDate = pos.filter(p => {
+                      const start = new Date(p.hireStartDate);
+                      const end = new Date(p.hireEndDate);
+                      start.setHours(0, 0, 0, 0);
+                      end.setHours(0, 0, 0, 0);
+                      return selDate >= start && selDate <= end;
+                    });
+
+                    // Collect item IDs hired on this date
+                    const hiredItemIdsOnDate = new Set<string>();
+                    activePosOnDate.forEach(p => p.items.forEach(li => hiredItemIdsOnDate.add(li.qrCodeId)));
+
+                    const filteredItems = items.filter(i => {
+                      if (i.status === 'RETIRED') return false;
+                      if (assistantSizeFilter !== 'ALL' && i.sizeGroup !== assistantSizeFilter) return false;
+                      if (calTartanFilter !== 'ALL' && i.tartanOrColour !== calTartanFilter) return false;
+                      if (calCategoryFilter !== 'ALL' && i.category !== calCategoryFilter) return false;
+                      return true;
+                    });
+
+                    const availableCountOnDate = filteredItems.filter(i => !hiredItemIdsOnDate.has(i.id) && i.status !== 'IN_REPAIR' && i.status !== 'NEEDS_CLEANING').length;
+                    const hiredCountOnDate = filteredItems.filter(i => hiredItemIdsOnDate.has(i.id)).length;
+
+                    return (
+                      <div className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-1">
+                            <span className="text-xs font-bold text-emerald-800 flex items-center gap-1">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Available for {calSelectedDate}
+                            </span>
+                            <span className="text-2xl font-extrabold text-emerald-950 block">{availableCountOnDate} Garments</span>
+                            <span className="text-[10px] text-emerald-700 font-semibold">Ready in shop for immediate hire</span>
+                          </div>
+
+                          <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl space-y-1">
+                            <span className="text-xs font-bold text-blue-800 flex items-center gap-1">
+                              <PackageCheck className="w-4 h-4 text-blue-600" /> Booked / On Hire
+                            </span>
+                            <span className="text-2xl font-extrabold text-blue-950 block">{hiredCountOnDate} Garments</span>
+                            <span className="text-[10px] text-blue-700 font-semibold">Across {activePosOnDate.length} Customer Hires</span>
+                          </div>
+
+                          <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl space-y-1">
+                            <span className="text-xs font-bold text-amber-900 flex items-center gap-1">
+                              <Calendar className="w-4 h-4 text-amber-600" /> Active Hires On Date
+                            </span>
+                            <span className="text-2xl font-extrabold text-amber-950 block">{activePosOnDate.length} Customer POs</span>
+                            <span className="text-[10px] text-amber-800 font-semibold">Scheduled for pickup/return</span>
+                          </div>
+                        </div>
+
+                        {/* GARMENT AVAILABILITY MATRIX GRID */}
+                        <div className="space-y-3">
+                          <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                            <Layers className="w-4 h-4 text-amber-600" /> Live Garment Availability Matrix for {calSelectedDate} ({filteredItems.length} Items)
+                          </h4>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {filteredItems.map(item => {
+                              const isHiredOnDate = hiredItemIdsOnDate.has(item.id);
+                              const activePo = activePosOnDate.find(p => p.items.some(li => li.qrCodeId === item.id));
+
+                              return (
+                                <div key={item.id} className={`p-4 rounded-2xl border space-y-2.5 transition shadow-sm ${
+                                  isHiredOnDate ? 'bg-blue-50/80 border-blue-300' :
+                                  item.status === 'IN_REPAIR' ? 'bg-rose-50/80 border-rose-300' :
+                                  item.status === 'NEEDS_CLEANING' ? 'bg-cyan-50/80 border-cyan-300' :
+                                  'bg-emerald-50/60 border-emerald-300'
+                                }`}>
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-mono font-extrabold text-slate-900 text-xs bg-white px-2 py-0.5 rounded border border-slate-200">
+                                        {item.id}
+                                      </span>
+                                      <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded ${item.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900' : 'bg-blue-100 text-blue-900'}`}>
+                                        {item.sizeGroup}
+                                      </span>
+                                    </div>
+
+                                    <span className={`px-2.5 py-0.5 text-[10px] font-extrabold rounded-full border ${
+                                      isHiredOnDate ? 'bg-blue-600 text-white border-blue-700' :
+                                      item.status === 'IN_REPAIR' ? 'bg-rose-600 text-white border-rose-700' :
+                                      item.status === 'NEEDS_CLEANING' ? 'bg-cyan-600 text-white border-cyan-700' :
+                                      'bg-emerald-600 text-white border-emerald-700'
+                                    }`}>
+                                      {isHiredOnDate ? '🔒 BOOKED ON DATE' :
+                                       item.status === 'IN_REPAIR' ? '🔧 IN REPAIR' :
+                                       item.status === 'NEEDS_CLEANING' ? '🧼 LAUNDRY' :
+                                       '🟢 AVAILABLE'}
+                                    </span>
+                                  </div>
+
+                                  <div>
+                                    <h4 className="font-bold text-slate-900 text-xs">{item.name}</h4>
+                                    <p className="text-[11px] text-slate-600">{item.tartanOrColour} ({item.size})</p>
+                                  </div>
+
+                                  {isHiredOnDate && activePo && (
+                                    <div className="bg-white p-2 rounded-xl text-[11px] space-y-0.5 border border-blue-200 text-slate-700 shadow-sm">
+                                      <p><span className="text-slate-500">Customer:</span> <strong>{activePo.customerName}</strong></p>
+                                      <p><span className="text-slate-500">PO Ref:</span> <span className="font-mono font-bold text-blue-700">{activePo.id}</span></p>
+                                      <p><span className="text-slate-500">Hire Period:</span> {activePo.hireStartDate} to {activePo.hireEndDate}</p>
+                                    </div>
+                                  )}
+
+                                  {!isHiredOnDate && item.status === 'AVAILABLE' && (
+                                    <button
+                                      onClick={() => {
+                                        setNewPoForm(prev => ({
+                                          ...prev,
+                                          hireStartDate: calSelectedDate,
+                                          hireEndDate: calSelectedDate,
+                                          selectedItemIds: [item.id]
+                                        }));
+                                        setShowCreatePoModal(true);
+                                      }}
+                                      className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center justify-center gap-1.5"
+                                    >
+                                      <PlusCircle className="w-3.5 h-3.5" /> Book Hire for {item.id}
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* UPCOMING HIRE SCHEDULE LEDGER */}
+                        <div className="space-y-3 pt-4 border-t border-slate-100">
+                          <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-amber-600" /> Upcoming Active Hires Schedule
+                          </h4>
+
+                          <div className="space-y-3">
+                            {pos.map(p => (
+                              <div key={p.id} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-mono font-extrabold text-amber-800 text-xs bg-white px-2 py-0.5 rounded border border-slate-200">{p.id}</span>
+                                    <span className="font-extrabold text-slate-900 text-xs">{p.customerName}</span>
+                                    <span className="text-xs text-slate-500">({p.customerPhone})</span>
+                                  </div>
+                                  <p className="text-xs text-slate-600 mt-1">
+                                    <strong>Hire Dates:</strong> {p.hireStartDate} ➔ {p.hireEndDate} ({p.items.length} Items)
+                                  </p>
+                                </div>
+
+                                <button
+                                  onClick={() => openPoReturnChecklist(p)}
+                                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center gap-1"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5" /> View Return Checklist
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
