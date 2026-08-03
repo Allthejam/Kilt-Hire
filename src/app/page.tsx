@@ -1282,7 +1282,7 @@ export default function KiltHireApp() {
     { id: 'inventory', label: 'Stock Inventory', icon: Layers, badge: `${items.filter(i=>i.status!=='RETIRED').length}`, restricted: false },
     { id: 'pos', label: 'Hire POs & PayPal', icon: CreditCard, badge: `${pos.length}`, restricted: false },
     { id: 'laundry', label: 'Dry Cleaning Laundry', icon: Sparkles, badge: `${items.filter(i=>i.status==='NEEDS_CLEANING').length}`, restricted: false },
-    { id: 'repairs', label: 'Repair Workshop', icon: Wrench, badge: `${items.filter(i=>i.status==='IN_REPAIR').length}`, restricted: false },
+    { id: 'repairs', label: 'In Repair / Workshop', icon: Wrench, badge: `${items.filter(i=>i.status==='IN_REPAIR').length}`, restricted: false },
     { id: 'analytics', label: 'Master Admin Analytics', icon: BarChart3, badge: 'ROI & Revenue', restricted: !isMasterAdmin },
     { id: 'admin', label: 'Master Admin & Invites', icon: ShieldCheck, badge: invites.filter(i=>i.status==='PENDING').length ? `${invites.filter(i=>i.status==='PENDING').length} Invites` : null, restricted: false },
   ];
@@ -1627,7 +1627,7 @@ export default function KiltHireApp() {
               >
                 <div className="flex items-center gap-2.5">
                   <Wrench className="w-4 h-4 text-rose-600" />
-                  <span>In Repair</span>
+                  <span>In Repair / Cleaners</span>
                 </div>
                 <span className="px-2 py-0.5 text-[10px] rounded-full font-bold bg-rose-100 text-rose-800">
                   {inRepairItems.length}
@@ -1730,7 +1730,7 @@ export default function KiltHireApp() {
                   ? assistantTab === 'scanner' ? 'Automated QR Scanner'
                     : assistantTab === 'in_stock' ? 'Garments Available in Stock'
                     : assistantTab === 'on_hire' ? 'Garments Currently On Hire'
-                    : assistantTab === 'in_repair' ? 'Garments in Repair Workshop'
+                    : assistantTab === 'in_repair' ? 'Garments in Repair / Cleaners'
                     : 'Customer Purchase Orders'
                   : NAV_ITEMS.find(n => n.id === activeTab)?.label}
               </h2>
@@ -1814,7 +1814,7 @@ export default function KiltHireApp() {
                         : 'text-slate-600 hover:bg-slate-100'
                     }`}
                   >
-                    <Wrench className="w-4 h-4" /> In Repair Workshop
+                    <Wrench className="w-4 h-4" /> In Repair / Cleaners
                     <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${
                       assistantTab === 'in_repair' ? 'bg-white text-rose-900' : 'bg-rose-100 text-rose-800'
                     }`}>
