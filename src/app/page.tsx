@@ -73,7 +73,9 @@ import {
   Eye,
   RefreshCw as RestoreIcon,
   CheckCircle,
-  HelpCircle
+  HelpCircle,
+  BarChart3,
+  TrendingUp
 } from 'lucide-react';
 
 const CATEGORIES: ItemCategory[] = [
@@ -197,8 +199,8 @@ export default function KiltHireApp() {
   const [regPin, setRegPin] = useState('');
   const [regError, setRegError] = useState('');
 
-  // Tab State for Admin: 'scanner' | 'batches' | 'inventory' | 'pos' | 'laundry' | 'repairs' | 'pricing' | 'admin'
-  const [activeTab, setActiveTab] = useState<'scanner' | 'batches' | 'inventory' | 'pos' | 'laundry' | 'repairs' | 'pricing' | 'admin'>('scanner');
+  // Tab State for Admin: 'scanner' | 'batches' | 'inventory' | 'pos' | 'laundry' | 'repairs' | 'analytics' | 'pricing' | 'admin'
+  const [activeTab, setActiveTab] = useState<'scanner' | 'batches' | 'inventory' | 'pos' | 'laundry' | 'repairs' | 'analytics' | 'pricing' | 'admin'>('scanner');
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Scanner & Selected QR State
@@ -274,6 +276,7 @@ export default function KiltHireApp() {
   const [reprintReason, setReprintReason] = useState<string>('');
   const [showReprintPinModal, setShowReprintPinModal] = useState<boolean>(false);
   const [reprintPrintMode, setReprintPrintMode] = useState<boolean>(false);
+  const [analyticsSearchQuery, setAnalyticsSearchQuery] = useState<string>('');
 
   // Invite creation form state
   const [newInviteEmail, setNewInviteEmail] = useState('');
@@ -1245,6 +1248,7 @@ export default function KiltHireApp() {
     { id: 'pos', label: 'Hire POs & PayPal', icon: CreditCard, badge: `${pos.length}`, restricted: false },
     { id: 'laundry', label: 'Dry Cleaning Laundry', icon: Sparkles, badge: `${items.filter(i=>i.status==='NEEDS_CLEANING').length}`, restricted: false },
     { id: 'repairs', label: 'Repair Workshop', icon: Wrench, badge: `${items.filter(i=>i.status==='IN_REPAIR').length}`, restricted: false },
+    { id: 'analytics', label: 'Master Admin Analytics', icon: BarChart3, badge: 'ROI & Revenue', restricted: !isMasterAdmin },
     { id: 'admin', label: 'Master Admin & Invites', icon: ShieldCheck, badge: invites.filter(i=>i.status==='PENDING').length ? `${invites.filter(i=>i.status==='PENDING').length} Invites` : null, restricted: false },
   ];
 
@@ -4009,7 +4013,315 @@ export default function KiltHireApp() {
                 </div>
               )}
 
-              {/* TAB 6: MASTER ADMIN, INVITES & RIGOUT CAP CONFIG */}
+              {/* TAB 7: MASTER ADMIN EXECUTIVE ANALYTICS & GARMENT ROI DASHBOARD */}
+              {activeTab === 'analytics' && (
+                <div className="space-y-6">
+                  {!isMasterAdmin ? (
+                    <div className="bg-white border border-slate-200 rounded-3xl p-12 text-center shadow-sm max-w-xl mx-auto space-y-4">
+                      <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center text-amber-700 mx-auto">
+                        <Lock className="w-8 h-8" />
+                      </div>
+                      <h3 className="text-xl font-bold text-slate-900">Master Admin Analytics Access Restricted</h3>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        Financial revenue analytics and garment ROI performance ledgers are restricted exclusively to Allan (Master Admin).
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* DASHBOARD HEADER */}
+                      <div className="flex flex-wrap items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                        <div>
+                          <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <BarChart3 className="w-5 h-5 text-amber-600" /> Master Admin Financial & Garment ROI Analytics
+                          </h2>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            Real-time profitability tracking, rental turnover rates, top tartan rankings, and garment asset ROI.
+                          </p>
+                        </div>
+                        <span className="px-3 py-1 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-xs rounded-lg flex items-center gap-1.5">
+                          <TrendingUp className="w-4 h-4 text-amber-600" /> Executive Financial Ledger
+                        </span>
+                      </div>
+
+                      {/* FINANCIAL METRIC SUMMARY CARDS */}
+                      {(() => {
+                        let grossRevenue = 0;
+                        let totalDepositsRefunded = 0;
+                        let totalDepositsRetained = 0;
+
+                        pos.forEach(po => {
+                          grossRevenue += po.totalHireFee;
+                          po.items.forEach(li => {
+                            if (li.depositAction === 'REFUNDED') {
+                              totalDepositsRefunded += li.depositAmount;
+                            } else if (li.depositAction === 'HELD_FOR_REPAIR' || li.depositAction === 'HELD_FOR_MISSING') {
+                              totalDepositsRetained += li.depositAmount;
+                            }
+                          });
+                        });
+
+                        const fleetCost = items.reduce((sum, item) => sum + (item.purchaseCost || (item.sizeGroup === 'Kid' ? 120 : 250)), 0);
+                        const fleetNetProfit = grossRevenue + totalDepositsRetained - fleetCost;
+                        const fleetRoiPct = fleetCost > 0 ? Math.round(((grossRevenue + totalDepositsRetained) / fleetCost) * 100) : 0;
+
+                        return (
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                            <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm space-y-1">
+                              <span className="text-xs text-slate-500 font-bold block flex items-center gap-1">
+                                <DollarSign className="w-4 h-4 text-amber-600" /> Gross Hire Revenue
+                              </span>
+                              <span className="text-2xl font-extrabold text-slate-900">£{grossRevenue.toLocaleString()}</span>
+                              <span className="text-[10px] text-slate-400 block">From {pos.length} Customer POs</span>
+                            </div>
+
+                            <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm space-y-1">
+                              <span className="text-xs text-slate-500 font-bold block flex items-center gap-1">
+                                <ShieldCheck className="w-4 h-4 text-emerald-600" /> Deposits Refunded
+                              </span>
+                              <span className="text-2xl font-extrabold text-emerald-700">£{totalDepositsRefunded.toLocaleString()}</span>
+                              <span className="text-[10px] text-slate-400 block">Returned for clean items</span>
+                            </div>
+
+                            <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm space-y-1">
+                              <span className="text-xs text-slate-500 font-bold block flex items-center gap-1">
+                                <AlertTriangle className="w-4 h-4 text-rose-600" /> Deposits Retained
+                              </span>
+                              <span className="text-2xl font-extrabold text-rose-700">£{totalDepositsRetained.toLocaleString()}</span>
+                              <span className="text-[10px] text-slate-400 block">Damaged/missing gear</span>
+                            </div>
+
+                            <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm space-y-1">
+                              <span className="text-xs text-slate-500 font-bold block flex items-center gap-1">
+                                <TrendingUp className="w-4 h-4 text-amber-600" /> Overall Fleet Portfolio ROI
+                              </span>
+                              <span className="text-2xl font-extrabold text-amber-700">+{fleetRoiPct}%</span>
+                              <span className="text-[10px] text-slate-400 block">Fleet Cost: £{fleetCost.toLocaleString()}</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* TOP TARTAN LEADERBOARD & DEMOGRAPHIC REVENUE BREAKDOWN */}
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* TARTAN POPULARITY RANKING */}
+                        <div className="bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-4">
+                          <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
+                            <Tag className="w-5 h-5 text-amber-600" /> Top Performing Tartans & Outfits Leaderboard
+                          </h3>
+
+                          {(() => {
+                            const tartanMap: Record<string, { count: number; totalRevenue: number }> = {};
+                            pos.forEach(po => {
+                              po.items.forEach(li => {
+                                const itemObj = items.find(i => i.id === li.qrCodeId);
+                                const tartan = itemObj?.tartanOrColour || 'Royal Stewart';
+                                if (!tartanMap[tartan]) {
+                                  tartanMap[tartan] = { count: 0, totalRevenue: 0 };
+                                }
+                                tartanMap[tartan].count += 1;
+                                tartanMap[tartan].totalRevenue += li.hireRate;
+                              });
+                            });
+
+                            const sortedTartans = Object.entries(tartanMap).sort((a, b) => b[1].totalRevenue - a[1].totalRevenue);
+                            const maxRev = sortedTartans[0]?.[1].totalRevenue || 1;
+
+                            return (
+                              <div className="space-y-3">
+                                {sortedTartans.length === 0 ? (
+                                  <p className="text-xs text-slate-500">No rental history logged yet.</p>
+                                ) : (
+                                  sortedTartans.map(([tartan, stats], idx) => {
+                                    const pct = Math.round((stats.totalRevenue / maxRev) * 100);
+                                    return (
+                                      <div key={tartan} className="space-y-1">
+                                        <div className="flex justify-between text-xs">
+                                          <span className="font-bold text-slate-900">
+                                            #{idx + 1} {tartan}
+                                          </span>
+                                          <span className="font-mono text-slate-600">
+                                            <strong>{stats.count} Hires</strong> • <span className="text-amber-800 font-bold">£{stats.totalRevenue}</span>
+                                          </span>
+                                        </div>
+                                        <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                                          <div 
+                                            className="bg-amber-500 h-full rounded-full transition-all duration-500" 
+                                            style={{ width: `${pct}%` }}
+                                          />
+                                        </div>
+                                      </div>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
+
+                        {/* DEMOGRAPHIC REVENUE SPLIT (ADULTS VS KIDS) */}
+                        <div className="bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-4">
+                          <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
+                            <Users className="w-5 h-5 text-purple-600" /> Demographic Hire Breakdown (Adults vs Kids)
+                          </h3>
+
+                          {(() => {
+                            let adultRevenue = 0;
+                            let kidRevenue = 0;
+                            let adultCount = 0;
+                            let kidCount = 0;
+
+                            pos.forEach(po => {
+                              po.items.forEach(li => {
+                                if (li.sizeGroup === 'Kid') {
+                                  kidRevenue += li.hireRate;
+                                  kidCount += 1;
+                                } else {
+                                  adultRevenue += li.hireRate;
+                                  adultCount += 1;
+                                }
+                              });
+                            });
+
+                            const totalRev = adultRevenue + kidRevenue || 1;
+                            const adultPct = Math.round((adultRevenue / totalRev) * 100);
+                            const kidPct = 100 - adultPct;
+
+                            return (
+                              <div className="space-y-6">
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl text-xs space-y-1">
+                                    <span className="font-bold text-blue-900 flex items-center gap-1">
+                                      <User className="w-4 h-4 text-blue-600" /> Adult Rigouts
+                                    </span>
+                                    <span className="text-xl font-extrabold text-blue-950 block">£{adultRevenue}</span>
+                                    <span className="text-[11px] text-blue-700 font-semibold">{adultCount} Items Hired ({adultPct}%)</span>
+                                  </div>
+
+                                  <div className="p-4 bg-purple-50 border border-purple-200 rounded-2xl text-xs space-y-1">
+                                    <span className="font-bold text-purple-900 flex items-center gap-1">
+                                      <Baby className="w-4 h-4 text-purple-600" /> Kids Outfits
+                                    </span>
+                                    <span className="text-xl font-extrabold text-purple-950 block">£{kidRevenue}</span>
+                                    <span className="text-[11px] text-purple-700 font-semibold">{kidCount} Items Hired ({kidPct}%)</span>
+                                  </div>
+                                </div>
+
+                                <div className="space-y-1.5">
+                                  <span className="text-xs font-bold text-slate-700 block">Revenue Ratio Bar:</span>
+                                  <div className="w-full bg-slate-100 h-4 rounded-full overflow-hidden flex shadow-inner">
+                                    <div className="bg-blue-600 h-full transition-all duration-500" style={{ width: `${adultPct}%` }} title={`Adults: ${adultPct}%`} />
+                                    <div className="bg-purple-600 h-full transition-all duration-500" style={{ width: `${kidPct}%` }} title={`Kids: ${kidPct}%`} />
+                                  </div>
+                                  <div className="flex justify-between text-[11px] font-bold">
+                                    <span className="text-blue-700">Adults ({adultPct}%)</span>
+                                    <span className="text-purple-700">Kids ({kidPct}%)</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+
+                      {/* INDIVIDUAL GARMENT ROI & LIFETIME RENTAL PERFORMANCE TABLE */}
+                      <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm space-y-4 p-6">
+                        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                          <div>
+                            <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                              <DollarSign className="w-5 h-5 text-amber-600" /> Individual Garment ROI & Financial Lifetime Ledger
+                            </h3>
+                            <p className="text-xs text-slate-500">
+                              Track purchase cost vs lifetime rental revenue earned for every registered garment in stock.
+                            </p>
+                          </div>
+
+                          <div className="relative w-full sm:w-72">
+                            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                            <input 
+                              type="text"
+                              placeholder="Search tag ID, tartan, or garment..."
+                              value={analyticsSearchQuery}
+                              onChange={e => setAnalyticsSearchQuery(e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-900 outline-none focus:border-amber-500 shadow-sm"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs text-slate-700">
+                            <thead className="bg-slate-50 text-slate-900 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px]">
+                              <tr>
+                                <th className="py-3.5 px-4">QR Code ID</th>
+                                <th className="py-3.5 px-4">Garment Title</th>
+                                <th className="py-3.5 px-4">Category</th>
+                                <th className="py-3.5 px-4">Demographic</th>
+                                <th className="py-3.5 px-4 text-center">Times Hired</th>
+                                <th className="py-3.5 px-4">Est. Cost (£)</th>
+                                <th className="py-3.5 px-4">Revenue (£)</th>
+                                <th className="py-3.5 px-4">Net Return (£)</th>
+                                <th className="py-3.5 px-4 text-right">ROI Performance</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 font-semibold">
+                              {items
+                                .filter(item => !analyticsSearchQuery || item.id.toLowerCase().includes(analyticsSearchQuery.toLowerCase()) || item.name.toLowerCase().includes(analyticsSearchQuery.toLowerCase()) || item.tartanOrColour.toLowerCase().includes(analyticsSearchQuery.toLowerCase()))
+                                .map(item => {
+                                  // Calculate lifetime rentals for this item
+                                  let timesHired = 0;
+                                  let lifetimeRev = 0;
+
+                                  pos.forEach(po => {
+                                    po.items.forEach(li => {
+                                      if (li.qrCodeId === item.id) {
+                                        timesHired += 1;
+                                        lifetimeRev += li.hireRate;
+                                      }
+                                    });
+                                  });
+
+                                  const cost = item.purchaseCost || (item.sizeGroup === 'Kid' ? 120 : 250);
+                                  const netProfit = lifetimeRev - cost;
+                                  const roiPct = Math.round((lifetimeRev / cost) * 100);
+
+                                  return (
+                                    <tr key={item.id} className="hover:bg-slate-50 transition">
+                                      <td className="py-3 px-4 font-mono font-bold text-amber-800">{item.id}</td>
+                                      <td className="py-3 px-4 font-bold text-slate-900">{item.name}</td>
+                                      <td className="py-3 px-4">{item.category}</td>
+                                      <td className="py-3 px-4">
+                                        <span className={`px-2 py-0.5 text-[10px] font-bold rounded flex items-center gap-1 w-fit ${item.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900 border border-purple-300' : 'bg-blue-100 text-blue-900 border border-blue-300'}`}>
+                                          {item.sizeGroup === 'Kid' ? <Baby className="w-3 h-3" /> : <User className="w-3 h-3" />}
+                                          {item.sizeGroup}
+                                        </span>
+                                      </td>
+                                      <td className="py-3 px-4 text-center font-mono font-extrabold text-slate-900 bg-slate-50">{timesHired} Hires</td>
+                                      <td className="py-3 px-4 text-slate-500">£{cost}</td>
+                                      <td className="py-3 px-4 font-bold text-amber-800">£{lifetimeRev}</td>
+                                      <td className={`py-3 px-4 font-bold ${netProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                                        {netProfit >= 0 ? `+£${netProfit}` : `-£${Math.abs(netProfit)}`}
+                                      </td>
+                                      <td className="py-3 px-4 text-right">
+                                        <span className={`px-2.5 py-1 text-[11px] font-extrabold rounded-full border ${
+                                          roiPct >= 100 ? 'bg-emerald-100 text-emerald-900 border-emerald-300' :
+                                          roiPct >= 50 ? 'bg-blue-100 text-blue-900 border-blue-300' :
+                                          'bg-amber-100 text-amber-900 border-amber-300'
+                                        }`}>
+                                          {roiPct >= 100 ? `+${roiPct}% Profit ROI` : `${roiPct}% Recovery`}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 8: MASTER ADMIN, INVITES & RIGOUT CAP CONFIG */}
               {activeTab === 'admin' && (
                 <div className="space-y-6">
                   

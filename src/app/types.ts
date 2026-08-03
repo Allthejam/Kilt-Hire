@@ -53,6 +53,7 @@ export interface KiltItem {
   brandMake?: string;
   hireRate: number; // Single item hire rate
   depositAmount: number; // Deposit required
+  purchaseCost?: number; // Initial wholesale purchase cost for ROI tracking
   status: ItemStatus;
   currentPoId?: string; // Linked PO when on hire
   registeredAt: string;
