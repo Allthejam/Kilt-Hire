@@ -5,3 +5,80 @@
 body {
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ========================================================================== */
+/* A4 PAPER IRON-ON FABRIC QR LABEL PRINT STYLING (210mm x 297mm)             */
+/* Exactly 4 Columns Across x 7 Rows Down = 28 Labels per Page              */
+/* ========================================================================== */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+
+  /* Hide header, navigation, sidebar, background overlay, modals, and buttons */
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  body > *:not(#print-root) {
+    visibility: hidden !important;
+  }
+
+  /* Force display of QR Printable Container only */
+  .fixed, header, nav, button, .no-print, [role="dialog"]:not(.print-qr-container) {
+    background: transparent !important;
+  }
+
+  .print-qr-container {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 194mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    border: none !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  /* 4 Columns Across Grid */
+  .qr-label-grid {
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 3mm !important;
+    width: 100% !important;
+  }
+
+  /* Individual Sticker Label Dimensions: ~45mm x 36mm */
+  .qr-label-card {
+    box-sizing: border-box !important;
+    width: 45mm !important;
+    height: 36mm !important;
+    border: 1px dashed #666666 !important;
+    border-radius: 4px !important;
+    padding: 2mm !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    text-align: center !important;
+    background: #ffffff !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Force A4 Page Break every 28 labels (4 x 7 grid) */
+  .page-break-after-28 {
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+
+  /* Hide print buttons and extra UI chrome */
+  .no-print {
+    display: none !important;
+  }
+}

@@ -3141,33 +3141,37 @@ export default function KiltHireApp() {
                               </div>
                             )}
 
-                            {/* PRINTABLE QR SHEET PREVIEW (FILTERED TO REPRINT CODES OR FULL BATCH) */}
-                            <div className="bg-slate-50 text-slate-950 p-6 rounded-2xl border border-slate-200 shadow-inner max-h-[50vh] overflow-y-auto print:max-h-none print:overflow-visible">
-                              <div className="text-center mb-4 pb-2 border-b border-slate-300">
+                            {/* PRINTABLE QR SHEET PREVIEW (EXACT A4 PAGE FORMAT: 4 ACROSS x 7 DOWN = 28 PER PAGE) */}
+                            <div className="print-qr-container bg-slate-50 text-slate-950 p-6 rounded-2xl border border-slate-200 shadow-inner max-h-[50vh] overflow-y-auto print:max-h-none print:overflow-visible">
+                              <div className="text-center mb-4 pb-2 border-b border-slate-300 no-print">
                                 <h4 className="font-extrabold text-sm uppercase tracking-wide">
-                                  Highland Kilt & Outfit Hire - {reprintPrintMode ? 'REPLACEMENT QR LABELS REPRINT' : 'QR Iron-On Fabric Labels'}
+                                  Highland Kilt & Outfit Hire - {reprintPrintMode ? 'REPLACEMENT QR LABELS REPRINT' : 'QR Iron-On Fabric Labels (A4 Sheet)'}
                                 </h4>
                                 <p className="text-[10px] text-slate-600">
-                                  Batch: {selectedBatchForPrint.id} • Category: {selectedBatchForPrint.category} ({selectedBatchForPrint.sizeGroup})
+                                  Batch: {selectedBatchForPrint.id} • Category: {selectedBatchForPrint.category} ({selectedBatchForPrint.sizeGroup}) • Layout: 4 Across × 7 Down (28 Labels per A4 Sheet)
                                   {reprintPrintMode && <strong className="text-amber-900 block mt-0.5">⚠️ AUTHORIZED REPLACEMENT REPRINT FOR SPECIFIC TAGS: [{selectedCodesForReprint.join(', ')}]</strong>}
                                 </p>
                               </div>
 
-                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 print:grid-cols-4">
-                                {(reprintPrintMode ? selectedBatchForPrint.qrCodes.filter(c => selectedCodesForReprint.includes(c)) : selectedBatchForPrint.qrCodes).map((code) => {
+                              <div className="qr-label-grid grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 print:grid-cols-4">
+                                {(reprintPrintMode ? selectedBatchForPrint.qrCodes.filter(c => selectedCodesForReprint.includes(c)) : selectedBatchForPrint.qrCodes).map((code, index) => {
                                   const matrix = generateQrMatrix(code);
                                   const isReg = items.some(i => i.id === code && i.status !== 'RETIRED');
                                   const isReprinted = reprintPrintMode || selectedCodesForReprint.includes(code);
+                                  const isPageBreak = (index + 1) % 28 === 0;
 
                                   return (
-                                    <div key={code} className={`border-2 border-dashed p-2.5 rounded flex flex-col items-center justify-between text-center bg-white min-h-[140px] shadow-sm ${
-                                      isReprinted ? 'border-amber-500 bg-amber-50/40' : 'border-slate-300'
-                                    }`}>
+                                    <div 
+                                      key={code} 
+                                      className={`qr-label-card border-2 border-dashed p-2.5 rounded flex flex-col items-center justify-between text-center bg-white min-h-[140px] shadow-sm ${
+                                        isReprinted ? 'border-amber-500 bg-amber-50/40' : 'border-slate-300'
+                                      } ${isPageBreak ? 'page-break-after-28' : ''}`}
+                                    >
                                       <span className="text-[9px] font-bold text-slate-800 uppercase tracking-tight line-clamp-1">
                                         {selectedBatchForPrint.category} ({selectedBatchForPrint.sizeGroup})
                                       </span>
                                       
-                                      <svg viewBox="0 0 21 21" className="w-16 h-16 my-1">
+                                      <svg viewBox="0 0 21 21" className="w-14 h-14 my-0.5">
                                         <path d={renderQrSvgPath(matrix)} fill="#000000" />
                                       </svg>
 
