@@ -251,6 +251,7 @@ export default function KiltHireApp() {
   const [scannedCode, setScannedCode] = useState<string>('');
   const [simulatedInput, setSimulatedInput] = useState<string>('');
   const [activeCamera, setActiveCamera] = useState<boolean>(false);
+  const [scanError, setScanError] = useState<string>('');
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   // Modals state
@@ -792,7 +793,7 @@ export default function KiltHireApp() {
 
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
           const code = jsQR(imageData.data, imageData.width, imageData.height, {
-            inversionAttempts: 'dontInvert'
+            inversionAttempts: 'attemptBoth'
           });
 
           if (code && code.data && code.data.trim().length > 0) {
@@ -835,6 +836,7 @@ export default function KiltHireApp() {
   const handleScanCode = (code: string) => {
     const cleanCode = code.trim().toUpperCase();
     if (!cleanCode) return;
+    setScanError('');
     setScannedCode(cleanCode);
     setSimulatedInput('');
     
@@ -919,6 +921,10 @@ export default function KiltHireApp() {
         }));
         showToast(`📦 Started Outgoing Purchase Order Builder with 1st item (${cleanCode})! Aim scanner to add more garments to this PO.`, 'success');
       }
+    } else {
+      // Not found in inventory at all — show unrecognised error
+      setScanError(cleanCode);
+      showToast(`⚠️ QR code "${cleanCode}" not recognised — not in your inventory.`, 'warning');
     }
   };
 
@@ -2376,30 +2382,31 @@ export default function KiltHireApp() {
                         </div>
 
                         {activeCamera ? (
-                          <div className="relative rounded-2xl overflow-hidden bg-black border-4 border-emerald-500 aspect-video flex items-center justify-center shadow-md">
-                            <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-                            
-                            {/* PERFECT SQUARE TARGET FRAME WITH HIGH-CONTRAST CORNERS & LIVE SCANNER STATUS */}
-                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-4">
-                              <div className="relative w-56 h-56 border-2 border-emerald-400/40 rounded-2xl flex flex-col items-center justify-between p-3 bg-black/20 shadow-2xl">
-                                {/* TOP LEFT CORNER */}
-                                <div className="absolute top-0 left-0 w-7 h-7 border-t-4 border-l-4 border-amber-400 rounded-tl-xl shadow-sm" />
-                                {/* TOP RIGHT CORNER */}
-                                <div className="absolute top-0 right-0 w-7 h-7 border-t-4 border-r-4 border-amber-400 rounded-tr-xl shadow-sm" />
-                                {/* BOTTOM LEFT CORNER */}
-                                <div className="absolute bottom-0 left-0 w-7 h-7 border-b-4 border-l-4 border-amber-400 rounded-bl-xl shadow-sm" />
-                                {/* BOTTOM RIGHT CORNER */}
-                                <div className="absolute bottom-0 right-0 w-7 h-7 border-b-4 border-r-4 border-amber-400 rounded-br-xl shadow-sm" />
-
-                                <span className="bg-black/85 px-3 py-1 rounded-full text-[11px] font-extrabold text-amber-300 border border-amber-400/40 shadow-md mt-2">
-                                  Position QR Code Inside Square Frame
-                                </span>
-
-                                <span className="text-[10px] text-emerald-300 font-bold bg-emerald-950/90 px-3 py-0.5 rounded-full mb-2 border border-emerald-500/40 animate-pulse">
-                                  🟢 Camera Active — Scanning...
-                                </span>
+                          <div className="space-y-2">
+                            {/* SQUARE CAMERA VIEWPORT — no text inside frame */}
+                            <div className="relative w-full aspect-square max-w-xs mx-auto rounded-2xl overflow-hidden bg-black border-4 border-emerald-500 shadow-md">
+                              <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                <div className="relative w-52 h-52">
+                                  <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-amber-400 rounded-tl-xl" />
+                                  <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-amber-400 rounded-tr-xl" />
+                                  <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-amber-400 rounded-bl-xl" />
+                                  <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-amber-400 rounded-br-xl" />
+                                </div>
                               </div>
                             </div>
+                            {/* STATUS + INSTRUCTION BELOW CAMERA */}
+                            <div className="flex items-center justify-between px-1">
+                              <span className="text-[11px] font-semibold text-slate-600">Centre QR label inside the amber frame</span>
+                              <span className="text-[10px] text-emerald-700 font-bold bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300 animate-pulse">🟢 Scanning...</span>
+                            </div>
+                            {scanError && (
+                              <div className="flex items-center gap-2 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2.5">
+                                <span className="text-rose-600 text-xs font-bold">⚠️ Unrecognised QR Code:</span>
+                                <span className="text-rose-700 text-xs font-mono font-bold">{scanError}</span>
+                                <button onClick={() => setScanError('')} className="ml-auto text-rose-400 hover:text-rose-600 text-sm leading-none">✕</button>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center">
@@ -3749,18 +3756,31 @@ export default function KiltHireApp() {
                       </div>
 
                       {activeCamera ? (
-                        <div className="relative rounded-xl overflow-hidden bg-black border-2 border-amber-500 aspect-video flex items-center justify-center">
-                          <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-                          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                            <div className="relative w-40 h-40">
-                              <div className="absolute top-0 left-0 w-7 h-7 border-t-4 border-l-4 border-amber-400 rounded-tl-xl" />
-                              <div className="absolute top-0 right-0 w-7 h-7 border-t-4 border-r-4 border-amber-400 rounded-tr-xl" />
-                              <div className="absolute bottom-0 left-0 w-7 h-7 border-b-4 border-l-4 border-amber-400 rounded-bl-xl" />
-                              <div className="absolute bottom-0 right-0 w-7 h-7 border-b-4 border-r-4 border-amber-400 rounded-br-xl" />
+                        <div className="space-y-2">
+                          {/* SQUARE CAMERA VIEWPORT — no text inside frame */}
+                          <div className="relative w-full aspect-square max-w-xs mx-auto rounded-xl overflow-hidden bg-black border-2 border-amber-500 shadow-md">
+                            <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                              <div className="relative w-44 h-44">
+                                <div className="absolute top-0 left-0 w-7 h-7 border-t-4 border-l-4 border-amber-400 rounded-tl-xl" />
+                                <div className="absolute top-0 right-0 w-7 h-7 border-t-4 border-r-4 border-amber-400 rounded-tr-xl" />
+                                <div className="absolute bottom-0 left-0 w-7 h-7 border-b-4 border-l-4 border-amber-400 rounded-bl-xl" />
+                                <div className="absolute bottom-0 right-0 w-7 h-7 border-b-4 border-r-4 border-amber-400 rounded-br-xl" />
+                              </div>
                             </div>
-                            <span className="mt-3 bg-black/80 px-3 py-1 rounded-full text-[11px] font-bold text-amber-300 border border-amber-400/40">Position QR Code Inside Frame</span>
-                            <span className="mt-1 text-[10px] text-emerald-300 font-bold bg-emerald-950/90 px-3 py-0.5 rounded-full border border-emerald-500/40 animate-pulse">🟢 Camera Active — Scanning...</span>
                           </div>
+                          {/* STATUS + INSTRUCTION BELOW CAMERA */}
+                          <div className="flex items-center justify-between px-1">
+                            <span className="text-[11px] font-semibold text-slate-600">Centre QR label inside the amber frame</span>
+                            <span className="text-[10px] text-amber-700 font-bold bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300 animate-pulse">🟢 Scanning...</span>
+                          </div>
+                          {scanError && (
+                            <div className="flex items-center gap-2 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2.5">
+                              <span className="text-rose-600 text-xs font-bold">⚠️ Unrecognised QR Code:</span>
+                              <span className="text-rose-700 text-xs font-mono font-bold">{scanError}</span>
+                              <button onClick={() => setScanError('')} className="ml-auto text-rose-400 hover:text-rose-600 text-sm leading-none">✕</button>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-center">
