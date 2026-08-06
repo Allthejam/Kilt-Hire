@@ -24,7 +24,7 @@
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS
 - **Icons**: Lucide React
-- **QR Scanning**: `jsQR` library (camera → canvas → decode loop)
+- **QR Scanning**: `@zxing/browser` + `@zxing/library` (`BrowserMultiFormatReader` — ZXing-based, handles mobile, angles, fabric distortion)
 - **QR Generation**: Custom SVG renderer (no external lib)
 - **Backend**: Firebase Auth + Firestore (live mode)
 - **Deployment**: Firebase App Hosting (via `apphosting.yaml`)
@@ -143,10 +143,7 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Known Issues / Outstanding Work
 
 ### Critical
-- **QR scanning on mobile may not work** — camera opens but QR codes not scanning on physical device.
-  - Tried: attemptBoth mode (just deployed)
-  - Next step if still failing: Switch from jsQR to ZXing library for better mobile compatibility
-  - Also check: lighting, label print quality, code size
+- ~~**QR scanning on mobile may not work**~~ ✅ **RESOLVED** — switched from jsQR to ZXing (`@zxing/browser` `BrowserMultiFormatReader`). ZXing uses TRY_HARDER mode, auto-selects back camera on iOS/Android, and handles real-world printed labels (distortion, low contrast, fabric wrinkle) far better.
 
 ### In Progress / Next Steps
 - Staff registration flow — needs end-to-end test with a real invite code and a second device
@@ -164,6 +161,8 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+be8993a  feat: switch QR scanner from jsQR to ZXing BrowserMultiFormatReader for better mobile scanning
+4817357  docs: add project handover document
 95f4ede  fix: square camera viewport, text outside frame, unrecognised QR error banner, attemptBoth jsQR mode
 9a33458  fix: guard Firebase to client-side only, add apphosting.yaml env vars for App Hosting build
 6093181  feat: clean up scanner from test/demo mode to live production
