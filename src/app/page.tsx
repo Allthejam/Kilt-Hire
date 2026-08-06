@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import jsQR from 'jsqr';
+import { BrowserMultiFormatReader, BarcodeFormat } from '@zxing/browser';
+import { DecodeHintType } from '@zxing/library';
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -739,85 +740,69 @@ export default function KiltHireApp() {
     }));
   };
 
-  // Camera scanner handler & real jsQR decoder loop
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Camera scanner handler & ZXing BrowserMultiFormatReader decode loop
+  // IScannerControls is returned by decodeFromVideoDevice and has a .stop() method
+  const scanControlsRef = useRef<{ stop: () => void } | null>(null);
   const lastScanTimeRef = useRef<number>(0);
 
-  const toggleCamera = async () => {
+  const toggleCamera = () => {
     if (activeCamera) {
-      if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream;
-        stream.getTracks().forEach(track => track.stop());
-        videoRef.current.srcObject = null;
+      // Stop ZXing decode loop and release camera
+      if (scanControlsRef.current) {
+        scanControlsRef.current.stop();
+        scanControlsRef.current = null;
       }
       setActiveCamera(false);
       return;
     }
     setActiveCamera(true);
-    try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: { ideal: 'environment' } } 
-        });
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-      }
-    } catch (err) {
-      console.warn('Camera stream not available, falling back to simulated scan picker', err);
-    }
   };
 
-  // REAL-TIME FRAME-BY-FRAME QR CODE DECODER LOOP USING jsQR
+  // ZXing REAL-TIME QR DECODER — replaces manual jsQR requestAnimationFrame loop
   useEffect(() => {
     if (!activeCamera) return;
+    if (!videoRef.current) return;
 
-    let animId: number;
-    let isActive = true;
+    // Hints: QR-only for speed, TRY_HARDER for real-world printed labels
+    const hints = new Map<DecodeHintType, unknown>();
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE]);
+    hints.set(DecodeHintType.TRY_HARDER, true);
 
-    const scanFrame = () => {
-      if (!isActive) return;
+    const reader = new BrowserMultiFormatReader(hints, {
+      delayBetweenScanAttempts: 150, // ms between decode attempts
+    });
 
-      const video = videoRef.current;
-      if (video && video.readyState === video.HAVE_ENOUGH_DATA) {
-        if (!canvasRef.current) {
-          canvasRef.current = document.createElement('canvas');
+    let stopped = false;
+    const videoEl = videoRef.current;
+
+    // undefined deviceId → ZXing auto-selects back camera (most reliable on iOS + Android)
+    reader.decodeFromVideoDevice(
+      undefined,
+      videoEl,
+      (result, _error, controls) => {
+        // Store controls so toggleCamera can call .stop()
+        if (controls && !scanControlsRef.current) {
+          scanControlsRef.current = controls;
         }
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-        if (ctx) {
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const code = jsQR(imageData.data, imageData.width, imageData.height, {
-            inversionAttempts: 'attemptBoth'
-          });
-
-          if (code && code.data && code.data.trim().length > 0) {
-            const cleanQr = code.data.trim();
-            const now = Date.now();
-            // Debounce scan to avoid duplicate triggers within 2 seconds
-            if (now - lastScanTimeRef.current > 2000) {
-              lastScanTimeRef.current = now;
-              handleScanCode(cleanQr);
-            }
+        if (result && !stopped) {
+          const cleanQr = result.getText().trim();
+          const now = Date.now();
+          // Debounce: ignore re-scans of the same code within 2 seconds
+          if (cleanQr && now - lastScanTimeRef.current > 2000) {
+            lastScanTimeRef.current = now;
+            handleScanCode(cleanQr);
           }
         }
+        // _error is NotFoundException on every empty frame — normal, no need to log
       }
-
-      if (isActive) {
-        animId = requestAnimationFrame(scanFrame);
-      }
-    };
-
-    animId = requestAnimationFrame(scanFrame);
+    ).catch(() => { /* camera permission denied or unavailable */ });
 
     return () => {
-      isActive = false;
-      if (animId) cancelAnimationFrame(animId);
+      stopped = true;
+      if (scanControlsRef.current) {
+        scanControlsRef.current.stop();
+        scanControlsRef.current = null;
+      }
     };
   }, [activeCamera]);
 
