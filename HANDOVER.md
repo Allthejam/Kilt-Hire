@@ -161,6 +161,8 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+3ca74c6  feat: add PWA support - installable web app, manifest.json, sw.js, PWA icons, iOS install modal & top install banner
+07ad6a2  docs: update HANDOVER.md - ZXing migration complete, critical issue resolved
 be8993a  feat: switch QR scanner from jsQR to ZXing BrowserMultiFormatReader for better mobile scanning
 4817357  docs: add project handover document
 95f4ede  fix: square camera viewport, text outside frame, unrecognised QR error banner, attemptBoth jsQR mode
