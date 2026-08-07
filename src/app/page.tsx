@@ -2237,34 +2237,36 @@ export default function KiltHireApp() {
       )}
 
       {/* MAIN WORKSPACE */}
-      <div className="flex-1 flex flex-col min-w-0">
+      {/* MAIN WORKSPACE */}
+      <div className="flex-1 flex flex-col min-w-0 max-w-full overflow-x-hidden">
         
         {/* PWA INSTALL TOP BANNER */}
         {!isStandalone && !installDismissed && (
-          <div className="no-print bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white px-6 py-3 border-b border-indigo-900 flex items-center justify-between shadow-md">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-indigo-600/60 rounded-xl text-indigo-200 border border-indigo-500/40">
-                <Smartphone className="w-5 h-5" />
+          <div className="no-print bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white px-3 sm:px-6 py-2.5 sm:py-3 border-b border-indigo-900 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5 shadow-md">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-1.5 sm:p-2 bg-indigo-600/60 rounded-xl text-indigo-200 border border-indigo-500/40 shrink-0">
+                <Smartphone className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-extrabold text-sm tracking-tight">Install Highland Kilt Hire Portal</span>
-                  <span className="px-2 py-0.5 text-[10px] font-extrabold bg-amber-500 text-slate-950 rounded-full">PWA App</span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="font-extrabold text-xs sm:text-sm tracking-tight truncate">Install Highland Kilt Hire</span>
+                  <span className="px-1.5 py-0.5 text-[9px] sm:text-[10px] font-extrabold bg-amber-500 text-slate-950 rounded-full">PWA App</span>
                 </div>
-                <p className="text-xs text-indigo-200/80">Install to your phone or desktop home screen for 1-tap launch, camera scanner & offline access.</p>
+                <p className="text-[11px] sm:text-xs text-indigo-200/80 hidden sm:block">Install to your phone home screen for 1-tap launch, camera scanner & offline access.</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 shrink-0 ml-auto sm:ml-0">
               <button
                 onClick={handleInstallApp}
-                className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5 border border-indigo-400/30"
+                className="px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1 border border-indigo-400/30 shrink-0"
               >
-                <Download className="w-4 h-4 text-indigo-100" /> Install App
+                <Download className="w-3.5 h-3.5 text-indigo-100" />
+                <span>Install</span>
               </button>
               <button
                 onClick={handleDismissBanner}
-                className="p-1.5 text-indigo-300 hover:text-white hover:bg-white/10 rounded-lg transition text-xs"
+                className="p-1 text-indigo-300 hover:text-white hover:bg-white/10 rounded-lg transition text-xs shrink-0"
                 title="Dismiss"
               >
                 <X className="w-4 h-4" />
@@ -2273,69 +2275,76 @@ export default function KiltHireApp() {
           </div>
         )}
 
-        <header className="no-print bg-white border-b border-slate-200 sticky top-0 z-30 px-6 py-4 flex items-center justify-between shadow-sm">
-          <div className="flex items-center gap-3">
+        <header className="no-print bg-white border-b border-slate-200 sticky top-0 z-30 px-3 sm:px-6 py-2.5 sm:py-4 flex items-center justify-between gap-2 shadow-sm max-w-full overflow-x-hidden">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button
               onClick={() => setMobileSidebarOpen(true)}
-              className="lg:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-lg"
+              className="lg:hidden p-1.5 sm:p-2 text-slate-600 hover:bg-slate-100 rounded-xl shrink-0 border border-slate-200"
+              title="Open Navigation Menu"
             >
               <Menu className="w-5 h-5" />
             </button>
 
-            <div>
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                <span>Highland Kilt Hire</span>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-                <span className="text-amber-700 font-bold">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1 sm:gap-2 text-[10px] sm:text-xs font-semibold text-slate-500 truncate">
+                <span className="hidden sm:inline">Highland Kilt Hire</span>
+                <ChevronRight className="w-3 h-3 text-slate-400 hidden sm:inline" />
+                <span className="text-amber-700 font-bold truncate">
                   {interfaceMode === 'shop_assistant' 
-                    ? `Shop Assistant (${assistantTab.toUpperCase().replace('_', ' ')})` 
+                    ? `Shop (${assistantTab.toUpperCase().replace('_', ' ')})` 
                     : NAV_ITEMS.find(n => n.id === activeTab)?.label}
                 </span>
               </div>
-              <h2 className="text-lg font-extrabold text-slate-900">
+              <h2 className="text-sm sm:text-lg font-extrabold text-slate-900 truncate leading-tight">
                 {interfaceMode === 'shop_assistant' 
-                  ? assistantTab === 'scanner' ? 'Automated QR Scanner'
-                    : assistantTab === 'in_stock' ? 'Garments Available in Stock'
-                    : assistantTab === 'on_hire' ? 'Garments Currently On Hire'
-                    : assistantTab === 'in_repair' ? 'Garments in Repair / Cleaners'
-                    : 'Customer Purchase Orders'
+                  ? assistantTab === 'scanner' ? 'QR Scanner'
+                    : assistantTab === 'in_stock' ? 'In Stock'
+                    : assistantTab === 'on_hire' ? 'On Hire'
+                    : assistantTab === 'in_repair' ? 'In Repair'
+                    : 'Customer POs'
                   : NAV_ITEMS.find(n => n.id === activeTab)?.label}
               </h2>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             {!isStandalone && (
               <button
                 onClick={handleInstallApp}
-                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-full shadow-sm transition flex items-center gap-1.5"
+                className="px-2.5 sm:px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-full shadow-sm transition flex items-center gap-1 shrink-0"
               >
-                <Download className="w-4 h-4 text-indigo-200" /> Install App
+                <Download className="w-3.5 h-3.5 text-indigo-200 shrink-0" />
+                <span className="hidden sm:inline">Install App</span>
+                <span className="sm:hidden text-[11px]">Install</span>
               </button>
             )}
 
             <button
               onClick={() => setShowUserGuideModal(true)}
-              className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-950 font-extrabold text-xs rounded-full shadow-sm transition flex items-center gap-1.5"
+              className="px-2.5 sm:px-3 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-950 font-extrabold text-xs rounded-full shadow-sm transition flex items-center gap-1 shrink-0"
+              title="User Guide & Manual"
             >
-              <BookOpen className="w-4 h-4 text-amber-600" /> User Guide & Manual
+              <BookOpen className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+              <span className="hidden md:inline">User Guide & Manual</span>
+              <span className="md:hidden text-[11px]">Guide</span>
             </button>
 
             <button
               onClick={() => setInterfaceMode(interfaceMode === 'admin_portal' ? 'shop_assistant' : 'admin_portal')}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold flex items-center gap-1.5 border shadow-sm transition ${
+              className={`px-2.5 sm:px-3.5 py-1.5 rounded-full text-xs font-extrabold flex items-center gap-1 shrink-0 border shadow-sm transition ${
                 interfaceMode === 'shop_assistant'
                   ? 'bg-emerald-100 border-emerald-300 text-emerald-900'
                   : 'bg-amber-100 border-amber-300 text-amber-900'
               }`}
             >
-              {interfaceMode === 'shop_assistant' ? <Store className="w-4 h-4 text-emerald-600" /> : <ShieldCheck className="w-4 h-4 text-amber-600" />}
-              {interfaceMode === 'shop_assistant' ? 'Switch to Full Admin' : 'Switch to Shop Assistant'}
+              {interfaceMode === 'shop_assistant' ? <Store className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> : <ShieldCheck className="w-3.5 h-3.5 text-amber-600 shrink-0" />}
+              <span className="hidden sm:inline">{interfaceMode === 'shop_assistant' ? 'Switch to Full Admin' : 'Switch to Shop Assistant'}</span>
+              <span className="sm:hidden text-[11px]">{interfaceMode === 'shop_assistant' ? 'Admin' : 'Shop Mode'}</span>
             </button>
           </div>
         </header>
 
-        <main className="p-6 max-w-7xl mx-auto w-full flex-1">
+        <main className="p-3 sm:p-6 max-w-7xl mx-auto w-full flex-1 min-w-0 overflow-x-hidden">
 
           {/* ========================================================= */}
           {/* SHOP ASSISTANT AUTOMATED FLOOR TERMINAL MODE */}
