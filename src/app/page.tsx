@@ -864,6 +864,43 @@ export default function KiltHireApp() {
     }
   };
 
+  // PURGE ALL PENDING INVITES
+  const handleClearAllInvites = async () => {
+    if (invites.length === 0) {
+      showToast('No pending invites to clear.', 'info');
+      return;
+    }
+    if (confirm("Are you sure you want to delete all pending staff invites?")) {
+      try {
+        await Promise.all(invites.map(inv => deleteInvite(inv.id)));
+      } catch (err) {
+        console.warn('Firestore purge invites note:', err);
+      }
+      setInvites([]);
+      localStorage.setItem('kilt_invites', '[]');
+      addAuditLog('PURGED_ALL_INVITES', 'Purged all pending staff invites from system.');
+      showToast('🧹 All pending invites purged successfully!', 'success');
+    }
+  };
+
+  // PURGE DEMO AUDIT LOGS
+  const handleClearAuditLogs = () => {
+    if (confirm("Reset audit activity trail to clean state?")) {
+      const cleanLogs: AuditLog[] = [
+        {
+          id: `LOG-${Date.now()}`,
+          timestamp: new Date().toISOString().replace('T', ' ').slice(0, 16),
+          staffName: currentUser?.name || 'Allan',
+          action: 'CLEARED_AUDIT_TRAIL',
+          details: 'Master Admin cleared demo audit history.'
+        }
+      ];
+      setLogs(cleanLogs);
+      localStorage.setItem('kilt_logs', JSON.stringify(cleanLogs));
+      showToast('🧹 Audit logs reset to clean state!', 'success');
+    }
+  };
+
 
 
   // Update Pricing Matrix Entry
@@ -5584,10 +5621,21 @@ export default function KiltHireApp() {
                   {/* STAFF INVITATIONS TABLE */}
                   <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
                     <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                      <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                        <UserPlus className="w-5 h-5 text-amber-600" /> Pending Invitations ({invites.filter(i=>i.status==='PENDING').length})
-                      </h3>
-                      <span className="text-xs text-slate-500">Staff register using their assigned invite code</span>
+                      <div>
+                        <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                          <UserPlus className="w-5 h-5 text-amber-600" /> Pending Invitations ({invites.filter(i=>i.status==='PENDING').length})
+                        </h3>
+                        <span className="text-xs text-slate-500">Staff register using their assigned invite code</span>
+                      </div>
+
+                      {invites.length > 0 && (
+                        <button
+                          onClick={handleClearAllInvites}
+                          className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-extrabold text-[11px] rounded-xl border border-rose-200 flex items-center gap-1 transition shadow-sm"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-600" /> Purge All Invites
+                        </button>
+                      )}
                     </div>
 
                     <div className="overflow-x-auto">
@@ -5661,9 +5709,17 @@ export default function KiltHireApp() {
 
                   {/* STAFF ACTION AUDIT LOG */}
                   <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
-                    <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                      <FileText className="w-5 h-5 text-amber-600" /> Staff Activity Audit Trail
-                    </h3>
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                      <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                        <FileText className="w-5 h-5 text-amber-600" /> Staff Activity Audit Trail
+                      </h3>
+                      <button
+                        onClick={handleClearAuditLogs}
+                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-[11px] rounded-xl border border-slate-200 flex items-center gap-1 transition shadow-sm"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-slate-600" /> Clear Audit Logs
+                      </button>
+                    </div>
 
                     <div className="space-y-2 max-h-80 overflow-y-auto">
                       {logs.map(log => (

@@ -9,38 +9,10 @@ export const INITIAL_STAFF: StaffUser[] = [
     pin: '1234',
     avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
     registeredAt: '2026-05-01 09:00'
-  },
-  {
-    id: 'STAFF-0002',
-    name: 'Fiona MacLean',
-    role: 'Senior Hire Specialist',
-    email: 'fiona@kilt-hire.co.uk',
-    pin: '1234',
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
-    registeredAt: '2026-05-15 10:30'
   }
 ];
 
-export const INITIAL_INVITES: StaffInvite[] = [
-  {
-    id: 'INV-9901',
-    code: 'HIGHLAND-STAFF-9901',
-    email: 'calum@kilt-hire.co.uk',
-    role: 'Senior Hire Specialist',
-    createdAt: '2026-07-28 14:00',
-    createdByName: 'Allan (Master Admin)',
-    status: 'PENDING'
-  },
-  {
-    id: 'INV-9902',
-    code: 'HIGHLAND-STAFF-9902',
-    email: 'isla@kilt-hire.co.uk',
-    role: 'Inventory & Workshop Staff',
-    createdAt: '2026-07-29 09:15',
-    createdByName: 'Allan (Master Admin)',
-    status: 'PENDING'
-  }
-];
+export const INITIAL_INVITES: StaffInvite[] = [];
 
 // Master Pricing Matrix (Duplicated for Adults and Kids)
 export const DEFAULT_PRICING_MATRIX: CategoryPriceSetting[] = [
@@ -457,16 +429,9 @@ export const INITIAL_POS: PurchaseOrder[] = [
 export const INITIAL_LOGS: AuditLog[] = [
   {
     id: 'LOG-001',
-    timestamp: '2026-08-02 09:45',
+    timestamp: '2026-08-07 12:00',
     staffName: 'Allan',
-    action: 'CREATED_PO_PAYPAL',
-    details: 'Created Purchase Order PO-2026-8802 for Fiona Sinclair (£60 + £60 PayPal deposit)'
-  },
-  {
-    id: 'LOG-002',
-    timestamp: '2026-08-01 11:20',
-    staffName: 'Fiona MacLean',
-    action: 'CREATED_PO_PAYPAL',
-    details: 'Created Purchase Order PO-2026-9011 for Gordon MacLeod. Applied Full Rigout Price Cap (£120)'
+    action: 'SYSTEM_INITIALIZED',
+    details: 'Highland Kilt Hire Back Office system initialized for Master Admin Allan.'
   }
 ];
