@@ -104,7 +104,11 @@ import {
   HelpCircle,
   BookOpen,
   BarChart3,
-  TrendingUp
+  TrendingUp,
+  Download,
+  Smartphone,
+  Share2,
+  PlusSquare
 } from 'lucide-react';
 
 const CATEGORIES: ItemCategory[] = [
@@ -258,6 +262,12 @@ export default function KiltHireApp() {
   // Modals state
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [showSendRepairModal, setShowSendRepairModal] = useState(false);
+  
+  // PWA Installability State
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isStandalone, setIsStandalone] = useState<boolean>(false);
+  const [showIosInstallModal, setShowIosInstallModal] = useState<boolean>(false);
+  const [installDismissed, setInstallDismissed] = useState<boolean>(false);
   const [showCreatePoModal, setShowCreatePoModal] = useState(false);
   const [showEditPoModal, setShowEditPoModal] = useState<PurchaseOrder | null>(null);
   const [showBatchModal, setShowBatchModal] = useState(false);
@@ -369,7 +379,60 @@ export default function KiltHireApp() {
   const [masterRegError, setMasterRegError] = useState('');
   const [regPassword, setRegPassword] = useState('');
 
-  // ─── LOAD DATA: Firestore first, fall back to localStorage cache ─────────────
+  // ─── LOAD DATA & PWA SETUP ───────────────────────────────────────────────────
+  useEffect(() => {
+    // Check if running in standalone mode (already installed)
+    if (typeof window !== 'undefined') {
+      const isStandaloneMode = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone === true;
+      setIsStandalone(isStandaloneMode);
+      const dismissed = localStorage.getItem('kilt_pwa_dismissed');
+      if (dismissed === 'true') setInstallDismissed(true);
+
+      // Register Service Worker for PWA installation & caching
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').catch((err) => {
+          console.warn('PWA Service Worker registration skipped or failed:', err);
+        });
+      }
+
+      // Capture beforeinstallprompt event for Android / Chrome / Edge
+      const handleBeforeInstallPrompt = (e: Event) => {
+        e.preventDefault();
+        setDeferredPrompt(e);
+      };
+      window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+      return () => {
+        window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      };
+    }
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        showToast('🎉 Highland Kilt Hire app installed successfully!', 'success');
+        setDeferredPrompt(null);
+      }
+    } else {
+      const isIos = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+      if (isIos) {
+        setShowIosInstallModal(true);
+      } else {
+        showToast('📲 To install: Open browser menu (⋮ or Share) and select "Add to Home Screen" or "Install App".', 'info');
+      }
+    }
+  };
+
+  const handleDismissBanner = () => {
+    setInstallDismissed(true);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('kilt_pwa_dismissed', 'true');
+    }
+  };
+
   useEffect(() => {
     const savedMode = localStorage.getItem('kilt_interface_mode');
     if (savedMode === 'shop_assistant' || savedMode === 'admin_portal') setInterfaceMode(savedMode);
@@ -2034,6 +2097,15 @@ export default function KiltHireApp() {
             <Crown className="w-4 h-4 text-amber-400" /> Create Real Master Admin Account
           </button>
 
+          {!isStandalone && (
+            <button 
+              onClick={handleInstallApp}
+              className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm transition mb-2"
+            >
+              <Smartphone className="w-4 h-4 text-indigo-200" /> Install App to Device
+            </button>
+          )}
+
           <button 
             onClick={() => setShowUserGuideModal(true)}
             className="w-full py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm transition mb-2"
@@ -2061,6 +2133,41 @@ export default function KiltHireApp() {
 
       {/* MAIN WORKSPACE */}
       <div className="flex-1 flex flex-col min-w-0">
+        
+        {/* PWA INSTALL TOP BANNER */}
+        {!isStandalone && !installDismissed && (
+          <div className="no-print bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white px-6 py-3 border-b border-indigo-900 flex items-center justify-between shadow-md">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-indigo-600/60 rounded-xl text-indigo-200 border border-indigo-500/40">
+                <Smartphone className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-extrabold text-sm tracking-tight">Install Highland Kilt Hire Portal</span>
+                  <span className="px-2 py-0.5 text-[10px] font-extrabold bg-amber-500 text-slate-950 rounded-full">PWA App</span>
+                </div>
+                <p className="text-xs text-indigo-200/80">Install to your phone or desktop home screen for 1-tap launch, camera scanner & offline access.</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleInstallApp}
+                className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5 border border-indigo-400/30"
+              >
+                <Download className="w-4 h-4 text-indigo-100" /> Install App
+              </button>
+              <button
+                onClick={handleDismissBanner}
+                className="p-1.5 text-indigo-300 hover:text-white hover:bg-white/10 rounded-lg transition text-xs"
+                title="Dismiss"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
         <header className="no-print bg-white border-b border-slate-200 sticky top-0 z-30 px-6 py-4 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-3">
             <button
@@ -2093,6 +2200,15 @@ export default function KiltHireApp() {
           </div>
 
           <div className="flex items-center gap-3">
+            {!isStandalone && (
+              <button
+                onClick={handleInstallApp}
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-full shadow-sm transition flex items-center gap-1.5"
+              >
+                <Download className="w-4 h-4 text-indigo-200" /> Install App
+              </button>
+            )}
+
             <button
               onClick={() => setShowUserGuideModal(true)}
               className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-950 font-extrabold text-xs rounded-full shadow-sm transition flex items-center gap-1.5"
@@ -6990,7 +7106,62 @@ export default function KiltHireApp() {
           </div>
         </div>
       )}
+      {/* IOS SAFARI PWA INSTALLATION GUIDE MODAL */}
+      {showIosInstallModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in-95">
+            <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-indigo-100 rounded-xl text-indigo-600">
+                  <Smartphone className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900">Install on iPhone / iPad</h3>
+                  <span className="text-xs font-semibold text-slate-500">Safari iOS Installation Steps</span>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowIosInstallModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs font-medium text-slate-700">
+              <p className="text-slate-600 font-semibold">
+                Apple iOS does not show automatic install popups, but you can add this app to your Home Screen in 3 quick steps:
+              </p>
+
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-7 h-7 rounded-full bg-indigo-600 text-white font-extrabold flex items-center justify-center text-xs shrink-0">1</div>
+                  <p>Tap the <span className="font-extrabold text-slate-900">Share button</span> <Share2 className="inline w-4 h-4 text-indigo-600 mx-1" /> at the bottom or top of your Safari browser.</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-7 h-7 rounded-full bg-indigo-600 text-white font-extrabold flex items-center justify-center text-xs shrink-0">2</div>
+                  <p>Scroll down the menu and tap <span className="font-extrabold text-slate-900">"Add to Home Screen"</span> <PlusSquare className="inline w-4 h-4 text-amber-600 mx-1" />.</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-7 h-7 rounded-full bg-indigo-600 text-white font-extrabold flex items-center justify-center text-xs shrink-0">3</div>
+                  <p>Tap <span className="font-extrabold text-indigo-600">"Add"</span> in the top right corner. The Highland Kilt Hire app icon will appear on your Home Screen!</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                onClick={() => setShowIosInstallModal(false)}
+                className="w-full py-2.5 bg-slate-900 hover:bg-slate-950 text-white font-extrabold text-xs rounded-xl shadow-md transition"
+              >
+                Got It, Thanks!
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
 }
+
