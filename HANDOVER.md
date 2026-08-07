@@ -161,11 +161,11 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+a6957fa  feat: remove Create Real Master Admin Account button and modal since setup is complete
+0566a79  docs: update HANDOVER.md with PWA installability details
 3ca74c6  feat: add PWA support - installable web app, manifest.json, sw.js, PWA icons, iOS install modal & top install banner
 07ad6a2  docs: update HANDOVER.md - ZXing migration complete, critical issue resolved
 be8993a  feat: switch QR scanner from jsQR to ZXing BrowserMultiFormatReader for better mobile scanning
-4817357  docs: add project handover document
-95f4ede  fix: square camera viewport, text outside frame, unrecognised QR error banner, attemptBoth jsQR mode
 9a33458  fix: guard Firebase to client-side only, add apphosting.yaml env vars for App Hosting build
 6093181  feat: clean up scanner from test/demo mode to live production
 383a599  feat: wire Firebase Auth + Firestore backend - real accounts, cloud data persistence
