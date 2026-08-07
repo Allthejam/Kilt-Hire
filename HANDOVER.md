@@ -161,10 +161,10 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+efc6407  feat: bind Change Security PIN Code to live Firestore /users/{uid} document reading and writing
 317f7e4  feat: add Account Status, System Role badge & Access Scope card to My Account settings modal
 9ef9f0e  feat: add My Account settings modal from avatar - change info, password & PIN with eye toggles, and close account option
 d7de8c1  feat: add show password eye toggle and stay connected checkbox to Sign In form
-962adac  feat: add 25% camera zoom default, multi-lens selector, hardware+CSS zoom & dual engine QR decoder
 c004095  fix: responsive header and workspace layout to prevent mobile horizontal scrolling
 3ca74c6  feat: add PWA support - installable web app, manifest.json, sw.js, PWA icons, iOS install modal & top install banner
 be8993a  feat: switch QR scanner from jsQR to ZXing BrowserMultiFormatReader for better mobile scanning
