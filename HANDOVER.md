@@ -161,6 +161,7 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+317f7e4  feat: add Account Status, System Role badge & Access Scope card to My Account settings modal
 9ef9f0e  feat: add My Account settings modal from avatar - change info, password & PIN with eye toggles, and close account option
 d7de8c1  feat: add show password eye toggle and stay connected checkbox to Sign In form
 962adac  feat: add 25% camera zoom default, multi-lens selector, hardware+CSS zoom & dual engine QR decoder
