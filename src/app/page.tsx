@@ -2586,16 +2586,6 @@ export default function KiltHireApp() {
             )}
 
             <button
-              onClick={() => setShowUserGuideModal(true)}
-              className="px-2.5 sm:px-3 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-950 font-extrabold text-xs rounded-full shadow-sm transition flex items-center gap-1 shrink-0"
-              title="User Guide & Manual"
-            >
-              <BookOpen className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-              <span className="hidden md:inline">User Guide & Manual</span>
-              <span className="md:hidden text-[11px]">Guide</span>
-            </button>
-
-            <button
               onClick={() => setInterfaceMode(interfaceMode === 'admin_portal' ? 'shop_assistant' : 'admin_portal')}
               className={`px-2.5 sm:px-3.5 py-1.5 rounded-full text-xs font-extrabold flex items-center gap-1 shrink-0 border shadow-sm transition ${
                 interfaceMode === 'shop_assistant'
@@ -6128,6 +6118,26 @@ export default function KiltHireApp() {
           )}
 
         </main>
+
+        {/* VERY BOTTOM APP FOOTER / USER GUIDE & MANUAL */}
+        <footer className="no-print bg-slate-900 text-white border-t border-slate-800 py-3 px-4 flex flex-wrap items-center justify-between gap-3 text-xs mt-auto">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-lg bg-amber-500 text-slate-950 font-extrabold text-[11px] flex items-center justify-center shrink-0">
+              H
+            </div>
+            <span className="font-bold text-slate-300 text-xs">Highland Kilt Hire Back Office</span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowUserGuideModal(true)}
+              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl font-extrabold text-xs flex items-center gap-2 shadow-md transition"
+            >
+              <BookOpen className="w-4 h-4 text-slate-950 shrink-0" />
+              <span>User Guide & Operations Manual</span>
+            </button>
+          </div>
+        </footer>
       </div>
 
       {/* EDIT ITEM DETAILS MODAL */}
