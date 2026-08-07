@@ -367,16 +367,7 @@ export default function KiltHireApp() {
   const [showUserGuideModal, setShowUserGuideModal] = useState<boolean>(false);
   const [guideTopic, setGuideTopic] = useState<'SCANNER' | 'CALENDAR' | 'QR_PRINTING' | 'BULK_BINS' | 'LAUNDRY' | 'ANALYTICS'>('SCANNER');
 
-  // Master Admin Real Account Creation Modal State
-  const [showMasterAdminRegModal, setShowMasterAdminRegModal] = useState<boolean>(false);
-  const [masterRegForm, setMasterRegForm] = useState({
-    name: 'Allan',
-    email: 'admin@kilt-hire.co.uk',
-    pin: '1234',
-    password: '',
-    role: 'Master Admin' as const
-  });
-  const [masterRegError, setMasterRegError] = useState('');
+
   const [regPassword, setRegPassword] = useState('');
 
   // ─── LOAD DATA & PWA SETUP ───────────────────────────────────────────────────
@@ -402,8 +393,17 @@ export default function KiltHireApp() {
       };
       window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
+      // Instantly hide all install buttons when the user completes app installation
+      const handleAppInstalled = () => {
+        setIsStandalone(true);
+        setDeferredPrompt(null);
+        showToast('🎉 App installed to Home Screen! You can now launch it directly as a native app.', 'success');
+      };
+      window.addEventListener('appinstalled', handleAppInstalled);
+
       return () => {
         window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+        window.removeEventListener('appinstalled', handleAppInstalled);
       };
     }
   }, []);
@@ -737,61 +737,7 @@ export default function KiltHireApp() {
     setNewInviteEmail('');
   };
 
-  // CREATE / CLAIM REAL MASTER ADMIN ACCOUNT HANDLER — Firebase Auth + Firestore
-  const handleRegisterMasterAdminSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setMasterRegError('');
-    const cleanEmail = masterRegForm.email.trim().toLowerCase();
-    const cleanName = masterRegForm.name.trim() || 'Allan';
-    const cleanPin = masterRegForm.pin.trim() || '1234';
-    const cleanPassword = masterRegForm.password.trim();
 
-    if (!cleanPassword || cleanPassword.length < 6) {
-      setMasterRegError('Please set a secure password (min 6 characters). Your PIN remains separate for in-app overrides.');
-      return;
-    }
-
-    try {
-      if (!auth) {
-        setMasterRegError('Authentication service unavailable. Please try again in a moment.');
-        return;
-      }
-      // Create Firebase Auth account
-      const credential = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPassword);
-      const uid = credential.user.uid;
-
-      const realMasterUser: StaffUser = {
-        id: uid,
-        name: cleanName,
-        role: 'Master Admin',
-        email: cleanEmail,
-        pin: cleanPin,
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-        registeredAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
-      };
-
-      // Save profile to Firestore /users/{uid}
-      await upsertStaffProfile(uid, realMasterUser);
-
-      const updatedStaff = [realMasterUser, ...staffList.filter(s => s.email.toLowerCase() !== cleanEmail)];
-      setStaffList(updatedStaff);
-      setCurrentUser(realMasterUser);
-      localStorage.setItem('kilt_staff', JSON.stringify(updatedStaff));
-      localStorage.setItem('kilt_current_user', JSON.stringify(realMasterUser));
-
-      addAuditLog('CREATED_REAL_MASTER_ADMIN', `Real Master Admin account created for ${cleanName} (${cleanEmail}). Firebase UID: ${uid}`);
-      setShowMasterAdminRegModal(false);
-      showToast(`👑 Master Admin account created & saved to Firebase for ${cleanName}!`, 'success');
-    } catch (err: unknown) {
-      const errorCode = (err as { code?: string }).code;
-      if (errorCode === 'auth/email-already-in-use') {
-        setMasterRegError('This email already has a Firebase account. Use the Login tab instead, or go to Firebase Console to reset.');
-      } else {
-        setMasterRegError('Account creation failed. Please check your details and try again.');
-        console.error(err);
-      }
-    }
-  };
 
   // Update Pricing Matrix Entry
   const handleUpdatePriceSetting = (category: ItemCategory, field: keyof CategoryPriceSetting, value: number) => {
