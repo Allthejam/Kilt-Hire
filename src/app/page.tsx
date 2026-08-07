@@ -6657,6 +6657,40 @@ export default function KiltHireApp() {
               </div>
             )}
 
+            {/* ACCOUNT STATUS & ACCESS LEVEL CARD */}
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">Account Status</span>
+                <span className="px-2.5 py-0.5 text-[10px] font-extrabold bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-full flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Active Staff Member
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
+                <div>
+                  <span className="text-[10px] text-slate-400 font-semibold block">Assigned System Role</span>
+                  <span className={`px-2.5 py-1 text-xs font-extrabold rounded-xl inline-block mt-0.5 ${
+                    currentUser.role === 'Master Admin' ? 'bg-amber-100 text-amber-900 border border-amber-300' :
+                    currentUser.role === 'Admin' ? 'bg-blue-100 text-blue-900 border border-blue-300' :
+                    'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                  }`}>
+                    {currentUser.role === 'Master Admin' ? '👑 Master Admin' :
+                     currentUser.role === 'Admin' ? '🛡️ System Admin' :
+                     '🏪 Shop Assistant'}
+                  </span>
+                </div>
+
+                <div className="text-right">
+                  <span className="text-[10px] text-slate-400 font-semibold block">Access Scope</span>
+                  <span className="text-xs font-bold text-slate-700">
+                    {currentUser.role === 'Master Admin' ? 'Full System & User Control' :
+                     currentUser.role === 'Admin' ? 'Inventory, POs & Batches' :
+                     'Floor Terminal & Scanner'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
             <form onSubmit={handleSaveAccountSubmit} className="space-y-4 text-xs">
               
               {/* PERSONAL INFO */}
