@@ -28,6 +28,7 @@ import {
   upsertPurchaseOrder,
   getAuditLogs,
   addAuditLogFS,
+  clearAuditLogsFS,
   getPricing,
   savePricing,
   seedCollectionIfEmpty,
@@ -645,7 +646,7 @@ export default function KiltHireApp() {
   // Log audit helper
   const addAuditLog = (action: string, details: string, relatedQrCode?: string) => {
     const newLog: AuditLog = {
-      id: `LOG-${Date.now().toString().slice(-5)}`,
+      id: `LOG-${Date.now()}-${Math.floor(Math.random()*1000)}`,
       timestamp: new Date().toISOString().replace('T', ' ').slice(0, 16),
       staffName: currentUser ? currentUser.name : 'System',
       action,
@@ -653,6 +654,12 @@ export default function KiltHireApp() {
       relatedQrCode
     };
     setLogs(prev => [newLog, ...prev]);
+    // Persist log directly to Firestore audit_logs collection
+    try {
+      addAuditLogFS(newLog);
+    } catch (err) {
+      console.warn('Firestore audit log write note:', err);
+    }
   };
 
   // LOGIN Handler — Firebase Auth + PIN secondary check
@@ -913,20 +920,24 @@ export default function KiltHireApp() {
   };
 
   // PURGE DEMO AUDIT LOGS
-  const handleClearAuditLogs = () => {
+  const handleClearAuditLogs = async () => {
     if (confirm("Reset audit activity trail to clean state?")) {
-      const cleanLogs: AuditLog[] = [
-        {
-          id: `LOG-${Date.now()}`,
-          timestamp: new Date().toISOString().replace('T', ' ').slice(0, 16),
-          staffName: currentUser?.name || 'Allan',
-          action: 'CLEARED_AUDIT_TRAIL',
-          details: 'Master Admin cleared demo audit history.'
-        }
-      ];
-      setLogs(cleanLogs);
-      localStorage.setItem('kilt_logs', JSON.stringify(cleanLogs));
-      showToast('🧹 Audit logs reset to clean state!', 'success');
+      const cleanLog: AuditLog = {
+        id: `LOG-${Date.now()}`,
+        timestamp: new Date().toISOString().replace('T', ' ').slice(0, 16),
+        staffName: currentUser?.name || 'Allan',
+        action: 'CLEARED_AUDIT_TRAIL',
+        details: 'Master Admin cleared demo audit history.'
+      };
+      try {
+        await clearAuditLogsFS();
+        await addAuditLogFS(cleanLog);
+      } catch (err) {
+        console.warn('Firestore clear audit logs note:', err);
+      }
+      setLogs([cleanLog]);
+      localStorage.setItem('kilt_logs', JSON.stringify([cleanLog]));
+      showToast('🧹 Audit logs reset to clean state in database!', 'success');
     }
   };
 

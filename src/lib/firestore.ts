@@ -111,6 +111,11 @@ export async function addAuditLogFS(log: AuditLog): Promise<void> {
   await setDoc(doc(requireDb(), 'audit_logs', log.id), log);
 }
 
+export async function clearAuditLogsFS(): Promise<void> {
+  const snap = await getDocs(collection(requireDb(), 'audit_logs'));
+  await Promise.all(snap.docs.map(d => deleteDoc(doc(requireDb(), 'audit_logs', d.id))));
+}
+
 // --- PRICING ------------------------------------------------------------------
 
 export async function getPricing(): Promise<CategoryPriceSetting[] | null> {
