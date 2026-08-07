@@ -102,6 +102,7 @@ import {
   AlertCircle,
   Archive,
   Eye,
+  EyeOff,
   RefreshCw as RestoreIcon,
   CheckCircle,
   HelpCircle,
@@ -249,13 +250,17 @@ export default function KiltHireApp() {
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPin, setLoginPin] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
 
   // Register form
   const [regInviteCode, setRegInviteCode] = useState('');
   const [regName, setRegName] = useState('');
   const [regEmail, setRegEmail] = useState('');
+  const [regPassword, setRegPassword] = useState('');
   const [regPin, setRegPin] = useState('');
   const [regError, setRegError] = useState('');
+  const [showRegPassword, setShowRegPassword] = useState(false);
 
   // Tab State for Admin: 'scanner' | 'batches' | 'inventory' | 'pos' | 'laundry' | 'repairs' | 'analytics' | 'pricing' | 'admin'
   const [activeTab, setActiveTab] = useState<'scanner' | 'batches' | 'inventory' | 'pos' | 'laundry' | 'repairs' | 'analytics' | 'pricing' | 'admin'>('scanner');
@@ -400,9 +405,6 @@ export default function KiltHireApp() {
   // Staff User Guide & Operations Manual Modal State
   const [showUserGuideModal, setShowUserGuideModal] = useState<boolean>(false);
   const [guideTopic, setGuideTopic] = useState<'SCANNER' | 'CALENDAR' | 'QR_PRINTING' | 'BULK_BINS' | 'LAUNDRY' | 'ANALYTICS'>('SCANNER');
-
-
-  const [regPassword, setRegPassword] = useState('');
 
   // ─── LOAD DATA & PWA SETUP ───────────────────────────────────────────────────
   useEffect(() => {
@@ -1955,23 +1957,43 @@ export default function KiltHireApp() {
               </div>
 
               <div>
-                <label className="block text-slate-700 font-bold mb-1">Staff PIN Code</label>
+                <label className="block text-slate-700 font-extrabold mb-1">Staff Password / PIN</label>
                 <div className="relative">
-                  <Key className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <Key className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                   <input 
-                    type="password"
+                    type={showLoginPassword ? "text" : "password"}
                     required
-                    placeholder="Enter your PIN code"
+                    placeholder="Enter your password or PIN code"
                     value={loginPin}
                     onChange={e => setLoginPin(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-slate-900 outline-none focus:border-amber-500 shadow-sm"
+                    className="w-full bg-white border border-slate-300 rounded-xl pl-9 pr-10 py-2.5 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowLoginPassword(!showLoginPassword)}
+                    className="absolute right-3 top-2.5 p-1 text-slate-400 hover:text-slate-700 transition"
+                    title={showLoginPassword ? "Hide password" : "Show password"}
+                  >
+                    {showLoginPassword ? <EyeOff className="w-4 h-4 text-amber-600" /> : <Eye className="w-4 h-4 text-slate-400" />}
+                  </button>
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between py-1">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input 
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={e => setRememberMe(e.target.checked)}
+                    className="w-4 h-4 text-amber-600 rounded border-slate-300 focus:ring-amber-500 accent-amber-600 cursor-pointer"
+                  />
+                  <span className="text-xs font-semibold text-slate-700">Stay connected on this device</span>
+                </label>
               </div>
 
               <button
                 type="submit"
-                className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold rounded-xl shadow-md transition"
+                className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition"
               >
                 Sign In to Back Office
               </button>
@@ -2030,16 +2052,26 @@ export default function KiltHireApp() {
               </div>
 
               <div>
-                <label className="block text-slate-700 font-bold mb-1">Account Password <span className="text-slate-500 font-normal">(min 6 characters — for login from any device)</span></label>
-                <input 
-                  type="password"
-                  required
-                  minLength={6}
-                  placeholder="Set a secure login password"
-                  value={regPassword}
-                  onChange={e => setRegPassword(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 outline-none focus:border-amber-500 shadow-sm"
-                />
+                <label className="block text-slate-700 font-extrabold mb-1">Account Password <span className="text-slate-500 font-normal">(min 6 characters)</span></label>
+                <div className="relative">
+                  <input 
+                    type={showRegPassword ? "text" : "password"}
+                    required
+                    minLength={6}
+                    placeholder="Set a secure login password"
+                    value={regPassword}
+                    onChange={e => setRegPassword(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-xl pl-3 pr-10 py-2.5 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowRegPassword(!showRegPassword)}
+                    className="absolute right-3 top-2.5 p-1 text-slate-400 hover:text-slate-700 transition"
+                    title={showRegPassword ? "Hide password" : "Show password"}
+                  >
+                    {showRegPassword ? <EyeOff className="w-4 h-4 text-amber-600" /> : <Eye className="w-4 h-4 text-slate-400" />}
+                  </button>
+                </div>
               </div>
 
               <div>
