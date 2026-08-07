@@ -6,6 +6,8 @@ import { DecodeHintType } from '@zxing/library';
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  updatePassword,
+  deleteUser,
   signOut,
   onAuthStateChanged,
 } from 'firebase/auth';
@@ -383,6 +385,18 @@ export default function KiltHireApp() {
   const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   const [zoomLevel, setZoomLevel] = useState<number>(1.25); // Default 1.25x (25% zoom)
+
+  // My Account Modal State
+  const [showMyAccountModal, setShowMyAccountModal] = useState<boolean>(false);
+  const [accountForm, setAccountForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    pin: ''
+  });
+  const [showAccPassword, setShowAccPassword] = useState<boolean>(false);
+  const [showAccPin, setShowAccPin] = useState<boolean>(false);
+  const [accountMsg, setAccountMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   // PO Form state
   const [newPoForm, setNewPoForm] = useState({
@@ -908,6 +922,86 @@ export default function KiltHireApp() {
       setLogs(cleanLogs);
       localStorage.setItem('kilt_logs', JSON.stringify(cleanLogs));
       showToast('🧹 Audit logs reset to clean state!', 'success');
+    }
+  };
+
+  // MY ACCOUNT HANDLERS
+  const handleOpenMyAccount = () => {
+    if (!currentUser) return;
+    setAccountForm({
+      name: currentUser.name,
+      email: currentUser.email,
+      password: '',
+      pin: currentUser.pin || '1234'
+    });
+    setAccountMsg(null);
+    setShowAccPassword(false);
+    setShowAccPin(false);
+    setShowMyAccountModal(true);
+  };
+
+  const handleSaveAccountSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser) return;
+    setAccountMsg(null);
+
+    const cleanName = accountForm.name.trim();
+    const cleanEmail = accountForm.email.trim().toLowerCase();
+    const cleanPin = accountForm.pin.trim() || '1234';
+    const newPass = accountForm.password.trim();
+
+    if (!cleanName || !cleanEmail) {
+      setAccountMsg({ text: 'Name and Email are required.', type: 'error' });
+      return;
+    }
+
+    try {
+      if (newPass && auth?.currentUser) {
+        if (newPass.length < 6) {
+          setAccountMsg({ text: 'Password must be at least 6 characters.', type: 'error' });
+          return;
+        }
+        await updatePassword(auth.currentUser, newPass);
+      }
+
+      const updatedUser: StaffUser = {
+        ...currentUser,
+        name: cleanName,
+        email: cleanEmail,
+        pin: cleanPin
+      };
+
+      await upsertStaffProfile(updatedUser.id, updatedUser);
+      setCurrentUser(updatedUser);
+      setStaffList(prev => prev.map(s => s.id === updatedUser.id ? updatedUser : s));
+      localStorage.setItem('kilt_current_user', JSON.stringify(updatedUser));
+
+      addAuditLog('UPDATED_MY_ACCOUNT', `${cleanName} updated their profile info and security credentials.`);
+      setAccountMsg({ text: '🎉 Profile & Security Credentials updated successfully!', type: 'success' });
+      setAccountForm(prev => ({ ...prev, password: '' }));
+    } catch (err: any) {
+      setAccountMsg({ text: err.message || 'Failed to update account.', type: 'error' });
+    }
+  };
+
+  const handleCloseMyAccount = async () => {
+    if (!currentUser) return;
+    if (confirm(`Are you sure you want to CLOSE and DEACTIVATE your account (${currentUser.email})?\n\nThis will remove your access and log you out immediately.`)) {
+      try {
+        const uid = currentUser.id;
+        await deleteStaffProfile(uid);
+        if (auth?.currentUser) {
+          try { await deleteUser(auth.currentUser); } catch { /* silent */ }
+        }
+        setStaffList(prev => prev.filter(s => s.id !== uid));
+        addAuditLog('CLOSED_STAFF_ACCOUNT', `Staff account for ${currentUser.name} (${currentUser.email}) was closed by user.`);
+        setCurrentUser(null);
+        localStorage.removeItem('kilt_current_user');
+        setShowMyAccountModal(false);
+        showToast('👋 Your staff account has been closed. You are now logged out.', 'info');
+      } catch (err: any) {
+        setAccountMsg({ text: err.message || 'Failed to close account.', type: 'error' });
+      }
     }
   };
 
@@ -2304,23 +2398,37 @@ export default function KiltHireApp() {
 
         <div className="p-4 border-t border-slate-200 bg-slate-50/70 space-y-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-amber-500 text-slate-950 font-bold text-sm flex items-center justify-center shadow-sm">
+            <div 
+              onClick={handleOpenMyAccount}
+              className="flex items-center gap-2.5 cursor-pointer hover:opacity-85 transition group"
+              title="Click to open My Account Settings"
+            >
+              <div className="w-9 h-9 rounded-xl bg-amber-500 text-slate-950 font-extrabold text-sm flex items-center justify-center shadow-sm relative shrink-0">
                 {currentUser.name.charAt(0)}
+                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full" />
               </div>
-              <div>
-                <span className="text-xs font-bold text-slate-900 block truncate max-w-[130px]">{currentUser.name}</span>
+              <div className="min-w-0">
+                <span className="text-xs font-bold text-slate-900 block truncate max-w-[120px] group-hover:text-amber-700 transition">{currentUser.name}</span>
                 <span className="text-[10px] text-amber-700 font-semibold block">{currentUser.role}</span>
               </div>
             </div>
 
-            <button
-              onClick={() => setCurrentUser(null)}
-              title="Sign Out"
-              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={handleOpenMyAccount}
+                title="My Account Settings"
+                className="p-2 text-slate-500 hover:text-amber-700 hover:bg-amber-100 rounded-lg transition"
+              >
+                <UserCog className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setCurrentUser(null)}
+                title="Sign Out"
+                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
 
@@ -2463,6 +2571,18 @@ export default function KiltHireApp() {
               {interfaceMode === 'shop_assistant' ? <Store className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> : <ShieldCheck className="w-3.5 h-3.5 text-amber-600 shrink-0" />}
               <span className="hidden sm:inline">{interfaceMode === 'shop_assistant' ? 'Switch to Full Admin' : 'Switch to Shop Assistant'}</span>
               <span className="sm:hidden text-[11px]">{interfaceMode === 'shop_assistant' ? 'Admin' : 'Shop Mode'}</span>
+            </button>
+
+            <button
+              onClick={handleOpenMyAccount}
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-slate-900 hover:bg-slate-950 text-white rounded-full font-extrabold text-xs shadow-sm transition shrink-0 border border-slate-800"
+              title="My Account Settings"
+            >
+              <div className="w-5 h-5 rounded-full bg-amber-500 text-slate-950 font-extrabold text-[10px] flex items-center justify-center shrink-0">
+                {currentUser.name.charAt(0)}
+              </div>
+              <span className="hidden lg:inline">{currentUser.name}</span>
+              <UserCog className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             </button>
           </div>
         </header>
@@ -6496,6 +6616,161 @@ export default function KiltHireApp() {
                 <CheckCircle2 className="w-5 h-5" /> Confirm PO Batch Return & Process PayPal Deposit Refund
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MY ACCOUNT & PROFILE SETTINGS MODAL */}
+      {showMyAccountModal && currentUser && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in-95">
+            
+            {/* MODAL HEADER */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500 text-slate-950 font-extrabold text-lg flex items-center justify-center shadow-md shrink-0">
+                  {currentUser.name.charAt(0)}
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                    My Account Settings
+                  </h3>
+                  <span className="px-2 py-0.5 text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 rounded-full inline-block mt-0.5">
+                    Role: {currentUser.role}
+                  </span>
+                </div>
+              </div>
+
+              <button 
+                onClick={() => setShowMyAccountModal(false)}
+                className="text-slate-400 hover:text-slate-700 p-1.5 hover:bg-slate-100 rounded-xl transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {accountMsg && (
+              <div className={`p-3 rounded-xl text-xs font-bold border ${
+                accountMsg.type === 'success' ? 'bg-emerald-50 text-emerald-900 border-emerald-300' : 'bg-rose-50 text-rose-700 border-rose-200'
+              }`}>
+                {accountMsg.text}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveAccountSubmit} className="space-y-4 text-xs">
+              
+              {/* PERSONAL INFO */}
+              <div>
+                <label className="block text-slate-700 font-extrabold mb-1">Full Name</label>
+                <input 
+                  type="text" 
+                  required
+                  value={accountForm.name}
+                  onChange={e => setAccountForm({ ...accountForm, name: e.target.value })}
+                  className="w-full bg-white border border-slate-300 rounded-xl p-3 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-extrabold mb-1">Store Email Address</label>
+                <input 
+                  type="email" 
+                  required
+                  value={accountForm.email}
+                  onChange={e => setAccountForm({ ...accountForm, email: e.target.value })}
+                  className="w-full bg-white border border-slate-300 rounded-xl p-3 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                />
+              </div>
+
+              {/* CHANGE PASSWORD WITH SHOW EYE */}
+              <div>
+                <label className="block text-slate-700 font-extrabold mb-1">
+                  Change Account Password <span className="text-slate-500 font-normal">(leave blank to keep current)</span>
+                </label>
+                <div className="relative">
+                  <input 
+                    type={showAccPassword ? "text" : "password"}
+                    minLength={6}
+                    placeholder="Enter new password (min 6 chars)"
+                    value={accountForm.password}
+                    onChange={e => setAccountForm({ ...accountForm, password: e.target.value })}
+                    className="w-full bg-white border border-slate-300 rounded-xl pl-3 pr-10 py-3 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAccPassword(!showAccPassword)}
+                    className="absolute right-3 top-3 p-1 text-slate-400 hover:text-slate-700 transition"
+                    title={showAccPassword ? "Hide password" : "Show password"}
+                  >
+                    {showAccPassword ? <EyeOff className="w-4 h-4 text-amber-600" /> : <Eye className="w-4 h-4 text-slate-400" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* CHANGE OVERRIDE PIN WITH SHOW PIN EYE */}
+              <div>
+                <label className="block text-slate-700 font-extrabold mb-1">
+                  Change Security PIN Code <span className="text-slate-500 font-normal">(4-8 digits)</span>
+                </label>
+                <div className="relative">
+                  <input 
+                    type={showAccPin ? "text" : "password"}
+                    required
+                    maxLength={8}
+                    placeholder="Enter PIN code"
+                    value={accountForm.pin}
+                    onChange={e => setAccountForm({ ...accountForm, pin: e.target.value })}
+                    className="w-full bg-white border border-slate-300 rounded-xl pl-3 pr-10 py-3 text-slate-900 font-mono font-bold text-center tracking-widest text-base outline-none focus:border-amber-500 shadow-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAccPin(!showAccPin)}
+                    className="absolute right-3 top-3.5 p-1 text-slate-400 hover:text-slate-700 transition"
+                    title={showAccPin ? "Hide PIN" : "Show PIN"}
+                  >
+                    {showAccPin ? <EyeOff className="w-4 h-4 text-amber-600" /> : <Eye className="w-4 h-4 text-slate-400" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setShowMyAccountModal(false)}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5"
+                >
+                  <Check className="w-4 h-4 text-slate-950" /> Save Account Changes
+                </button>
+              </div>
+            </form>
+
+            {/* LEAVING COMPANY DANGER ZONE */}
+            <div className="border-t border-slate-200 pt-4 mt-4 space-y-2">
+              <div className="bg-rose-50 border border-rose-200 p-3.5 rounded-2xl flex items-center justify-between gap-3">
+                <div>
+                  <h4 className="font-extrabold text-xs text-rose-900 flex items-center gap-1">
+                    <UserMinus className="w-4 h-4 text-rose-600" /> Leaving the Company?
+                  </h4>
+                  <p className="text-[11px] text-rose-800 mt-0.5">
+                    Deactivating your account will close your staff access and log you out immediately.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCloseMyAccount}
+                  className="px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-xl shadow transition shrink-0"
+                >
+                  Close Account
+                </button>
+              </div>
+            </div>
+
           </div>
         </div>
       )}
