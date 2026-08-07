@@ -161,10 +161,10 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+c004095  fix: responsive header and workspace layout to prevent mobile horizontal scrolling
 19e8c18  feat: clean mock invites and staff logs, add Purge All Invites and Clear Audit Trail controls
 ded2c8f  feat: upgrade Master Admin & Staff Invites tab - direct staff account creation, role editing, invite revoking & full staff account management
 a6957fa  feat: remove Create Real Master Admin Account button and modal since setup is complete
-0566a79  docs: update HANDOVER.md with PWA installability details
 3ca74c6  feat: add PWA support - installable web app, manifest.json, sw.js, PWA icons, iOS install modal & top install banner
 be8993a  feat: switch QR scanner from jsQR to ZXing BrowserMultiFormatReader for better mobile scanning
 9a33458  fix: guard Firebase to client-side only, add apphosting.yaml env vars for App Hosting build
