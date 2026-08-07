@@ -2090,12 +2090,7 @@ export default function KiltHireApp() {
             </button>
           </div>
 
-          <button 
-            onClick={() => setShowMasterAdminRegModal(true)}
-            className="w-full py-2 bg-slate-900 hover:bg-slate-950 text-amber-300 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm transition mb-2"
-          >
-            <Crown className="w-4 h-4 text-amber-400" /> Create Real Master Admin Account
-          </button>
+
 
           {!isStandalone && (
             <button 
@@ -7001,111 +6996,7 @@ export default function KiltHireApp() {
         </div>
       )}
 
-      {/* REAL MASTER ADMIN REGISTRATION MODAL */}
-      {showMasterAdminRegModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                <Crown className="w-5 h-5 text-amber-600" /> Create Real Master Admin Account
-              </h3>
-              <button 
-                onClick={() => setShowMasterAdminRegModal(false)}
-                className="text-slate-400 hover:text-slate-700"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            <p className="text-xs text-slate-600 leading-relaxed bg-amber-50 p-3 rounded-xl border border-amber-200">
-              Create your permanent <strong>Master Admin Account</strong> with your real name, email, and custom security PIN code. This account will have full control over inventory, pricing, ROI analytics, and staff invites.
-            </p>
-
-            <form onSubmit={handleRegisterMasterAdminSubmit} className="space-y-4 text-xs">
-              <div>
-                <label className="block text-slate-700 font-bold mb-1">Your Full Name</label>
-                <input 
-                  type="text" 
-                  required
-                  placeholder="e.g. Allan"
-                  value={masterRegForm.name}
-                  onChange={e => setMasterRegForm({ ...masterRegForm, name: e.target.value })}
-                  className="w-full bg-white border border-slate-300 rounded-xl p-3 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-700 font-bold mb-1">Store Email Address</label>
-                <input 
-                  type="email" 
-                  required
-                  placeholder="e.g. admin@kilt-hire.co.uk"
-                  value={masterRegForm.email}
-                  onChange={e => setMasterRegForm({ ...masterRegForm, email: e.target.value })}
-                  className="w-full bg-white border border-slate-300 rounded-xl p-3 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-700 font-bold mb-1">Account Password <span className="text-slate-500 font-normal">(for login — min 6 characters)</span></label>
-                <input 
-                  type="password" 
-                  required
-                  minLength={6}
-                  placeholder="Set a secure login password"
-                  value={masterRegForm.password}
-                  onChange={e => setMasterRegForm({ ...masterRegForm, password: e.target.value })}
-                  className="w-full bg-white border border-slate-300 rounded-xl p-3 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
-                />
-                <p className="text-slate-500 mt-1 text-[11px]">Keep this safe — used to log in from any device. Your PIN is separate for in-app overrides.</p>
-              </div>
-
-              <div>
-                <label className="block text-slate-700 font-bold mb-1">Security PIN Code <span className="text-slate-500 font-normal">(for reprints & admin unlocks)</span></label>
-                <input 
-                  type="text" 
-                  required
-                  maxLength={8}
-                  placeholder="e.g. 1234 or custom 4-digit PIN"
-                  value={masterRegForm.pin}
-                  onChange={e => setMasterRegForm({ ...masterRegForm, pin: e.target.value })}
-                  className="w-full bg-white border border-slate-300 rounded-xl p-3 text-slate-900 font-mono font-bold text-center text-lg outline-none focus:border-amber-500 shadow-sm tracking-widest"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-700 font-bold mb-1">Account System Role</label>
-                <input 
-                  type="text" 
-                  disabled
-                  value="Master Admin (Owner - Full Access)"
-                  className="w-full bg-amber-50 border border-amber-300 rounded-xl p-3 text-amber-950 font-bold text-xs cursor-not-allowed"
-                />
-              </div>
-
-              {masterRegError && (
-                <p className="text-red-600 font-semibold text-xs bg-red-50 p-3 rounded-xl border border-red-200">{masterRegError}</p>
-              )}
-
-              <div className="pt-2 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowMasterAdminRegModal(false)}
-                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5"
-                >
-                  <ShieldCheck className="w-4 h-4 text-slate-950" /> Save to Firebase & Activate
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
       {/* IOS SAFARI PWA INSTALLATION GUIDE MODAL */}
       {showIosInstallModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
