@@ -137,10 +137,12 @@ export interface AuditLog {
   relatedQrCode?: string;
 }
 
+export type StaffRole = 'Master Admin' | 'Admin' | 'Shop Assistant' | 'Senior Hire Specialist' | 'Inventory & Workshop Staff';
+
 export interface StaffUser {
   id: string;
   name: string;
-  role: 'Master Admin' | 'Senior Hire Specialist' | 'Inventory & Workshop Staff';
+  role: StaffRole;
   email: string;
   pin: string;
   avatar?: string;
@@ -151,9 +153,10 @@ export interface StaffInvite {
   id: string;
   code: string;
   email: string;
-  role: 'Senior Hire Specialist' | 'Inventory & Workshop Staff';
+  role: StaffRole;
   createdAt: string;
   createdByName: string;
   status: 'PENDING' | 'REGISTERED' | 'EXPIRED';
   usedAt?: string;
 }
+

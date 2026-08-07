@@ -36,6 +36,10 @@ export async function upsertStaffProfile(uid: string, data: StaffUser): Promise<
   await setDoc(doc(requireDb(), 'users', uid), data, { merge: true });
 }
 
+export async function deleteStaffProfile(uid: string): Promise<void> {
+  await deleteDoc(doc(requireDb(), 'users', uid));
+}
+
 // --- INVITES -----------------------------------------------------------------
 
 export async function getInvites(): Promise<StaffInvite[]> {
@@ -45,6 +49,10 @@ export async function getInvites(): Promise<StaffInvite[]> {
 
 export async function upsertInvite(invite: StaffInvite): Promise<void> {
   await setDoc(doc(requireDb(), 'invites', invite.id), invite, { merge: true });
+}
+
+export async function deleteInvite(id: string): Promise<void> {
+  await deleteDoc(doc(requireDb(), 'invites', id));
 }
 
 // --- INVENTORY ITEMS ----------------------------------------------------------

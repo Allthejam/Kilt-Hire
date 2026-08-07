@@ -13,8 +13,10 @@ import { auth } from '../lib/firebase';
 import {
   getStaffProfiles,
   upsertStaffProfile,
+  deleteStaffProfile,
   getInvites,
   upsertInvite,
+  deleteInvite,
   getItems,
   upsertItem,
   getBatches,
@@ -40,7 +42,8 @@ import {
   ItemStatus,
   SizeGroup,
   CategoryPriceSetting,
-  LaundryRecord
+  LaundryRecord,
+  StaffRole
 } from './types';
 import { 
   INITIAL_STAFF, 
@@ -108,7 +111,10 @@ import {
   Download,
   Smartphone,
   Share2,
-  PlusSquare
+  PlusSquare,
+  UserMinus,
+  UserCog,
+  ShieldAlert
 } from 'lucide-react';
 
 const CATEGORIES: ItemCategory[] = [
@@ -339,11 +345,31 @@ export default function KiltHireApp() {
   const [calTartanFilter, setCalTartanFilter] = useState<string>('ALL');
   const [calCategoryFilter, setCalCategoryFilter] = useState<string>('ALL');
 
-  // Invite creation form state
+  // Invite & Staff Management Form State
   const [newInviteEmail, setNewInviteEmail] = useState('');
-  const [newInviteRole, setNewInviteRole] = useState<'Senior Hire Specialist' | 'Inventory & Workshop Staff'>('Senior Hire Specialist');
+  const [newInviteRole, setNewInviteRole] = useState<StaffRole>('Shop Assistant');
   const [inviteSuccessMsg, setInviteSuccessMsg] = useState('');
   const [copiedInviteCode, setCopiedInviteCode] = useState<string | null>(null);
+
+  // Direct Staff Addition Modal & Form State
+  const [showDirectAddStaffModal, setShowDirectAddStaffModal] = useState<boolean>(false);
+  const [directStaffForm, setDirectStaffForm] = useState({
+    name: '',
+    email: '',
+    role: 'Shop Assistant' as StaffRole,
+    password: '',
+    pin: '1234'
+  });
+  const [directStaffError, setDirectStaffError] = useState('');
+
+  // Edit Staff Member Modal State
+  const [showEditStaffModal, setShowEditStaffModal] = useState<StaffUser | null>(null);
+  const [editStaffForm, setEditStaffForm] = useState({
+    name: '',
+    email: '',
+    role: 'Shop Assistant' as StaffRole,
+    pin: ''
+  });
 
   // PO Form state
   const [newPoForm, setNewPoForm] = useState({
@@ -713,7 +739,7 @@ export default function KiltHireApp() {
   };
 
   // MASTER ADMIN: Send Staff Invite
-  const handleSendInviteSubmit = (e: React.FormEvent) => {
+  const handleSendInviteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newInviteEmail) return;
 
@@ -731,10 +757,111 @@ export default function KiltHireApp() {
     };
 
     setInvites(prev => [newInvite, ...prev]);
+    await upsertInvite(newInvite);
     addAuditLog('CREATED_STAFF_INVITE', `Created staff registration invite for ${newInvite.email} (${newInvite.role}) with code ${code}`);
     
-    setInviteSuccessMsg(`Invite Code [ ${code} ] generated & emailed to ${newInvite.email}!`);
+    setInviteSuccessMsg(`Invite Code [ ${code} ] generated & saved!`);
     setNewInviteEmail('');
+  };
+
+  // DELETE / REVOKE PENDING INVITE
+  const handleDeleteInvite = async (inviteId: string) => {
+    const target = invites.find(i => i.id === inviteId);
+    if (!target) return;
+    if (confirm(`Revoke pending invite for ${target.email} (${target.code})?`)) {
+      const updated = invites.filter(i => i.id !== inviteId);
+      setInvites(updated);
+      await deleteInvite(inviteId);
+      addAuditLog('REVOKED_STAFF_INVITE', `Revoked staff invite code ${target.code} for ${target.email}`);
+      showToast(`🗑️ Revoked invite for ${target.email}`, 'info');
+    }
+  };
+
+  // DIRECT ADD STAFF MEMBER HANDLER
+  const handleDirectAddStaffSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setDirectStaffError('');
+    const cleanEmail = directStaffForm.email.trim().toLowerCase();
+    const cleanName = directStaffForm.name.trim();
+    const cleanPin = directStaffForm.pin.trim() || '1234';
+    const cleanPassword = directStaffForm.password.trim();
+
+    if (!cleanName || !cleanEmail || !cleanPassword) {
+      setDirectStaffError('Please fill out all required fields.');
+      return;
+    }
+
+    try {
+      let uid = `STAFF-${Date.now()}`;
+      if (auth) {
+        try {
+          const credential = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPassword);
+          uid = credential.user.uid;
+        } catch (authErr: any) {
+          console.warn('Firebase auth direct creation note:', authErr);
+        }
+      }
+
+      const newStaffUser: StaffUser = {
+        id: uid,
+        name: cleanName,
+        role: directStaffForm.role,
+        email: cleanEmail,
+        pin: cleanPin,
+        registeredAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
+      };
+
+      await upsertStaffProfile(uid, newStaffUser);
+      const updatedList = [newStaffUser, ...staffList.filter(s => s.id !== uid && s.email.toLowerCase() !== cleanEmail)];
+      setStaffList(updatedList);
+      localStorage.setItem('kilt_staff', JSON.stringify(updatedList));
+
+      addAuditLog('DIRECT_ADD_STAFF', `Added new staff member ${cleanName} (${cleanEmail}) as ${directStaffForm.role}`);
+      setShowDirectAddStaffModal(false);
+      setDirectStaffForm({ name: '', email: '', role: 'Shop Assistant', password: '', pin: '1234' });
+      showToast(`🎉 Staff member ${cleanName} added successfully as ${directStaffForm.role}!`, 'success');
+    } catch (err: any) {
+      setDirectStaffError(err.message || 'Failed to add staff member.');
+    }
+  };
+
+  // EDIT STAFF DETAILS HANDLER
+  const handleEditStaffSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!showEditStaffModal) return;
+
+    const updatedUser: StaffUser = {
+      ...showEditStaffModal,
+      name: editStaffForm.name.trim(),
+      email: editStaffForm.email.trim().toLowerCase(),
+      role: editStaffForm.role,
+      pin: editStaffForm.pin.trim() || '1234'
+    };
+
+    await upsertStaffProfile(updatedUser.id, updatedUser);
+    const updatedList = staffList.map(s => s.id === updatedUser.id ? updatedUser : s);
+    setStaffList(updatedList);
+    localStorage.setItem('kilt_staff', JSON.stringify(updatedList));
+
+    addAuditLog('EDITED_STAFF_MEMBER', `Updated staff member ${updatedUser.name} (${updatedUser.role})`);
+    setShowEditStaffModal(null);
+    showToast(`✏️ Updated profile for ${updatedUser.name}`, 'success');
+  };
+
+  // DELETE STAFF MEMBER HANDLER
+  const handleDeleteStaff = async (staffUser: StaffUser) => {
+    if (staffUser.id === currentUser?.id) {
+      alert("You cannot delete your own logged-in account!");
+      return;
+    }
+    if (confirm(`Remove staff member ${staffUser.name} (${staffUser.email}) from the system?`)) {
+      const updatedList = staffList.filter(s => s.id !== staffUser.id);
+      setStaffList(updatedList);
+      await deleteStaffProfile(staffUser.id);
+      localStorage.setItem('kilt_staff', JSON.stringify(updatedList));
+      addAuditLog('REMOVED_STAFF_MEMBER', `Removed staff member ${staffUser.name} (${staffUser.email})`);
+      showToast(`🗑️ Staff member ${staffUser.name} removed from system.`, 'info');
+    }
   };
 
 
@@ -5328,124 +5455,214 @@ export default function KiltHireApp() {
                 </div>
               )}
 
-              {/* TAB 8: MASTER ADMIN, INVITES & RIGOUT CAP CONFIG */}
+              {/* TAB 8: MASTER ADMIN, STAFF ACCOUNTS & INVITES */}
               {activeTab === 'admin' && (
                 <div className="space-y-6">
                   
+                  {/* SUMMARY METRICS BAR */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
-                      <span className="text-xs text-slate-500 block">Total Active Stock</span>
-                      <span className="text-2xl font-extrabold text-amber-700">{items.filter(i=>i.status!=='RETIRED').length} Garments</span>
+                      <span className="text-xs text-slate-500 block font-semibold">Active Inventory</span>
+                      <span className="text-2xl font-extrabold text-amber-700">{items.filter(i=>i.status!=='RETIRED').length} Items</span>
                     </div>
                     <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
-                      <span className="text-xs text-slate-500 block">Currently On Hire</span>
-                      <span className="text-2xl font-extrabold text-blue-700">{items.filter(i=>i.status==='ON_HIRE').length} Garments</span>
+                      <span className="text-xs text-slate-500 block font-semibold">Currently On Hire</span>
+                      <span className="text-2xl font-extrabold text-blue-700">{items.filter(i=>i.status==='ON_HIRE').length} Items</span>
                     </div>
                     <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
-                      <span className="text-xs text-slate-500 block">Active Staff Accounts</span>
-                      <span className="text-2xl font-extrabold text-slate-900">{staffList.length} Users</span>
+                      <span className="text-xs text-slate-500 block font-semibold">Active Staff Accounts</span>
+                      <span className="text-2xl font-extrabold text-slate-900">{staffList.length} Accounts</span>
                     </div>
                     <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
-                      <span className="text-xs text-slate-500 block">Pending Staff Invites</span>
+                      <span className="text-xs text-slate-500 block font-semibold">Pending Staff Invites</span>
                       <span className="text-2xl font-extrabold text-amber-700">{invites.filter(i=>i.status==='PENDING').length} Invites</span>
                     </div>
                   </div>
 
+                  {/* ACTIVE STAFF TEAM & SYSTEM ACCOUNTS */}
                   <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
                       <div>
-                        <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                          <UserPlus className="w-5 h-5 text-amber-600" /> Staff Invitations & Access Control
+                        <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                          <UserCheck className="w-5 h-5 text-amber-600" /> Active Staff Team & Admin Users ({staffList.length})
                         </h3>
                         <p className="text-xs text-slate-500 mt-0.5">
-                          Send invitation codes from your Admin Back Office to email links so authorized staff can register.
+                          Add actual staff members directly to the system or send invitation email links.
                         </p>
                       </div>
 
-                      {isMasterAdmin && (
+                      <div className="flex items-center gap-2">
                         <button
-                          onClick={() => setShowInviteModal(true)}
-                          className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-sm flex items-center gap-1.5 transition"
+                          onClick={() => {
+                            setDirectStaffForm({ name: '', email: '', role: 'Shop Assistant', password: '', pin: '1234' });
+                            setDirectStaffError('');
+                            setShowDirectAddStaffModal(true);
+                          }}
+                          className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-sm flex items-center gap-1.5 transition border border-amber-400/40"
                         >
-                          <Send className="w-3.5 h-3.5" /> Send Staff Email Invite
+                          <UserPlus className="w-4 h-4" /> Direct Add Staff Member
                         </button>
-                      )}
+
+                        <button
+                          onClick={() => {
+                            setInviteSuccessMsg('');
+                            setShowInviteModal(true);
+                          }}
+                          className="px-4 py-2 bg-slate-900 hover:bg-slate-950 text-white font-extrabold text-xs rounded-xl shadow-sm flex items-center gap-1.5 transition"
+                        >
+                          <Send className="w-3.5 h-3.5 text-amber-400" /> Generate Invite Link
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {staffList.map(st => {
+                        const isSelf = st.id === currentUser?.id;
+                        return (
+                          <div key={st.id} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col justify-between space-y-3 relative group hover:border-slate-300 transition shadow-sm">
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-extrabold text-base shadow-sm shrink-0 ${
+                                  st.role === 'Master Admin' ? 'bg-amber-500 text-slate-950' :
+                                  st.role === 'Admin' ? 'bg-blue-600 text-white' :
+                                  'bg-emerald-600 text-white'
+                                }`}>
+                                  {st.name.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                  <h4 className="font-extrabold text-sm text-slate-900 leading-tight flex items-center gap-1.5">
+                                    {st.name}
+                                    {isSelf && (
+                                      <span className="px-1.5 py-0.5 text-[9px] font-extrabold bg-slate-900 text-amber-400 rounded">You</span>
+                                    )}
+                                  </h4>
+                                  <span className="text-xs text-slate-500 block truncate max-w-[170px]">{st.email}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between border-t border-slate-200/60 pt-3 text-xs">
+                              <div>
+                                <span className="text-[10px] text-slate-400 block font-semibold">System Role</span>
+                                <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded-full inline-block mt-0.5 ${
+                                  st.role === 'Master Admin' ? 'bg-amber-100 text-amber-900 border border-amber-300' :
+                                  st.role === 'Admin' ? 'bg-blue-100 text-blue-900 border border-blue-300' :
+                                  'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                                }`}>
+                                  {st.role}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  onClick={() => {
+                                    setShowEditStaffModal(st);
+                                    setEditStaffForm({ name: st.name, email: st.email, role: st.role, pin: st.pin });
+                                  }}
+                                  className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-white rounded-lg border border-slate-200 transition"
+                                  title="Edit Staff Member"
+                                >
+                                  <UserCog className="w-4 h-4 text-slate-600" />
+                                </button>
+                                {!isSelf && (
+                                  <button
+                                    onClick={() => handleDeleteStaff(st)}
+                                    className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg border border-rose-200 transition"
+                                    title="Remove Staff Account"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* STAFF INVITATIONS TABLE */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                      <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                        <UserPlus className="w-5 h-5 text-amber-600" /> Pending Invitations ({invites.filter(i=>i.status==='PENDING').length})
+                      </h3>
+                      <span className="text-xs text-slate-500">Staff register using their assigned invite code</span>
                     </div>
 
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-xs text-slate-700">
-                        <thead className="bg-slate-50 text-slate-900 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px]">
+                        <thead className="bg-slate-50 text-slate-900 font-extrabold border-b border-slate-200 uppercase tracking-wider text-[10px]">
                           <tr>
                             <th className="py-3 px-4">Invite Code</th>
                             <th className="py-3 px-4">Recipient Email</th>
-                            <th className="py-3 px-4">Role</th>
+                            <th className="py-3 px-4">Assigned Role</th>
                             <th className="py-3 px-4">Status</th>
                             <th className="py-3 px-4">Created By</th>
                             <th className="py-3 px-4 text-right">Actions</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {invites.map(inv => (
-                            <tr key={inv.id} className="hover:bg-slate-50 transition">
-                              <td className="py-3 px-4 font-mono font-bold text-amber-800">{inv.code}</td>
-                              <td className="py-3 px-4 font-semibold text-slate-900">{inv.email}</td>
-                              <td className="py-3 px-4 text-slate-600">{inv.role}</td>
-                              <td className="py-3 px-4">
-                                <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${
-                                  inv.status === 'PENDING' ? 'bg-amber-100 text-amber-800 border border-amber-300' :
-                                  inv.status === 'REGISTERED' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' :
-                                  'bg-slate-100 text-slate-500'
-                                }`}>
-                                  {inv.status}
-                                </span>
-                              </td>
-                              <td className="py-3 px-4 text-slate-500">{inv.createdByName}</td>
-                              <td className="py-3 px-4 text-right">
-                                {inv.status === 'PENDING' && (
-                                  <button
-                                    onClick={() => {
-                                      navigator.clipboard.writeText(inv.code);
-                                      setCopiedInviteCode(inv.code);
-                                      setTimeout(() => setCopiedInviteCode(null), 2000);
-                                    }}
-                                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded font-semibold text-[11px] border border-slate-200 flex items-center gap-1 ml-auto transition"
-                                  >
-                                    {copiedInviteCode === inv.code ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3 text-slate-600" />}
-                                    {copiedInviteCode === inv.code ? 'Copied Code' : 'Copy Code'}
-                                  </button>
-                                )}
-                              </td>
+                          {invites.length === 0 ? (
+                            <tr>
+                              <td colSpan={6} className="py-6 text-center text-slate-400 italic">No pending invitations. Click "Generate Invite Link" to create one.</td>
                             </tr>
-                          ))}
+                          ) : (
+                            invites.map(inv => (
+                              <tr key={inv.id} className="hover:bg-slate-50 transition">
+                                <td className="py-3 px-4 font-mono font-extrabold text-amber-800">{inv.code}</td>
+                                <td className="py-3 px-4 font-bold text-slate-900">{inv.email}</td>
+                                <td className="py-3 px-4">
+                                  <span className="px-2 py-0.5 text-[10px] font-extrabold bg-slate-100 text-slate-800 rounded border border-slate-200">
+                                    {inv.role}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-4">
+                                  <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded ${
+                                    inv.status === 'PENDING' ? 'bg-amber-100 text-amber-900 border border-amber-300' :
+                                    inv.status === 'REGISTERED' ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' :
+                                    'bg-slate-100 text-slate-500'
+                                  }`}>
+                                    {inv.status}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-4 text-slate-500">{inv.createdByName}</td>
+                                <td className="py-3 px-4 text-right">
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    {inv.status === 'PENDING' && (
+                                      <button
+                                        onClick={() => {
+                                          navigator.clipboard.writeText(inv.code);
+                                          setCopiedInviteCode(inv.code);
+                                          setTimeout(() => setCopiedInviteCode(null), 2000);
+                                        }}
+                                        className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg font-bold text-[11px] border border-slate-200 flex items-center gap-1 transition"
+                                      >
+                                        {copiedInviteCode === inv.code ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3 text-slate-600" />}
+                                        {copiedInviteCode === inv.code ? 'Copied Code' : 'Copy Code'}
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={() => handleDeleteInvite(inv.id)}
+                                      className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg border border-rose-200 transition"
+                                      title="Revoke Invite"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))
+                          )}
                         </tbody>
                       </table>
                     </div>
                   </div>
 
+                  {/* STAFF ACTION AUDIT LOG */}
                   <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
-                    <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                      <UserCheck className="w-5 h-5 text-amber-600" /> Active Staff Accounts ({staffList.length})
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      {staffList.map(st => (
-                        <div key={st.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs">
-                          <div>
-                            <span className="font-bold text-slate-900 block">{st.name}</span>
-                            <span className="text-slate-500">{st.email}</span>
-                          </div>
-                          <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${
-                            st.role === 'Master Admin' ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-slate-200 text-slate-800'
-                          }`}>
-                            {st.role}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
-                    <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                      <FileText className="w-5 h-5 text-amber-600" /> Staff Action Audit Log
+                    <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                      <FileText className="w-5 h-5 text-amber-600" /> Staff Activity Audit Trail
                     </h3>
 
                     <div className="space-y-2 max-h-80 overflow-y-auto">
@@ -5462,7 +5679,6 @@ export default function KiltHireApp() {
                       ))}
                     </div>
                   </div>
-
                 </div>
               )}
             </>
@@ -5996,55 +6212,247 @@ export default function KiltHireApp() {
         </div>
       )}
 
+      {/* SEND STAFF EMAIL INVITATION MODAL */}
       {showInviteModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <Send className="w-5 h-5 text-amber-600" /> Send Staff Back Office Invitation
+              <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                <Send className="w-5 h-5 text-amber-600" /> Generate Staff Invite Link & Code
               </h3>
-              <button onClick={() => setShowInviteModal(false)} className="text-slate-400 hover:text-slate-700">
+              <button onClick={() => setShowInviteModal(false)} className="text-slate-400 hover:text-slate-700 p-1.5 hover:bg-slate-100 rounded-xl transition">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {inviteSuccessMsg && (
-              <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-xl text-xs font-semibold">
+              <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-xl text-xs font-bold">
                 {inviteSuccessMsg}
               </div>
             )}
 
             <form onSubmit={handleSendInviteSubmit} className="space-y-4 text-xs">
               <div>
-                <label className="block text-slate-700 font-bold mb-1">Staff Member Email Address</label>
+                <label className="block text-slate-700 font-extrabold mb-1">Staff Member Email Address</label>
                 <input 
                   type="email" 
                   required
                   placeholder="e.g. bruce@kilt-hire.co.uk"
                   value={newInviteEmail}
                   onChange={e => setNewInviteEmail(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 outline-none focus:border-amber-500 shadow-sm"
+                  className="w-full bg-white border border-slate-300 rounded-xl p-3 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-700 font-bold mb-1">Assigned Staff Role</label>
+                <label className="block text-slate-700 font-extrabold mb-1">Assigned System Role</label>
                 <select 
                   value={newInviteRole}
-                  onChange={e => setNewInviteRole(e.target.value as any)}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 outline-none focus:border-amber-500 shadow-sm"
+                  onChange={e => setNewInviteRole(e.target.value as StaffRole)}
+                  className="w-full bg-white border border-slate-300 rounded-xl p-3 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
                 >
-                  <option value="Senior Hire Specialist">Senior Hire Specialist</option>
-                  <option value="Inventory & Workshop Staff">Inventory & Workshop Staff</option>
+                  <option value="Shop Assistant">Shop Assistant (Floor Terminal, Scanner & PO Returns)</option>
+                  <option value="Admin">Admin (Inventory, Batches, POs, Laundry & Workshop)</option>
+                  <option value="Master Admin">Master Admin (Full Access, Pricing & User Control)</option>
                 </select>
               </div>
 
               <button
                 type="submit"
-                className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-2"
+                className="w-full py-3 bg-slate-900 hover:bg-slate-950 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-2"
               >
-                <Send className="w-4 h-4" /> Send Email Invitation Code
+                <Send className="w-4 h-4 text-amber-400" /> Generate & Save Invitation Code
               </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* DIRECT ADD STAFF MEMBER MODAL */}
+      {showDirectAddStaffModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                  <UserPlus className="w-5 h-5 text-amber-600" /> Direct Add Staff Member
+                </h3>
+                <span className="text-xs text-slate-500 font-semibold">Create account instantly without email invite code</span>
+              </div>
+              <button onClick={() => setShowDirectAddStaffModal(false)} className="text-slate-400 hover:text-slate-700 p-1.5 hover:bg-slate-100 rounded-xl transition">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {directStaffError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-semibold">
+                {directStaffError}
+              </div>
+            )}
+
+            <form onSubmit={handleDirectAddStaffSubmit} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-700 font-extrabold mb-1">Full Name</label>
+                <input 
+                  type="text" 
+                  required
+                  placeholder="e.g. Bruce Campbell"
+                  value={directStaffForm.name}
+                  onChange={e => setDirectStaffForm({ ...directStaffForm, name: e.target.value })}
+                  className="w-full bg-white border border-slate-300 rounded-xl p-3 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-extrabold mb-1">Email Address</label>
+                <input 
+                  type="email" 
+                  required
+                  placeholder="e.g. bruce@kilt-hire.co.uk"
+                  value={directStaffForm.email}
+                  onChange={e => setDirectStaffForm({ ...directStaffForm, email: e.target.value })}
+                  className="w-full bg-white border border-slate-300 rounded-xl p-3 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-extrabold mb-1">Assigned System Role</label>
+                <select 
+                  value={directStaffForm.role}
+                  onChange={e => setDirectStaffForm({ ...directStaffForm, role: e.target.value as StaffRole })}
+                  className="w-full bg-white border border-slate-300 rounded-xl p-3 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                >
+                  <option value="Shop Assistant">Shop Assistant (Floor Terminal, Scanner & Returns)</option>
+                  <option value="Admin">Admin (Inventory, POs, Batches, Laundry & Workshop)</option>
+                  <option value="Master Admin">Master Admin (Full System Access)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-extrabold mb-1">Account Login Password <span className="text-slate-500 font-normal">(min 6 chars)</span></label>
+                <input 
+                  type="password" 
+                  required
+                  minLength={6}
+                  placeholder="Set initial login password"
+                  value={directStaffForm.password}
+                  onChange={e => setDirectStaffForm({ ...directStaffForm, password: e.target.value })}
+                  className="w-full bg-white border border-slate-300 rounded-xl p-3 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-extrabold mb-1">Override PIN Code <span className="text-slate-500 font-normal">(4 digits)</span></label>
+                <input 
+                  type="text" 
+                  required
+                  maxLength={8}
+                  placeholder="e.g. 1234"
+                  value={directStaffForm.pin}
+                  onChange={e => setDirectStaffForm({ ...directStaffForm, pin: e.target.value })}
+                  className="w-full bg-white border border-slate-300 rounded-xl p-3 text-slate-900 font-mono font-bold text-center outline-none focus:border-amber-500 shadow-sm tracking-widest text-base"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDirectAddStaffModal(false)}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5"
+                >
+                  <UserPlus className="w-4 h-4 text-slate-950" /> Create & Save Staff Account
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT STAFF MEMBER DETAILS MODAL */}
+      {showEditStaffModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                  <UserCog className="w-5 h-5 text-amber-600" /> Edit Staff Member Profile
+                </h3>
+                <span className="text-xs text-slate-500 font-semibold">Update role and access credentials</span>
+              </div>
+              <button onClick={() => setShowEditStaffModal(null)} className="text-slate-400 hover:text-slate-700 p-1.5 hover:bg-slate-100 rounded-xl transition">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditStaffSubmit} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-700 font-extrabold mb-1">Full Name</label>
+                <input 
+                  type="text" 
+                  required
+                  value={editStaffForm.name}
+                  onChange={e => setEditStaffForm({ ...editStaffForm, name: e.target.value })}
+                  className="w-full bg-white border border-slate-300 rounded-xl p-3 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-extrabold mb-1">Email Address</label>
+                <input 
+                  type="email" 
+                  required
+                  value={editStaffForm.email}
+                  onChange={e => setEditStaffForm({ ...editStaffForm, email: e.target.value })}
+                  className="w-full bg-white border border-slate-300 rounded-xl p-3 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-extrabold mb-1">Assigned System Role</label>
+                <select 
+                  value={editStaffForm.role}
+                  onChange={e => setEditStaffForm({ ...editStaffForm, role: e.target.value as StaffRole })}
+                  className="w-full bg-white border border-slate-300 rounded-xl p-3 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                >
+                  <option value="Shop Assistant">Shop Assistant (Floor Terminal, Scanner & Returns)</option>
+                  <option value="Admin">Admin (Inventory, POs, Batches, Laundry & Workshop)</option>
+                  <option value="Master Admin">Master Admin (Full System Access)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-extrabold mb-1">Override Security PIN Code</label>
+                <input 
+                  type="text" 
+                  required
+                  maxLength={8}
+                  value={editStaffForm.pin}
+                  onChange={e => setEditStaffForm({ ...editStaffForm, pin: e.target.value })}
+                  className="w-full bg-white border border-slate-300 rounded-xl p-3 text-slate-900 font-mono font-bold text-center outline-none focus:border-amber-500 shadow-sm tracking-widest text-base"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEditStaffModal(null)}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5"
+                >
+                  <Check className="w-4 h-4 text-slate-950" /> Save Profile Changes
+                </button>
+              </div>
             </form>
           </div>
         </div>
