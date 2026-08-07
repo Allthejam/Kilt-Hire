@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   setDoc,
   deleteDoc,
@@ -30,6 +31,12 @@ function requireDb() {
 export async function getStaffProfiles(): Promise<StaffUser[]> {
   const snap = await getDocs(collection(requireDb(), 'users'));
   return snap.docs.map(d => d.data() as StaffUser);
+}
+
+export async function getStaffProfileById(uid: string): Promise<StaffUser | null> {
+  const docRef = doc(requireDb(), 'users', uid);
+  const snap = await getDoc(docRef);
+  return snap.exists() ? (snap.data() as StaffUser) : null;
 }
 
 export async function upsertStaffProfile(uid: string, data: StaffUser): Promise<void> {

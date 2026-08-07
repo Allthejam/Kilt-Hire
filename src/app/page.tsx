@@ -14,6 +14,7 @@ import {
 import { auth } from '../lib/firebase';
 import {
   getStaffProfiles,
+  getStaffProfileById,
   upsertStaffProfile,
   deleteStaffProfile,
   getInvites,
@@ -574,19 +575,23 @@ export default function KiltHireApp() {
     if (!auth) return; // not on server
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser && isLoaded) {
-        // Restore current user from Firestore profile or localStorage
-        const savedUser = localStorage.getItem('kilt_current_user');
-        if (savedUser) {
-          setCurrentUser(JSON.parse(savedUser));
-        } else {
-          try {
+        try {
+          // Fetch live user document directly from Firestore /users/{uid}
+          const liveProfile = await getStaffProfileById(firebaseUser.uid);
+          if (liveProfile) {
+            setCurrentUser(liveProfile);
+            localStorage.setItem('kilt_current_user', JSON.stringify(liveProfile));
+          } else {
             const profiles = await getStaffProfiles();
             const match = profiles.find(p => p.email.toLowerCase() === firebaseUser.email?.toLowerCase());
             if (match) {
               setCurrentUser(match);
               localStorage.setItem('kilt_current_user', JSON.stringify(match));
             }
-          } catch { /* silent */ }
+          }
+        } catch {
+          const savedUser = localStorage.getItem('kilt_current_user');
+          if (savedUser) setCurrentUser(JSON.parse(savedUser));
         }
       } else if (!firebaseUser) {
         setCurrentUser(null);
@@ -926,18 +931,37 @@ export default function KiltHireApp() {
   };
 
   // MY ACCOUNT HANDLERS
-  const handleOpenMyAccount = () => {
+  const handleOpenMyAccount = async () => {
     if (!currentUser) return;
+    setAccountMsg(null);
+    setShowAccPassword(false);
+    setShowAccPin(false);
+
+    // Initial prefill from local state
     setAccountForm({
       name: currentUser.name,
       email: currentUser.email,
       password: '',
       pin: currentUser.pin || '1234'
     });
-    setAccountMsg(null);
-    setShowAccPassword(false);
-    setShowAccPin(false);
     setShowMyAccountModal(true);
+
+    // Fetch live user document directly from Firestore /users/{uid} to guarantee real-time PIN
+    try {
+      const liveDoc = await getStaffProfileById(currentUser.id);
+      if (liveDoc) {
+        setCurrentUser(liveDoc);
+        localStorage.setItem('kilt_current_user', JSON.stringify(liveDoc));
+        setAccountForm({
+          name: liveDoc.name,
+          email: liveDoc.email,
+          password: '',
+          pin: liveDoc.pin || '1234'
+        });
+      }
+    } catch (err) {
+      console.warn('Live profile fetch note:', err);
+    }
   };
 
   const handleSaveAccountSubmit = async (e: React.FormEvent) => {
