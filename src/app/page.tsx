@@ -1650,8 +1650,8 @@ export default function KiltHireApp() {
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
         <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-8 shadow-2xl space-y-6">
           <div className="text-center">
-            <div className="w-14 h-14 mx-auto mb-3 bg-amber-500 rounded-2xl flex items-center justify-center text-slate-950 shadow-md">
-              <Sparkles className="w-8 h-8" />
+            <div className="w-16 h-16 mx-auto mb-3 rounded-2xl overflow-hidden shadow-lg border-2 border-amber-500/40">
+              <img src="/logo.png" alt="Highland Kilt Hire" className="w-full h-full object-cover" />
             </div>
             <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Highland Kilt & Hire</h1>
             <p className="text-xs text-slate-500 mt-1">Staff Back Office & QR Management System</p>
@@ -1835,8 +1835,8 @@ export default function KiltHireApp() {
         <div className="p-5 space-y-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-amber-500 rounded-xl text-slate-950 font-bold shadow-md">
-                <Sparkles className="w-6 h-6" />
+              <div className="w-10 h-10 rounded-xl overflow-hidden shadow-md border border-amber-500/40 shrink-0">
+                <img src="/logo.png" alt="Highland Kilt Hire Logo" className="w-full h-full object-cover" />
               </div>
               <div>
                 <h1 className="text-base font-extrabold tracking-tight text-slate-900 leading-tight">Highland Kilt Hire</h1>
