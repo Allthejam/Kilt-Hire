@@ -114,7 +114,10 @@ import {
   PlusSquare,
   UserMinus,
   UserCog,
-  ShieldAlert
+  ShieldAlert,
+  ZoomIn,
+  ZoomOut,
+  Maximize2
 } from 'lucide-react';
 
 const CATEGORIES: ItemCategory[] = [
@@ -370,6 +373,11 @@ export default function KiltHireApp() {
     role: 'Shop Assistant' as StaffRole,
     pin: ''
   });
+
+  // Camera Zoom & Multi-Lens State
+  const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
+  const [zoomLevel, setZoomLevel] = useState<number>(1.25); // Default 1.25x (25% zoom)
 
   // PO Form state
   const [newPoForm, setNewPoForm] = useState({
@@ -931,53 +939,136 @@ export default function KiltHireApp() {
     setActiveCamera(true);
   };
 
-  // ZXing REAL-TIME QR DECODER — replaces manual jsQR requestAnimationFrame loop
+  // ZXing REAL-TIME QR DECODER WITH HARDWARE + CSS ZOOM & DUAL ENGINE
   useEffect(() => {
     if (!activeCamera) return;
     if (!videoRef.current) return;
 
-    // Hints: QR-only for speed, TRY_HARDER for real-world printed labels
+    let stopped = false;
+    let fallbackInterval: NodeJS.Timeout | null = null;
+    const videoEl = videoRef.current;
+
+    // Hints: QR-only for speed, TRY_HARDER for small printed iron-on labels
     const hints = new Map<DecodeHintType, unknown>();
     hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE]);
     hints.set(DecodeHintType.TRY_HARDER, true);
 
     const reader = new BrowserMultiFormatReader(hints, {
-      delayBetweenScanAttempts: 150, // ms between decode attempts
+      delayBetweenScanAttempts: 100,
     });
 
-    let stopped = false;
-    const videoEl = videoRef.current;
+    // Helper: apply hardware zoom & autofocus constraints if stream active
+    const applyTrackConstraints = (stream: MediaStream) => {
+      try {
+        const track = stream.getVideoTracks()[0];
+        if (track) {
+          const caps = (track.getCapabilities && track.getCapabilities()) as any;
+          if (caps) {
+            const constraints: any = { advanced: [] };
+            if (caps.zoom) {
+              const minZ = caps.zoom.min || 1;
+              const maxZ = caps.zoom.max || 5;
+              const targetZ = Math.min(maxZ, Math.max(minZ, zoomLevel));
+              constraints.advanced.push({ zoom: targetZ });
+            }
+            if (caps.focusMode && Array.isArray(caps.focusMode) && caps.focusMode.includes('continuous')) {
+              constraints.advanced.push({ focusMode: 'continuous' });
+            }
+            if (constraints.advanced.length > 0) {
+              track.applyConstraints(constraints).catch(() => {});
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Track constraint note:', err);
+      }
+    };
 
-    // undefined deviceId → ZXing auto-selects back camera (most reliable on iOS + Android)
+    // List available video devices for selector dropdown
+    BrowserMultiFormatReader.listVideoInputDevices()
+      .then(devices => {
+        if (!stopped && devices.length > 0) {
+          setCameraDevices(devices);
+          // If no selected device yet, prefer back/environment camera
+          if (!selectedDeviceId) {
+            const backCam = devices.find(d => 
+              d.label.toLowerCase().includes('back') || 
+              d.label.toLowerCase().includes('rear') || 
+              d.label.toLowerCase().includes('environment') ||
+              d.label.toLowerCase().includes('0')
+            );
+            if (backCam) setSelectedDeviceId(backCam.deviceId);
+          }
+        }
+      })
+      .catch(() => {});
+
+    // Target device ID or undefined for default back camera
+    const deviceToUse = selectedDeviceId || undefined;
+
     reader.decodeFromVideoDevice(
-      undefined,
+      deviceToUse,
       videoEl,
       (result, _error, controls) => {
-        // Store controls so toggleCamera can call .stop()
         if (controls && !scanControlsRef.current) {
           scanControlsRef.current = controls;
         }
+
+        // Apply hardware track zoom
+        if (videoEl.srcObject instanceof MediaStream) {
+          applyTrackConstraints(videoEl.srcObject);
+        }
+
         if (result && !stopped) {
           const cleanQr = result.getText().trim();
           const now = Date.now();
-          // Debounce: ignore re-scans of the same code within 2 seconds
           if (cleanQr && now - lastScanTimeRef.current > 2000) {
             lastScanTimeRef.current = now;
             handleScanCode(cleanQr);
           }
         }
-        // _error is NotFoundException on every empty frame — normal, no need to log
       }
-    ).catch(() => { /* camera permission denied or unavailable */ });
+    ).catch(err => {
+      console.warn('decodeFromVideoDevice note:', err);
+    });
+
+    // Offscreen Canvas Fallback Frame Processor (runs every 150ms)
+    const offscreenCanvas = document.createElement('canvas');
+    const canvasCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
+
+    fallbackInterval = setInterval(() => {
+      if (stopped || !videoEl || videoEl.readyState < 2) return;
+      try {
+        const vw = videoEl.videoWidth || 640;
+        const vh = videoEl.videoHeight || 480;
+        offscreenCanvas.width = vw;
+        offscreenCanvas.height = vh;
+        if (canvasCtx) {
+          canvasCtx.drawImage(videoEl, 0, 0, vw, vh);
+          const result = reader.decodeFromCanvas(offscreenCanvas);
+          if (result && !stopped) {
+            const cleanQr = result.getText().trim();
+            const now = Date.now();
+            if (cleanQr && now - lastScanTimeRef.current > 2000) {
+              lastScanTimeRef.current = now;
+              handleScanCode(cleanQr);
+            }
+          }
+        }
+      } catch {
+        /* no QR code found in canvas frame — normal */
+      }
+    }, 150);
 
     return () => {
       stopped = true;
+      if (fallbackInterval) clearInterval(fallbackInterval);
       if (scanControlsRef.current) {
         scanControlsRef.current.stop();
         scanControlsRef.current = null;
       }
     };
-  }, [activeCamera]);
+  }, [activeCamera, selectedDeviceId, zoomLevel]);
 
   // Get default price & deposit for a category and sizeGroup
   const getDefaultPriceForCategory = (cat: ItemCategory, isKid: boolean) => {
@@ -2598,9 +2689,16 @@ export default function KiltHireApp() {
 
                         {activeCamera ? (
                           <div className="space-y-2">
-                            {/* SQUARE CAMERA VIEWPORT — no text inside frame */}
+                            {/* SQUARE CAMERA VIEWPORT — WITH 25% ZOOM TRANSFORMATION */}
                             <div className="relative w-full aspect-square max-w-xs mx-auto rounded-2xl overflow-hidden bg-black border-4 border-emerald-500 shadow-md">
-                              <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                              <video 
+                                ref={videoRef} 
+                                autoPlay 
+                                playsInline 
+                                muted 
+                                style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'center center' }} 
+                                className="w-full h-full object-cover transition-transform duration-200" 
+                              />
                               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                                 <div className="relative w-52 h-52">
                                   <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-amber-400 rounded-tl-xl" />
@@ -2610,9 +2708,52 @@ export default function KiltHireApp() {
                                 </div>
                               </div>
                             </div>
+
+                            {/* ZOOM & CAMERA CONTROLS TOOLBAR */}
+                            <div className="bg-slate-900 text-white p-3 rounded-2xl space-y-2 border border-slate-800 shadow-md">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-extrabold text-amber-400 flex items-center gap-1">
+                                  <ZoomIn className="w-3.5 h-3.5 text-amber-400" /> Camera Zoom:
+                                </span>
+                                <div className="flex items-center gap-1 bg-slate-800 p-1 rounded-xl border border-slate-700">
+                                  {[1.0, 1.25, 1.5, 2.0].map(z => (
+                                    <button
+                                      key={z}
+                                      type="button"
+                                      onClick={() => setZoomLevel(z)}
+                                      className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition ${
+                                        zoomLevel === z 
+                                          ? 'bg-amber-500 text-slate-950 shadow-sm' 
+                                          : 'text-slate-300 hover:text-white hover:bg-slate-700'
+                                      }`}
+                                    >
+                                      {z === 1.25 ? '1.25x ★' : `${z}x`}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {cameraDevices.length > 1 && (
+                                <div className="flex items-center justify-between pt-1 border-t border-slate-800 text-[11px]">
+                                  <span className="text-slate-400 font-semibold">Select Lens:</span>
+                                  <select
+                                    value={selectedDeviceId}
+                                    onChange={e => setSelectedDeviceId(e.target.value)}
+                                    className="bg-slate-800 text-amber-400 border border-slate-700 rounded-lg px-2 py-1 text-[11px] font-bold outline-none max-w-[170px] truncate"
+                                  >
+                                    {cameraDevices.map((d, idx) => (
+                                      <option key={d.deviceId || idx} value={d.deviceId}>
+                                        {d.label || `Camera ${idx + 1}`}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              )}
+                            </div>
+
                             {/* STATUS + INSTRUCTION BELOW CAMERA */}
                             <div className="flex items-center justify-between px-1">
-                              <span className="text-[11px] font-semibold text-slate-600">Centre QR label inside the amber frame</span>
+                              <span className="text-[11px] font-semibold text-slate-600">Centre QR label inside amber frame</span>
                               <span className="text-[10px] text-emerald-700 font-bold bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300 animate-pulse">🟢 Scanning...</span>
                             </div>
                             {scanError && (
@@ -3972,9 +4113,16 @@ export default function KiltHireApp() {
 
                       {activeCamera ? (
                         <div className="space-y-2">
-                          {/* SQUARE CAMERA VIEWPORT — no text inside frame */}
+                          {/* SQUARE CAMERA VIEWPORT — WITH 25% ZOOM TRANSFORMATION */}
                           <div className="relative w-full aspect-square max-w-xs mx-auto rounded-xl overflow-hidden bg-black border-2 border-amber-500 shadow-md">
-                            <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                            <video 
+                              ref={videoRef} 
+                              autoPlay 
+                              playsInline 
+                              muted 
+                              style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'center center' }} 
+                              className="w-full h-full object-cover transition-transform duration-200" 
+                            />
                             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                               <div className="relative w-44 h-44">
                                 <div className="absolute top-0 left-0 w-7 h-7 border-t-4 border-l-4 border-amber-400 rounded-tl-xl" />
@@ -3984,9 +4132,52 @@ export default function KiltHireApp() {
                               </div>
                             </div>
                           </div>
+
+                          {/* ZOOM & CAMERA CONTROLS TOOLBAR */}
+                          <div className="bg-slate-900 text-white p-3 rounded-2xl space-y-2 border border-slate-800 shadow-md">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] font-extrabold text-amber-400 flex items-center gap-1">
+                                <ZoomIn className="w-3.5 h-3.5 text-amber-400" /> Camera Zoom:
+                              </span>
+                              <div className="flex items-center gap-1 bg-slate-800 p-1 rounded-xl border border-slate-700">
+                                {[1.0, 1.25, 1.5, 2.0].map(z => (
+                                  <button
+                                    key={z}
+                                    type="button"
+                                    onClick={() => setZoomLevel(z)}
+                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition ${
+                                      zoomLevel === z 
+                                        ? 'bg-amber-500 text-slate-950 shadow-sm' 
+                                        : 'text-slate-300 hover:text-white hover:bg-slate-700'
+                                    }`}
+                                  >
+                                    {z === 1.25 ? '1.25x ★' : `${z}x`}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {cameraDevices.length > 1 && (
+                              <div className="flex items-center justify-between pt-1 border-t border-slate-800 text-[11px]">
+                                <span className="text-slate-400 font-semibold">Select Lens:</span>
+                                <select
+                                  value={selectedDeviceId}
+                                  onChange={e => setSelectedDeviceId(e.target.value)}
+                                  className="bg-slate-800 text-amber-400 border border-slate-700 rounded-lg px-2 py-1 text-[11px] font-bold outline-none max-w-[170px] truncate"
+                                >
+                                  {cameraDevices.map((d, idx) => (
+                                    <option key={d.deviceId || idx} value={d.deviceId}>
+                                      {d.label || `Camera ${idx + 1}`}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+                          </div>
+
                           {/* STATUS + INSTRUCTION BELOW CAMERA */}
                           <div className="flex items-center justify-between px-1">
-                            <span className="text-[11px] font-semibold text-slate-600">Centre QR label inside the amber frame</span>
+                            <span className="text-[11px] font-semibold text-slate-600">Centre QR label inside amber frame</span>
                             <span className="text-[10px] text-amber-700 font-bold bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300 animate-pulse">🟢 Scanning...</span>
                           </div>
                           {scanError && (
