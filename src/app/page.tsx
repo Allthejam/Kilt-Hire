@@ -239,9 +239,10 @@ export default function KiltHireApp() {
   // Interface Mode: 'admin_portal' (Full Office) vs 'shop_assistant' (Automated Floor Terminal)
   const [interfaceMode, setInterfaceMode] = useState<'admin_portal' | 'shop_assistant'>('shop_assistant');
 
-  // Shop Assistant Floor Tabs: 'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'calendar' | 'pos' | 'start_fitting' | 'process_return'
-  const [assistantTab, setAssistantTab] = useState<'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'calendar' | 'pos' | 'start_fitting' | 'process_return'>('scanner');
+  // Shop Assistant Floor Tabs: 'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'calendar' | 'pos' | 'historic_pos' | 'start_fitting' | 'process_return'
+  const [assistantTab, setAssistantTab] = useState<'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'calendar' | 'pos' | 'historic_pos' | 'start_fitting' | 'process_return'>('scanner');
   const [assistantSearch, setAssistantSearch] = useState('');
+  const [historicPoSearch, setHistoricPoSearch] = useState('');
   const [assistantSizeFilter, setAssistantSizeFilter] = useState<'ALL' | 'Adult' | 'Kid'>('ALL');
   const [assistantCategoryFilter, setAssistantCategoryFilter] = useState<string>('ALL');
   const [assistantTartanFilter, setAssistantTartanFilter] = useState<string>('ALL');
@@ -2080,6 +2081,7 @@ export default function KiltHireApp() {
           ...p,
           items: updatedPoItems,
           paymentStatus: newPaymentStatus,
+          orderStatus: allReturned ? 'RETURNED_COMPLETED' : p.orderStatus,
           notes: retainedLateFee > 0 
             ? `${p.notes || ''} [LATE RETURN FEE: Retained £${retainedLateFee} from deposit. Note: ${lateFeeReason || 'Late return penalty'}]`
             : p.notes
@@ -2091,16 +2093,15 @@ export default function KiltHireApp() {
     const summaryDetails = `Processed PO ${activeReturnPo.id} Return for ${activeReturnPo.customerName}: Net PayPal Refund £${netRefundToCustomer}. Retained £${retainedLateFee} late return fee, £${totalHeldDepositForRepair} for repairs, £${totalHeldDepositForMissing} for missing items.`;
     addAuditLog('PROCESSED_MULTI_ITEM_PO_RETURN', summaryDetails);
 
-    if (retainedLateFee > 0) {
-      showToast(`✅ PO ${activeReturnPo.id} return completed! Net PayPal Refund: £${netRefundToCustomer} (£${retainedLateFee} retained for late fee).`, 'success');
-    } else if (totalHeldDepositForMissing > 0 || totalHeldDepositForRepair > 0) {
-      showToast(`⚠️ PO ${activeReturnPo.id} updated! Refunded £${netRefundToCustomer}. Held £${totalHeldDepositForMissing + totalHeldDepositForRepair} deposit for missing/damaged item(s).`, 'warning');
+    if (allReturned) {
+      showToast(`📜 PO ${activeReturnPo.id} complete! Moved to Historic Customer PO Archive. Net Refund: £${netRefundToCustomer}.`, 'success');
+      setActiveReturnPo(null);
+      setAssistantTab('historic_pos');
     } else {
-      showToast(`✅ PO ${activeReturnPo.id} full return completed! PayPal £${netRefundToCustomer} deposit refunded to ${activeReturnPo.customerName}.`, 'success');
+      showToast(`⚠️ PO ${activeReturnPo.id} partially returned. Refunded £${netRefundToCustomer}. Deposit held for missing items.`, 'warning');
+      setActiveReturnPo(null);
+      setAssistantTab('pos');
     }
-
-    setActiveReturnPo(null);
-    setAssistantTab('pos');
   };
 
   // Step 1: Create Batch of QR Codes (MASTER ADMIN ONLY)
@@ -2769,10 +2770,25 @@ export default function KiltHireApp() {
               >
                 <div className="flex items-center gap-2.5">
                   <CreditCard className="w-4 h-4 text-amber-600" />
-                  <span>Customer POs</span>
+                  <span>Active Customer POs</span>
                 </div>
                 <span className="px-2 py-0.5 text-[10px] rounded-full font-bold bg-amber-100 text-amber-900">
-                  {pos.length}
+                  {pos.filter(p => !p.items.every(i => i.returned) && p.orderStatus !== 'RETURNED_COMPLETED').length}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setAssistantTab('historic_pos')}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition ${
+                  assistantTab === 'historic_pos' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <FileText className="w-4 h-4 text-purple-600" />
+                  <span>Historic PO Archive</span>
+                </div>
+                <span className="px-2 py-0.5 text-[10px] rounded-full font-bold bg-purple-100 text-purple-900">
+                  {pos.filter(p => p.items.every(i => i.returned) || p.orderStatus === 'RETURNED_COMPLETED').length}
                 </span>
               </button>
 
@@ -4321,160 +4337,184 @@ export default function KiltHireApp() {
                 </div>
               )}
 
-              {/* CUSTOMER POs TAB WITH LIVE AUTOMATED RETURN PROGRESS BARS */}
+              {/* CUSTOMER POs TAB (ACTIVE HIRES ONLY) */}
               {assistantTab === 'pos' && (
                 <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
                     <div>
                       <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                        <FileText className="w-5 h-5 text-amber-600" /> Active Customer Purchase Orders & Real-time Scan Return Ledger
+                        <FileText className="w-5 h-5 text-amber-600" /> Active Customer Purchase Orders & Live Return Ledger
                       </h3>
                       <p className="text-xs text-slate-500">
-                        Scanning any garment in a returned bag opens the full multi-item checklist and calculates deposit refunds in real-time.
+                        Orders currently out on hire or awaiting pickup. Completed returns move automatically to Historic PO Archive.
                       </p>
                     </div>
-                    <span className="text-xs font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded-lg border border-slate-200">
-                      {pos.length} Customer POs
-                    </span>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setAssistantTab('historic_pos')}
+                        className="px-3.5 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5"
+                      >
+                        📜 Historic PO Archive ({pos.filter(p => p.items.every(i => i.returned) || p.orderStatus === 'RETURNED_COMPLETED').length})
+                      </button>
+                      <span className="text-xs font-bold text-slate-700 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+                        {pos.filter(p => !p.items.every(i => i.returned) && p.orderStatus !== 'RETURNED_COMPLETED').length} Active POs
+                      </span>
+                    </div>
                   </div>
 
                   <div className="space-y-4">
-                    {pos.map(po => {
-                      const returnedCount = po.items.filter(i => i.returned).length;
-                      const totalCount = po.items.length;
-                      const isComplete = returnedCount === totalCount;
-                      const overdueInfo = getOverdueStatus(po.hireEndDate, isComplete);
-
-                      return (
-                        <div key={po.id} className={`p-5 rounded-2xl space-y-3 transition ${isComplete ? 'bg-slate-50 border border-slate-200 shadow-sm' : overdueInfo.poCardBg}`}>
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-mono font-extrabold text-amber-900 text-sm bg-white px-2 py-0.5 rounded border border-amber-300">{po.id}</span>
-                                <span className="font-extrabold text-slate-900 text-sm">{po.customerName}</span>
-                                <span className="text-xs text-slate-600">({po.customerPhone})</span>
-
-                                {isComplete ? (
-                                  <span className="px-2.5 py-0.5 text-[10px] font-extrabold bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-full flex items-center gap-1">
-                                    <CheckCircle className="w-3 h-3 text-emerald-600" /> ALL ITEMS RETURNED & REFUNDED
-                                  </span>
-                                ) : (
-                                  <span className={`px-2.5 py-0.5 text-[10px] rounded-full border ${overdueInfo.badgeBg}`}>
-                                    {overdueInfo.label} • ({returnedCount}/{totalCount} Returned)
-                                  </span>
-                                )}
-                              </div>
-                              <span className="text-xs text-slate-600 block mt-1">
-                                Hire Period: <strong>{po.hireStartDate}</strong> to <strong className={!isComplete ? overdueInfo.textColor : ''}>{po.hireEndDate}</strong> (Event: {po.eventDate})
-                              </span>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => openPoReturnChecklist(po)}
-                                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-sm transition flex items-center gap-1 ${
-                                  overdueInfo.level === 'OVERDUE_SEVERE' && !isComplete ? 'bg-rose-600 hover:bg-rose-700 text-white font-extrabold' :
-                                  overdueInfo.level === 'OVERDUE_LIGHT' && !isComplete ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold' :
-                                  'bg-blue-600 hover:bg-blue-700 text-white'
-                                }`}
-                              >
-                                <RotateCcw className="w-3.5 h-3.5" /> Process PO Batch Return
-                              </button>
-
-                              {!isComplete && overdueInfo.level !== 'ON_TIME' && (
-                                <button
-                                  onClick={() => handleOpenOverdueNoticeEmail(po)}
-                                  className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-extrabold flex items-center gap-1 shadow transition"
-                                  title="Dispatch Brevo Overdue Return Notice"
-                                >
-                                  <Mail className="w-3.5 h-3.5" /> Send Overdue Notice (Brevo)
-                                </button>
-                              )}
-
-                              <button
-                                onClick={() => {
-                                  setShowEditPoModal(po);
-                                  setEditPoNotes(po.notes || '');
-                                }}
-                                className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm transition"
-                              >
-                                <Edit3 className="w-3.5 h-3.5 text-amber-600" /> Edit PO Notes
-                              </button>
-
-                              <span className="font-mono font-extrabold text-amber-800 text-sm bg-white px-2.5 py-1 rounded-xl border border-slate-200">
-                                £{po.totalHireFee} Paid
-                              </span>
-                            </div>
+                    {(() => {
+                      const activePosList = pos.filter(p => !p.items.every(i => i.returned) && p.orderStatus !== 'RETURNED_COMPLETED');
+                      if (activePosList.length === 0) {
+                        return (
+                          <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                            <span className="text-3xl">🎉</span>
+                            <h4 className="font-extrabold text-slate-900 text-sm">No Active Out-on-Hire Orders</h4>
+                            <p className="text-xs text-slate-500">All customer outfits have been returned and archived into the Historic PO Archive!</p>
+                            <button
+                              onClick={() => setAssistantTab('historic_pos')}
+                              className="mt-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-xs rounded-xl shadow transition inline-flex items-center gap-1.5"
+                            >
+                              📜 View Historic Customer Archive
+                            </button>
                           </div>
+                        );
+                      }
 
-                          {/* AUTOMATED RETURN PROGRESS BAR */}
-                          <div className="space-y-1">
-                            <div className="flex justify-between text-[11px] font-bold text-slate-600">
-                              <span>Automated Return Progress:</span>
-                              <span>{returnedCount} of {totalCount} Garments Returned</span>
-                            </div>
-                            <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
-                              <div 
-                                className={`h-full transition-all duration-500 ${isComplete ? 'bg-emerald-500' : 'bg-blue-600'}`}
-                                style={{ width: `${(returnedCount / totalCount) * 100}%` }}
-                              />
-                            </div>
-                          </div>
+                      return activePosList.map(po => {
+                        const returnedCount = po.items.filter(i => i.returned).length;
+                        const totalCount = po.items.length;
+                        const isComplete = returnedCount === totalCount;
+                        const overdueInfo = getOverdueStatus(po.hireEndDate, isComplete);
 
-                          {po.notes && (
-                            <div className="text-xs bg-amber-50/70 p-2.5 rounded-xl border border-amber-200 text-amber-900">
-                              <strong>Staff Notes:</strong> {po.notes}
-                            </div>
-                          )}
+                        return (
+                          <div key={po.id} className={`p-5 rounded-2xl space-y-3 transition ${isComplete ? 'bg-slate-50 border border-slate-200 shadow-sm' : overdueInfo.poCardBg}`}>
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-mono font-extrabold text-amber-900 text-sm bg-white px-2 py-0.5 rounded border border-amber-300">{po.id}</span>
+                                  <span className="font-extrabold text-slate-900 text-sm">{po.customerName}</span>
+                                  <span className="text-xs text-slate-600">({po.customerPhone})</span>
 
-                          {/* INDIVIDUAL ITEM LINE ITEMS WITH AUTOMATED SCAN STATUS */}
-                          <div className="space-y-1.5 pt-1">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Garment Line Items & Real-Time Scan Status:</span>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              {po.items.map(item => (
-                                <div key={item.qrCodeId} className={`p-2.5 rounded-xl border text-xs flex items-center justify-between transition ${
-                                  item.returned ? 'bg-emerald-50/80 border-emerald-200' : 'bg-white border-slate-200'
-                                }`}>
-                                  <div>
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="font-mono font-extrabold text-slate-800">{item.qrCodeId}</span>
-                                      <span className="text-slate-900 font-semibold">{item.itemName}</span>
-                                    </div>
-                                    <span className={`text-[10px] ${item.sizeGroup === 'Kid' ? 'text-purple-800 font-bold' : 'text-blue-800 font-bold'}`}>
-                                      {item.sizeGroup} ({item.size}) • Deposit £{item.depositAmount}
+                                  {isComplete ? (
+                                    <span className="px-2.5 py-0.5 text-[10px] font-extrabold bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-full flex items-center gap-1">
+                                      <CheckCircle className="w-3 h-3 text-emerald-600" /> ALL ITEMS RETURNED & REFUNDED
                                     </span>
-                                  </div>
-
-                                  <div>
-                                    {item.returned ? (
-                                      <div className="text-right">
-                                        <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded inline-flex items-center gap-1 ${
-                                          item.returnCondition === 'GOOD_CLEAN' 
-                                            ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' 
-                                            : 'bg-rose-100 text-rose-900 border border-rose-300'
-                                        }`}>
-                                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                          {item.returnCondition === 'GOOD_CLEAN' ? 'Returned (Deposit Refunded)' : 'Damaged (Deposit Held)'}
-                                        </span>
-                                        <span className="text-[9px] text-slate-400 block font-mono mt-0.5">{item.returnedAt}</span>
-                                      </div>
-                                    ) : (
-                                      <button
-                                        onClick={() => openPoReturnChecklist(po, item.qrCodeId)}
-                                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-extrabold shadow-sm transition flex items-center gap-1"
-                                      >
-                                        <Zap className="w-3 h-3 text-amber-300" /> Scan Return
-                                      </button>
-                                    )}
-                                  </div>
+                                  ) : (
+                                    <span className={`px-2.5 py-0.5 text-[10px] rounded-full border ${overdueInfo.badgeBg}`}>
+                                      {overdueInfo.label} • ({returnedCount}/{totalCount} Returned)
+                                    </span>
+                                  )}
                                 </div>
-                              ))}
-                            </div>
-                          </div>
+                                <span className="text-xs text-slate-600 block mt-1">
+                                  Hire Period: <strong>{po.hireStartDate}</strong> to <strong className={!isComplete ? overdueInfo.textColor : ''}>{po.hireEndDate}</strong> (Event: {po.eventDate})
+                                </span>
+                              </div>
 
-                        </div>
-                      );
-                    })}
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => openPoReturnChecklist(po)}
+                                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-sm transition flex items-center gap-1 ${
+                                    overdueInfo.level === 'OVERDUE_SEVERE' && !isComplete ? 'bg-rose-600 hover:bg-rose-700 text-white font-extrabold' :
+                                    overdueInfo.level === 'OVERDUE_LIGHT' && !isComplete ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold' :
+                                    'bg-blue-600 hover:bg-blue-700 text-white'
+                                  }`}
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5" /> Process PO Batch Return
+                                </button>
+
+                                {!isComplete && overdueInfo.level !== 'ON_TIME' && (
+                                  <button
+                                    onClick={() => handleOpenOverdueNoticeEmail(po)}
+                                    className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-extrabold flex items-center gap-1 shadow transition"
+                                    title="Dispatch Brevo Overdue Return Notice"
+                                  >
+                                    <Mail className="w-3.5 h-3.5" /> Send Overdue Notice (Brevo)
+                                  </button>
+                                )}
+
+                                <button
+                                  onClick={() => {
+                                    setShowEditPoModal(po);
+                                    setEditPoNotes(po.notes || '');
+                                  }}
+                                  className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm transition"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5 text-amber-600" /> Edit Notes
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* AUTOMATED RETURN PROGRESS BAR */}
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-[11px] font-bold text-slate-600">
+                                <span>Automated Return Progress:</span>
+                                <span>{returnedCount} of {totalCount} Garments Returned</span>
+                              </div>
+                              <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                                <div 
+                                  className={`h-full transition-all duration-500 ${isComplete ? 'bg-emerald-500' : 'bg-blue-600'}`}
+                                  style={{ width: `${(returnedCount / totalCount) * 100}%` }}
+                                />
+                              </div>
+                            </div>
+
+                            {po.notes && (
+                              <div className="text-xs bg-amber-50/70 p-2.5 rounded-xl border border-amber-200 text-amber-900">
+                                <strong>Staff Notes:</strong> {po.notes}
+                              </div>
+                            )}
+
+                            {/* INDIVIDUAL ITEM LINE ITEMS WITH AUTOMATED SCAN STATUS */}
+                            <div className="space-y-1.5 pt-1">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Garment Line Items & Real-Time Scan Status:</span>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {po.items.map(item => (
+                                  <div key={item.qrCodeId} className={`p-2.5 rounded-xl border text-xs flex items-center justify-between transition ${
+                                    item.returned ? 'bg-emerald-50/80 border-emerald-200' : 'bg-white border-slate-200'
+                                  }`}>
+                                    <div>
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="font-mono font-extrabold text-slate-800">{item.qrCodeId}</span>
+                                        <span className="text-slate-900 font-semibold">{item.itemName}</span>
+                                      </div>
+                                      <span className={`text-[10px] ${item.sizeGroup === 'Kid' ? 'text-purple-800 font-bold' : 'text-blue-800 font-bold'}`}>
+                                        {item.sizeGroup} ({item.size}) • Deposit £{item.depositAmount}
+                                      </span>
+                                    </div>
+
+                                    <div>
+                                      {item.returned ? (
+                                        <div className="text-right">
+                                          <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded inline-flex items-center gap-1 ${
+                                            item.returnCondition === 'GOOD_CLEAN' 
+                                              ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' 
+                                              : 'bg-rose-100 text-rose-900 border border-rose-300'
+                                          }`}>
+                                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                            {item.returnCondition === 'GOOD_CLEAN' ? 'Returned (Deposit Refunded)' : 'Damaged (Deposit Held)'}
+                                          </span>
+                                          <span className="text-[9px] text-slate-400 block font-mono mt-0.5">{item.returnedAt}</span>
+                                        </div>
+                                      ) : (
+                                        <button
+                                          onClick={() => openPoReturnChecklist(po, item.qrCodeId)}
+                                          className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-extrabold shadow-sm transition flex items-center gap-1"
+                                        >
+                                          <Zap className="w-3 h-3 text-amber-300" /> Scan Return
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                          </div>
+                        );
+                      });
+                    })()}
                   </div>
                 </div>
               )}
