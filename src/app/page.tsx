@@ -238,8 +238,8 @@ export default function KiltHireApp() {
   // Interface Mode: 'admin_portal' (Full Office) vs 'shop_assistant' (Automated Floor Terminal)
   const [interfaceMode, setInterfaceMode] = useState<'admin_portal' | 'shop_assistant'>('shop_assistant');
 
-  // Shop Assistant Floor Tabs: 'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'calendar' | 'pos' | 'start_fitting'
-  const [assistantTab, setAssistantTab] = useState<'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'calendar' | 'pos' | 'start_fitting'>('scanner');
+  // Shop Assistant Floor Tabs: 'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'calendar' | 'pos' | 'start_fitting' | 'process_return'
+  const [assistantTab, setAssistantTab] = useState<'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'calendar' | 'pos' | 'start_fitting' | 'process_return'>('scanner');
   const [assistantSearch, setAssistantSearch] = useState('');
   const [assistantSizeFilter, setAssistantSizeFilter] = useState<'ALL' | 'Adult' | 'Kid'>('ALL');
   const [assistantCategoryFilter, setAssistantCategoryFilter] = useState<string>('ALL');
@@ -1554,9 +1554,10 @@ export default function KiltHireApp() {
     }
   };
 
-  // OPEN MULTI-ITEM PO RETURN CHECKLIST WITH STRICT QR SCAN VERIFICATION
+  // OPEN MULTI-ITEM PO RETURN CHECKLIST IN FULL PAGE MODE
   const openPoReturnChecklist = (po: PurchaseOrder, triggerQrCode?: string) => {
     setActiveReturnPo(po);
+    setAssistantTab('process_return');
     const initialChecklist: Record<string, { condition: 'GOOD_CLEAN' | 'NEEDS_CLEANING' | 'NEEDS_REPAIR' | 'MISSING'; scanned: boolean; notes: string }> = {};
 
     po.items.forEach(li => {
@@ -2000,6 +2001,7 @@ export default function KiltHireApp() {
     }
 
     setActiveReturnPo(null);
+    setAssistantTab('pos');
   };
 
   // Step 1: Create Batch of QR Codes (MASTER ADMIN ONLY)
@@ -4874,6 +4876,302 @@ export default function KiltHireApp() {
                 </div>
               )}
 
+              {/* FULL PAGE PROCESS RETURN CHECKLIST VIEW */}
+              {assistantTab === 'process_return' && activeReturnPo && (
+                <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
+                  
+                  {/* HEADER BAR */}
+                  <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="px-3 py-1 bg-blue-100 text-blue-900 font-mono font-extrabold text-sm rounded-lg border border-blue-300">
+                          {activeReturnPo.id}
+                        </span>
+                        <span className="px-2.5 py-0.5 text-xs font-extrabold bg-amber-100 text-amber-900 border border-amber-300 rounded-full">
+                          Full-Page Customer Return Checklist
+                        </span>
+                      </div>
+                      <h3 className="text-xl font-extrabold text-slate-900 mt-1">
+                        Customer: {activeReturnPo.customerName} ({activeReturnPo.customerPhone})
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        Hire Start: {activeReturnPo.hireStartDate} | Event Date: {activeReturnPo.eventDate} | Return Due: {activeReturnPo.hireEndDate}
+                      </p>
+                    </div>
+
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        setActiveReturnPo(null);
+                        setAssistantTab('pos');
+                      }}
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs rounded-xl transition border border-slate-300 flex items-center gap-1.5"
+                    >
+                      ← Exit / Back to Customer POs
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleConfirmMultiItemReturnSubmit} className="space-y-6 text-xs">
+                    
+                    {/* DUAL-MODE VERIFICATION BANNER */}
+                    <div className="bg-amber-50 border border-amber-300 p-4 rounded-2xl text-amber-950 space-y-3">
+                      <div className="flex items-center gap-2 font-extrabold text-sm text-amber-900">
+                        <ShieldCheck className="w-5 h-5 text-amber-600" /> Dynamic Return Verification: QR Camera Scan OR Manual 1-Tap Entry
+                      </div>
+                      <p className="text-xs text-amber-900 leading-relaxed">
+                        Assistants can scan items using an iron-on QR scanner <strong>OR</strong> manually click any garment's condition buttons below (Returned Clean, Needs Cleaning, Needs Repair, or Missing). Unchecked missing items automatically retain their deposit.
+                      </p>
+
+                      {/* QR CODE / MANUAL TEXT SEARCH BAR */}
+                      <div className="pt-1">
+                        <span className="text-xs font-extrabold text-slate-800 block mb-1">📷 Scan or Type Garment QR Code:</span>
+                        <div className="flex gap-2">
+                          <input 
+                            type="text"
+                            autoFocus
+                            placeholder="Scan barcode or type item QR code (e.g. JKT-1002, SPO-1003)..."
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                handleScanCode((e.target as HTMLInputElement).value);
+                                (e.target as HTMLInputElement).value = '';
+                              }
+                            }}
+                            className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-mono font-bold text-slate-900 outline-none focus:border-amber-500 shadow-sm"
+                          />
+                          <span className="text-[11px] font-bold text-slate-500 self-center hidden sm:inline">Press Enter or Aim Scanner</span>
+                        </div>
+
+                        {/* QUICK ITEM TAP PILLS */}
+                        <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+                          <span className="text-[10px] font-bold text-slate-500 self-center">Tap to verify item:</span>
+                          {activeReturnPo.items.map(li => {
+                            const isScanned = returnChecklist[li.qrCodeId]?.scanned;
+                            return (
+                              <button
+                                key={li.qrCodeId}
+                                type="button"
+                                onClick={() => handleScanCode(li.qrCodeId)}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold border transition ${
+                                  isScanned 
+                                    ? 'bg-emerald-100 text-emerald-900 border-emerald-300' 
+                                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                                }`}
+                              >
+                                {isScanned ? '✓ Verified ' : ''}{li.qrCodeId}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* FULL WIDTH ITEM CHECKLIST LIST */}
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden shadow-sm space-y-0">
+                      <div className="p-4 bg-slate-100 font-bold text-slate-800 flex justify-between items-center text-xs uppercase tracking-wider border-b border-slate-200">
+                        <span>Hired Garment Line Items ({activeReturnPo.items.length} Total)</span>
+                        <span className="text-slate-500">Verification & Condition Controls</span>
+                      </div>
+
+                      <div className="divide-y divide-slate-200">
+                        {activeReturnPo.items.map(li => {
+                          const currentSetting = returnChecklist[li.qrCodeId] || { condition: 'MISSING', scanned: false, notes: '' };
+                          const isScanned = currentSetting.scanned;
+                          const isMissing = currentSetting.condition === 'MISSING' || !isScanned;
+                          const isRepair = currentSetting.condition === 'NEEDS_REPAIR';
+
+                          return (
+                            <div key={li.qrCodeId} className={`p-4 sm:p-5 transition space-y-3 ${
+                              !isScanned ? 'bg-amber-50/60 border-l-4 border-amber-400' :
+                              isRepair ? 'bg-rose-50/80 border-l-4 border-rose-500' :
+                              currentSetting.condition === 'NEEDS_CLEANING' ? 'bg-cyan-50/80 border-l-4 border-cyan-500' :
+                              'bg-white border-l-4 border-emerald-500'
+                            }`}>
+                              <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-mono font-extrabold text-slate-900 text-sm px-2 py-0.5 bg-slate-100 rounded border border-slate-300">{li.qrCodeId}</span>
+                                    <strong className="text-slate-900 text-sm">{li.itemName}</strong>
+                                    <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${li.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900' : 'bg-blue-100 text-blue-900'}`}>
+                                      {li.sizeGroup} ({li.size})
+                                    </span>
+                                  </div>
+                                  <span className="text-xs text-slate-500 block mt-1">
+                                    Rental: £{li.hireRate} | Security Deposit Held: <strong className="text-emerald-700">£{li.depositAmount}</strong>
+                                  </span>
+                                </div>
+
+                                {/* STATUS BADGE */}
+                                <div>
+                                  {!isScanned ? (
+                                    <span className="px-3 py-1 bg-amber-100 text-amber-900 font-extrabold text-xs rounded-xl border border-amber-300 flex items-center gap-1">
+                                      <Search className="w-3.5 h-3.5 text-amber-600 animate-pulse" /> Awaiting Return (Deposit Held £{li.depositAmount})
+                                    </span>
+                                  ) : currentSetting.condition === 'GOOD_CLEAN' ? (
+                                    <span className="px-3 py-1 bg-emerald-100 text-emerald-900 font-extrabold text-xs rounded-xl border border-emerald-300 flex items-center gap-1">
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Returned Clean (Refund £{li.depositAmount})
+                                    </span>
+                                  ) : currentSetting.condition === 'NEEDS_CLEANING' ? (
+                                    <span className="px-3 py-1 bg-cyan-100 text-cyan-900 font-extrabold text-xs rounded-xl border border-cyan-300 flex items-center gap-1">
+                                      🧼 Needs Dry Cleaning (Refund £{li.depositAmount})
+                                    </span>
+                                  ) : (
+                                    <span className="px-3 py-1 bg-rose-100 text-rose-900 font-extrabold text-xs rounded-xl border border-rose-300 flex items-center gap-1">
+                                      🔧 Needs Repair (Deposit Held £{li.depositAmount})
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* MANUAL ENTRY CONDITION BUTTONS BAR */}
+                              <div className="pt-2 border-t border-slate-200/60 flex flex-wrap items-center justify-between gap-2">
+                                <span className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider">
+                                  Manual Assistant Action:
+                                </span>
+
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => setReturnChecklist(prev => ({
+                                      ...prev,
+                                      [li.qrCodeId]: { condition: 'GOOD_CLEAN', scanned: true, notes: 'Returned clean in store' }
+                                    }))}
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition shadow-sm border ${
+                                      isScanned && currentSetting.condition === 'GOOD_CLEAN'
+                                        ? 'bg-emerald-600 text-white border-emerald-700 ring-2 ring-emerald-300'
+                                        : 'bg-white text-slate-700 border-slate-300 hover:bg-emerald-50 hover:text-emerald-900'
+                                    }`}
+                                  >
+                                    ✓ Mark Returned Clean
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => setReturnChecklist(prev => ({
+                                      ...prev,
+                                      [li.qrCodeId]: { condition: 'NEEDS_CLEANING', scanned: true, notes: 'Needs dry cleaning' }
+                                    }))}
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition shadow-sm border ${
+                                      isScanned && currentSetting.condition === 'NEEDS_CLEANING'
+                                        ? 'bg-cyan-600 text-white border-cyan-700 ring-2 ring-cyan-300'
+                                        : 'bg-white text-slate-700 border-slate-300 hover:bg-cyan-50 hover:text-cyan-900'
+                                    }`}
+                                  >
+                                    🧼 Needs Cleaning
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => setReturnChecklist(prev => ({
+                                      ...prev,
+                                      [li.qrCodeId]: { condition: 'NEEDS_REPAIR', scanned: true, notes: 'Damaged - sent to workshop' }
+                                    }))}
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition shadow-sm border ${
+                                      isScanned && currentSetting.condition === 'NEEDS_REPAIR'
+                                        ? 'bg-rose-600 text-white border-rose-700 ring-2 ring-rose-300'
+                                        : 'bg-white text-slate-700 border-slate-300 hover:bg-rose-50 hover:text-rose-900'
+                                    }`}
+                                  >
+                                    🔧 Needs Repair
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => setReturnChecklist(prev => ({
+                                      ...prev,
+                                      [li.qrCodeId]: { condition: 'MISSING', scanned: false, notes: 'Item missing / not returned' }
+                                    }))}
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition shadow-sm border ${
+                                      !isScanned || currentSetting.condition === 'MISSING'
+                                        ? 'bg-amber-500 text-slate-950 border-amber-600 ring-2 ring-amber-300'
+                                        : 'bg-white text-slate-700 border-slate-300 hover:bg-amber-50 hover:text-amber-900'
+                                    }`}
+                                  >
+                                    ❌ Item Missing (Retain Deposit)
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* EXPLANATION FOOTNOTE */}
+                              {!isScanned && (
+                                <div className="text-[11px] font-semibold text-amber-900 bg-amber-100/70 p-2 rounded-xl border border-amber-200">
+                                  🔒 Item Missing: Deposit of <strong>£{li.depositAmount}</strong> will be retained until this garment is returned or accounted for.
+                                </div>
+                              )}
+                              {isScanned && currentSetting.condition === 'NEEDS_CLEANING' && (
+                                <div className="text-[11px] font-bold text-cyan-950 bg-cyan-100/80 p-2 rounded-xl border border-cyan-300">
+                                  🧼 Needs Dry Cleaning: Sent to laundry dispatch. Full deposit of <strong>£{li.depositAmount}</strong> is refunded to customer.
+                                </div>
+                              )}
+                              {isScanned && isRepair && (
+                                <div className="text-[11px] font-bold text-rose-900 bg-rose-100/80 p-2 rounded-xl border border-rose-300">
+                                  🔧 Damaged Garment: Sent to repair workshop & deposit of <strong>£{li.depositAmount}</strong> held for seamstress repair costs.
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* LIVE DEPOSIT CALCULATION BREAKDOWN */}
+                    {(() => {
+                      let cleanRefundSum = 0;
+                      let heldRepairSum = 0;
+                      let heldMissingSum = 0;
+
+                      activeReturnPo.items.forEach(li => {
+                        const cond = returnChecklist[li.qrCodeId]?.condition || 'GOOD_CLEAN';
+                        if (cond === 'GOOD_CLEAN' || cond === 'NEEDS_CLEANING') cleanRefundSum += li.depositAmount;
+                        else if (cond === 'NEEDS_REPAIR') heldRepairSum += li.depositAmount;
+                        else heldMissingSum += li.depositAmount;
+                      });
+
+                      const totalHeld = activeReturnPo.totalDepositHeld;
+                      const totalRetained = heldRepairSum + heldMissingSum;
+
+                      return (
+                        <div className="bg-slate-900 text-white p-5 rounded-2xl space-y-3 shadow-lg">
+                          <h4 className="font-extrabold text-sm text-amber-400 flex items-center gap-2">
+                            <DollarSign className="w-4 h-4" /> Live PayPal Deposit Refund Ledger Breakdown
+                          </h4>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs border-t border-slate-800 pt-3">
+                            <div>
+                              <span className="text-slate-400 block">Total Deposit Held</span>
+                              <span className="font-mono font-extrabold text-white text-base">£{totalHeld}</span>
+                            </div>
+
+                            <div>
+                              <span className="text-slate-400 block">Instant PayPal Refund</span>
+                              <span className="font-mono font-extrabold text-emerald-400 text-base">£{cleanRefundSum}</span>
+                            </div>
+
+                            <div>
+                              <span className="text-slate-400 block">Retained (Missing / Damaged)</span>
+                              <span className="font-mono font-extrabold text-amber-400 text-base">£{totalRetained}</span>
+                            </div>
+                          </div>
+
+                          {totalRetained > 0 && (
+                            <p className="text-[11px] text-amber-200 bg-amber-950/60 p-2.5 rounded-xl border border-amber-800">
+                              <strong>Partial Return Action:</strong> £{cleanRefundSum} deposit will be refunded to {activeReturnPo.customerName} via PayPal today. £{totalRetained} will be retained for missing/damaged items until resolved.
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    <button
+                      type="submit"
+                      className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-lg transition flex items-center justify-center gap-2"
+                    >
+                      <CheckCircle2 className="w-5 h-5" /> Confirm PO Batch Return & Process PayPal Deposit Refund
+                    </button>
+                  </form>
+
+                </div>
+              )}
+
             </div>
           )}
 
@@ -7373,274 +7671,7 @@ export default function KiltHireApp() {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* FULL MULTI-ITEM PO RETURN CHECKLIST MODAL WITH MISSING ITEM HANDLING */}
-      {/* ========================================================================= */}
-      {activeReturnPo && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-3xl w-full p-6 space-y-6 my-6 shadow-2xl">
-            
-            {/* MODAL HEADER */}
-            <div className="flex items-start justify-between border-b border-slate-200 pb-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="px-3 py-1 bg-blue-100 text-blue-900 font-mono font-extrabold text-sm rounded-lg border border-blue-300">
-                    {activeReturnPo.id}
-                  </span>
-                  <span className="px-2.5 py-0.5 text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 rounded-full">
-                    Customer PO Batch Return Checklist
-                  </span>
-                </div>
-                <h3 className="text-lg font-extrabold text-slate-900 mt-1">
-                  Customer: {activeReturnPo.customerName} ({activeReturnPo.customerPhone})
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Hire Start: {activeReturnPo.hireStartDate} | Event: {activeReturnPo.eventDate} | Return Deadline: {activeReturnPo.hireEndDate}
-                </p>
-              </div>
 
-              <button 
-                onClick={() => setActiveReturnPo(null)}
-                className="p-2 text-slate-400 hover:text-slate-700 rounded-lg"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            <form onSubmit={handleConfirmMultiItemReturnSubmit} className="space-y-6 text-xs">
-              
-              <div className="bg-amber-50 border border-amber-300 p-4 rounded-2xl text-amber-950 space-y-2">
-                <div className="flex items-center gap-2 font-extrabold text-sm text-amber-900">
-                  <ShieldCheck className="w-5 h-5 text-amber-600" /> Mandatory Security Rule: Physical QR Scan Verification Required
-                </div>
-                <p className="text-xs text-amber-900 leading-relaxed">
-                  To prevent counterfeit swaps or gear replacement, <strong>staff MUST physically scan each item's iron-on QR label</strong> with the scanner reader. Manual verification without scanning is disabled.
-                </p>
-
-                {/* MODAL QR SCANNER INPUT BAR */}
-                <div className="pt-2">
-                  <span className="text-xs font-extrabold text-slate-800 block mb-1">📷 Scan Next Garment QR in Returned Bag:</span>
-                  <div className="flex gap-2">
-                    <input 
-                      type="text"
-                      autoFocus
-                      placeholder="Scan or type item QR code to verify (e.g. JKT-1002, SPO-1003)..."
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') {
-                          handleScanCode((e.target as HTMLInputElement).value);
-                          (e.target as HTMLInputElement).value = '';
-                        }
-                      }}
-                      className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 outline-none focus:border-amber-500 shadow-sm"
-                    />
-                    <span className="text-[11px] font-bold text-slate-500 self-center">Press Enter or Aim Scanner</span>
-                  </div>
-
-                  {/* QUICK SCAN BUTTONS — real codes from this PO */}
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    <span className="text-[10px] font-bold text-slate-500 self-center">Items on this PO:</span>
-                    {activeReturnPo.items.map(li => {
-                      const isScanned = returnChecklist[li.qrCodeId]?.scanned;
-                      return (
-                        <button
-                          key={li.qrCodeId}
-                          type="button"
-                          onClick={() => handleScanCode(li.qrCodeId)}
-                          className={`px-2 py-1 rounded text-[11px] font-mono font-bold border transition ${
-                            isScanned 
-                              ? 'bg-emerald-100 text-emerald-900 border-emerald-300' 
-                              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-                          }`}
-                        >
-                          {isScanned ? '✓ ' : ''}{li.qrCodeId}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {/* ITEM CHECKLIST TABLE */}
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                <div className="p-3 bg-slate-100 font-bold text-slate-800 flex justify-between items-center text-xs uppercase tracking-wider">
-                  <span>Hired Garment Line Items ({activeReturnPo.items.length} Total)</span>
-                  <span className="text-slate-500">QR Scan Verification Status</span>
-                </div>
-
-                <div className="divide-y divide-slate-200">
-                  {activeReturnPo.items.map(li => {
-                    const currentSetting = returnChecklist[li.qrCodeId] || { condition: 'MISSING', scanned: false, notes: '' };
-                    const isScanned = currentSetting.scanned;
-                    const isMissing = currentSetting.condition === 'MISSING' || !isScanned;
-                    const isRepair = currentSetting.condition === 'NEEDS_REPAIR';
-
-                    return (
-                      <div key={li.qrCodeId} className={`p-4 transition ${
-                        !isScanned ? 'bg-amber-50/60 border-l-4 border-amber-400' :
-                        isRepair ? 'bg-rose-50/80 border-l-4 border-rose-500' :
-                        'bg-white border-l-4 border-emerald-500'
-                      }`}>
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono font-extrabold text-slate-900 text-sm">{li.qrCodeId}</span>
-                              <span className="font-bold text-slate-900">{li.itemName}</span>
-                              <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${li.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900' : 'bg-blue-100 text-blue-900'}`}>
-                                {li.sizeGroup} ({li.size})
-                              </span>
-                            </div>
-                            <span className="text-xs text-slate-500 block mt-0.5">
-                              Rental: £{li.hireRate} | Security Deposit Held: <strong className="text-emerald-700">£{li.depositAmount}</strong>
-                            </span>
-                          </div>
-
-                          {/* SCAN VERIFICATION BADGE & CONTROLS */}
-                          <div>
-                            {!isScanned ? (
-                              <div className="flex items-center gap-2">
-                                <span className="px-3 py-1 bg-amber-100 text-amber-900 font-extrabold text-xs rounded-xl border border-amber-300 flex items-center gap-1">
-                                  <Search className="w-3.5 h-3.5 text-amber-600 animate-pulse" /> Awaiting QR Scan (Deposit Held £{li.depositAmount})
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleScanCode(li.qrCodeId)}
-                                  className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-sm transition"
-                                >
-                                  Simulate Scan {li.qrCodeId}
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-2">
-                                <span className="px-2.5 py-1 bg-emerald-100 text-emerald-900 font-extrabold text-xs rounded-xl border border-emerald-300 flex items-center gap-1">
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Authentic QR Scanned & Verified
-                                </span>
-
-                                {/* OPTIONAL CONDITION SWITCHER FOR SCANNED ITEM */}
-                                <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
-                                  <button
-                                    type="button"
-                                    onClick={() => setReturnChecklist(prev => ({
-                                      ...prev,
-                                      [li.qrCodeId]: { ...currentSetting, condition: 'GOOD_CLEAN' }
-                                    }))}
-                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
-                                      currentSetting.condition === 'GOOD_CLEAN' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600'
-                                    }`}
-                                  >
-                                    Good & Clean
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => setReturnChecklist(prev => ({
-                                      ...prev,
-                                      [li.qrCodeId]: { ...currentSetting, condition: 'NEEDS_CLEANING' }
-                                    }))}
-                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
-                                      currentSetting.condition === 'NEEDS_CLEANING' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-600'
-                                    }`}
-                                  >
-                                    🧼 Needs Cleaning
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => setReturnChecklist(prev => ({
-                                      ...prev,
-                                      [li.qrCodeId]: { ...currentSetting, condition: 'NEEDS_REPAIR' }
-                                    }))}
-                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
-                                      currentSetting.condition === 'NEEDS_REPAIR' ? 'bg-rose-600 text-white shadow-sm' : 'text-slate-600'
-                                    }`}
-                                  >
-                                    🔧 Damaged
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* EXPLANATION BADGE IF NOT SCANNED OR DAMAGED OR NEEDS CLEANING */}
-                        {!isScanned && (
-                          <div className="mt-2 text-[11px] font-semibold text-amber-900 bg-amber-100/70 p-2 rounded-lg border border-amber-200">
-                            🔒 Un-scanned Garment: Deposit of <strong>£{li.depositAmount}</strong> will be retained until this item's iron-on QR label is physically scanned in store.
-                          </div>
-                        )}
-                        {isScanned && currentSetting.condition === 'NEEDS_CLEANING' && (
-                          <div className="mt-2 text-[11px] font-bold text-cyan-950 bg-cyan-100/80 p-2 rounded-lg border border-cyan-300 flex items-center justify-between">
-                            <span>🧼 Needs Dry Cleaning: Sent to laundry dispatch. Customer deposit of <strong>£{li.depositAmount}</strong> is refunded.</span>
-                          </div>
-                        )}
-                        {isScanned && isRepair && (
-                          <div className="mt-2 text-[11px] font-bold text-rose-900 bg-rose-100/80 p-2 rounded-lg border border-rose-300">
-                            🔧 Damaged Garment: Scanned & verified, item sent to repair workshop & deposit of <strong>£{li.depositAmount}</strong> held.
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* LIVE DEPOSIT CALCULATION BREAKDOWN */}
-              {(() => {
-                let cleanRefundSum = 0;
-                let heldRepairSum = 0;
-                let heldMissingSum = 0;
-
-                activeReturnPo.items.forEach(li => {
-                  const cond = returnChecklist[li.qrCodeId]?.condition || 'GOOD_CLEAN';
-                  if (cond === 'GOOD_CLEAN') cleanRefundSum += li.depositAmount;
-                  else if (cond === 'NEEDS_REPAIR') heldRepairSum += li.depositAmount;
-                  else heldMissingSum += li.depositAmount;
-                });
-
-                const totalHeld = activeReturnPo.totalDepositHeld;
-                const totalRetained = heldRepairSum + heldMissingSum;
-
-                return (
-                  <div className="bg-slate-900 text-white p-5 rounded-2xl space-y-3 shadow-lg">
-                    <h4 className="font-extrabold text-sm text-amber-400 flex items-center gap-2">
-                      <DollarSign className="w-4 h-4" /> Live PayPal Deposit Refund Ledger Breakdown
-                    </h4>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs border-t border-slate-800 pt-3">
-                      <div>
-                        <span className="text-slate-400 block">Total Deposit Held</span>
-                        <span className="font-mono font-extrabold text-white text-base">£{totalHeld}</span>
-                      </div>
-
-                      <div>
-                        <span className="text-slate-400 block">Instant PayPal Refund</span>
-                        <span className="font-mono font-extrabold text-emerald-400 text-base">£{cleanRefundSum}</span>
-                      </div>
-
-                      <div>
-                        <span className="text-slate-400 block">Retained (Missing / Damaged)</span>
-                        <span className="font-mono font-extrabold text-amber-400 text-base">£{totalRetained}</span>
-                      </div>
-                    </div>
-
-                    {totalRetained > 0 && (
-                      <p className="text-[11px] text-amber-200 bg-amber-950/60 p-2.5 rounded-xl border border-amber-800">
-                        <strong>Partial Return Action:</strong> £{cleanRefundSum} deposit will be refunded to {activeReturnPo.customerName} via PayPal today. £{totalRetained} will be held for missing/damaged items until resolved.
-                      </p>
-                    )}
-                  </div>
-                );
-              })()}
-
-              <button
-                type="submit"
-                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-2"
-              >
-                <CheckCircle2 className="w-5 h-5" /> Confirm PO Batch Return & Process PayPal Deposit Refund
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* MY ACCOUNT & PROFILE SETTINGS MODAL */}
       {showMyAccountModal && currentUser && (
