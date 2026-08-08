@@ -4406,8 +4406,8 @@ export default function KiltHireApp() {
                       <span className="flex items-center gap-1.5 text-blue-900 bg-blue-100 px-2.5 py-1 rounded-lg border border-blue-300">
                         <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span> 🔵 Hires Due Back (Returns)
                       </span>
-                      <span className="flex items-center gap-1.5 text-purple-900 bg-purple-100 px-2.5 py-1 rounded-lg border border-purple-300">
-                        <span className="w-2.5 h-2.5 rounded-full bg-purple-500"></span> 🟣 Functions & Events
+                      <span className="flex items-center gap-1.5 text-indigo-900 bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-300">
+                        <span className="w-2.5 h-2.5 rounded-full bg-indigo-600"></span> 📦 2-Day Pick & Pack Queue
                       </span>
                       <span className="flex items-center gap-1.5 text-rose-900 bg-rose-100 px-2.5 py-1 rounded-lg border border-rose-300">
                         <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span> 🔴 Store Notes / Closures
@@ -4510,8 +4510,13 @@ export default function KiltHireApp() {
                                 // Find POs matching this date
                                 const outCount = pos.filter(p => p.hireStartDate === cell.dateStr).length;
                                 const inCount = pos.filter(p => p.hireEndDate === cell.dateStr).length;
-                                const eventCount = pos.filter(p => p.eventDate === cell.dateStr).length;
                                 const noteCount = calendarNotes.filter(n => n.date === cell.dateStr).length;
+
+                                const selT = new Date(cell.dateStr).getTime();
+                                const pickPackCount = pos.filter(p => {
+                                  const t = new Date(p.hireStartDate).getTime();
+                                  return t >= selT && t <= selT + 2 * 86400000 && p.orderStatus !== 'READY_FOR_COLLECTION' && p.orderStatus !== 'OUT_ON_HIRE' && p.orderStatus !== 'RETURNED_COMPLETED';
+                                }).length;
 
                                 return (
                                   <div
@@ -4544,9 +4549,9 @@ export default function KiltHireApp() {
                                           🔵 {inCount} In
                                         </span>
                                       )}
-                                      {eventCount > 0 && (
-                                        <span className="block bg-purple-600 text-white px-1 rounded text-center truncate">
-                                          🟣 {eventCount} Event
+                                      {pickPackCount > 0 && (
+                                        <span className="block bg-indigo-600 text-white px-1 rounded text-center truncate">
+                                          📦 {pickPackCount} Pick
                                         </span>
                                       )}
                                       {noteCount > 0 && (
@@ -4657,155 +4662,215 @@ export default function KiltHireApp() {
                   </div>
 
                   {/* BOTTOM SECTION: TRACK BOOKINGS & OUTFIT MOVEMENT FOR SELECTED DATE */}
-                  <div className="space-y-4 pt-4 border-t border-slate-100">
-                    <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 border border-slate-200 p-4 rounded-2xl">
-                      <div>
-                        <h4 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                          📋 Order Tracking & Garment Movement for <span className="text-amber-900 underline decoration-amber-400">{calSelectedDate}</span>
-                        </h4>
-                        <p className="text-xs text-slate-500">Review all outfits scheduled for pickup, due back in, or active on this selected date.</p>
-                      </div>
+                  {(() => {
+                    const selTime = new Date(calSelectedDate).getTime();
+                    const twoDaysLaterTime = selTime + 2 * 86400000;
 
-                      <div className="flex items-center gap-2 text-xs font-bold">
-                        <span className="bg-amber-100 text-amber-900 border border-amber-300 px-3 py-1.5 rounded-xl">
-                          🟡 {pos.filter(p => p.hireStartDate === calSelectedDate).length} Outgoing Pickups
-                        </span>
-                        <span className="bg-blue-100 text-blue-900 border border-blue-300 px-3 py-1.5 rounded-xl">
-                          🔵 {pos.filter(p => p.hireEndDate === calSelectedDate).length} Returns Due
-                        </span>
-                        <span className="bg-purple-100 text-purple-900 border border-purple-300 px-3 py-1.5 rounded-xl">
-                          🟣 {pos.filter(p => p.eventDate === calSelectedDate).length} Events
-                        </span>
-                      </div>
-                    </div>
+                    const outgoingToday = pos.filter(p => p.hireStartDate === calSelectedDate);
+                    const returnsToday = pos.filter(p => p.hireEndDate === calSelectedDate);
+                    const pickPackQueue = pos.filter(p => {
+                      const t = new Date(p.hireStartDate).getTime();
+                      return t >= selTime && t <= twoDaysLaterTime && p.orderStatus !== 'READY_FOR_COLLECTION' && p.orderStatus !== 'OUT_ON_HIRE' && p.orderStatus !== 'RETURNED_COMPLETED';
+                    });
 
-                    {/* 3 TRACKER COLUMNS */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      
-                      {/* COLUMN 1: HIRES GOING OUT TODAY (PICKUPS) */}
-                      <div className="bg-amber-50/50 border border-amber-200 rounded-2xl p-4 space-y-3">
-                        <div className="flex items-center justify-between border-b border-amber-200 pb-2">
-                          <h5 className="font-extrabold text-amber-950 text-xs flex items-center gap-1.5 uppercase tracking-wider">
-                            🟡 Outgoing Pickups ({pos.filter(p => p.hireStartDate === calSelectedDate).length})
-                          </h5>
-                          <span className="text-[10px] font-extrabold text-amber-800 bg-white px-2 py-0.5 rounded border border-amber-300">
-                            Collection Date
-                          </span>
+                    const activeSectionsCount = (outgoingToday.length > 0 ? 1 : 0) + (returnsToday.length > 0 ? 1 : 0) + (pickPackQueue.length > 0 ? 1 : 0);
+
+                    return (
+                      <div className="space-y-4 pt-4 border-t border-slate-100">
+                        <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 border border-slate-200 p-4 rounded-2xl">
+                          <div>
+                            <h4 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                              📋 Order Tracking & Garment Movement for <span className="text-amber-900 underline decoration-amber-400">{calSelectedDate}</span>
+                            </h4>
+                            <p className="text-xs text-slate-500">Only showing active movements and 2-day pick & pack assembly queue for this date.</p>
+                          </div>
+
+                          <div className="flex items-center gap-2 text-xs font-bold">
+                            {outgoingToday.length > 0 && (
+                              <span className="bg-amber-100 text-amber-900 border border-amber-300 px-3 py-1.5 rounded-xl">
+                                🟡 {outgoingToday.length} Outgoing Pickups
+                              </span>
+                            )}
+                            {returnsToday.length > 0 && (
+                              <span className="bg-blue-100 text-blue-900 border border-blue-300 px-3 py-1.5 rounded-xl">
+                                🔵 {returnsToday.length} Returns Due
+                              </span>
+                            )}
+                            {pickPackQueue.length > 0 && (
+                              <span className="bg-indigo-100 text-indigo-900 border border-indigo-300 px-3 py-1.5 rounded-xl">
+                                📦 {pickPackQueue.length} Pick & Pack Assembly Queue
+                              </span>
+                            )}
+                          </div>
                         </div>
 
-                        {pos.filter(p => p.hireStartDate === calSelectedDate).length === 0 ? (
-                          <p className="text-xs text-slate-400 italic py-6 text-center bg-white rounded-xl border border-dashed">
-                            No outgoing pickups scheduled for {calSelectedDate}.
-                          </p>
+                        {activeSectionsCount === 0 ? (
+                          <div className="text-center py-10 bg-slate-50 border border-dashed border-slate-300 rounded-2xl space-y-2">
+                            <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
+                            <h5 className="font-extrabold text-slate-800 text-sm">Quiet Schedule for {calSelectedDate}</h5>
+                            <p className="text-xs text-slate-500">No outgoing pickups, returns due, or 2-day assembly queue scheduled for this date.</p>
+                          </div>
                         ) : (
-                          pos.filter(p => p.hireStartDate === calSelectedDate).map(po => (
-                            <div key={po.id} className="bg-white border border-amber-200 p-3 rounded-xl space-y-2 shadow-sm">
-                              <div className="flex items-center justify-between">
-                                <span className="font-mono font-extrabold text-xs text-amber-900 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">{po.id}</span>
-                                <span className="text-[10px] font-extrabold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full border border-amber-300">
-                                  {po.orderStatus === 'READY_FOR_COLLECTION' ? '✓ Ready' : '⏳ Pick Needed'}
-                                </span>
+                          <div className={`grid grid-cols-1 ${
+                            activeSectionsCount === 3 ? 'md:grid-cols-3' :
+                            activeSectionsCount === 2 ? 'md:grid-cols-2' :
+                            'md:grid-cols-1'
+                          } gap-4`}>
+                            
+                            {/* COLUMN 1: HIRES GOING OUT TODAY (PICKUPS) */}
+                            {outgoingToday.length > 0 && (
+                              <div className="bg-amber-50/50 border border-amber-200 rounded-2xl p-4 space-y-3">
+                                <div className="flex items-center justify-between border-b border-amber-200 pb-2">
+                                  <h5 className="font-extrabold text-amber-950 text-xs flex items-center gap-1.5 uppercase tracking-wider">
+                                    🟡 Outgoing Pickups ({outgoingToday.length})
+                                  </h5>
+                                  <span className="text-[10px] font-extrabold text-amber-800 bg-white px-2 py-0.5 rounded border border-amber-300">
+                                    Collection Date
+                                  </span>
+                                </div>
+
+                                {outgoingToday.map(po => (
+                                  <div key={po.id} className="bg-white border border-amber-200 p-3.5 rounded-xl space-y-2.5 shadow-sm">
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-mono font-extrabold text-xs text-amber-900 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">{po.id}</span>
+                                      <span className="text-[10px] font-extrabold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full border border-amber-300">
+                                        {po.orderStatus === 'READY_FOR_COLLECTION' ? '✓ Ready for Pickup' : '⏳ Pick Needed'}
+                                      </span>
+                                    </div>
+
+                                    <div>
+                                      <strong className="text-slate-900 text-xs block">{po.customerName}</strong>
+                                      <span className="text-[11px] text-slate-500 block">{po.customerEmail} • {po.customerPhone}</span>
+                                    </div>
+
+                                    {/* FITTING MEASUREMENTS CARD */}
+                                    {po.measurements && (
+                                      <div className="bg-slate-50 border border-slate-200 p-2 rounded-lg text-[10px] space-y-0.5 font-bold">
+                                        <span className="text-slate-400 uppercase text-[9px] block">Measurements:</span>
+                                        <div className="grid grid-cols-3 gap-1 text-center">
+                                          <div>W: <span className="text-amber-800">{po.measurements.waistInches}"</span></div>
+                                          <div>C: <span className="text-amber-800">{po.measurements.chestInches}"</span></div>
+                                          <div>S: <span className="text-amber-800">{po.measurements.shoeSize}</span></div>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    <div className="text-[11px] font-bold text-slate-700 bg-slate-50 p-2 rounded-lg border">
+                                      Items ({po.items.length}): {po.items.map(i => i.itemName).join(', ')}
+                                    </div>
+
+                                    {po.orderStatus !== 'READY_FOR_COLLECTION' && (
+                                      <button
+                                        onClick={() => handleMarkOrderReadyForCollection(po)}
+                                        className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5"
+                                      >
+                                        <CheckCircle2 className="w-4 h-4" /> Mark Ready for Pickup
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
                               </div>
-                              <div>
-                                <strong className="text-slate-900 text-xs block">{po.customerName}</strong>
-                                <span className="text-[11px] text-slate-500 block">{po.customerEmail} • {po.customerPhone}</span>
+                            )}
+
+                            {/* COLUMN 2: HIRES DUE BACK TODAY (RETURNS) */}
+                            {returnsToday.length > 0 && (
+                              <div className="bg-blue-50/50 border border-blue-200 rounded-2xl p-4 space-y-3">
+                                <div className="flex items-center justify-between border-b border-blue-200 pb-2">
+                                  <h5 className="font-extrabold text-blue-950 text-xs flex items-center gap-1.5 uppercase tracking-wider">
+                                    🔵 Returns Due Back ({returnsToday.length})
+                                  </h5>
+                                  <span className="text-[10px] font-extrabold text-blue-800 bg-white px-2 py-0.5 rounded border border-blue-300">
+                                    Return Date
+                                  </span>
+                                </div>
+
+                                {returnsToday.map(po => (
+                                  <div key={po.id} className="bg-white border border-blue-200 p-3.5 rounded-xl space-y-2.5 shadow-sm">
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-mono font-extrabold text-xs text-blue-900 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">{po.id}</span>
+                                      <span className="text-[10px] font-extrabold bg-blue-100 text-blue-900 px-2 py-0.5 rounded-full border border-blue-300">
+                                        Return Due Today
+                                      </span>
+                                    </div>
+
+                                    <div>
+                                      <strong className="text-slate-900 text-xs block">{po.customerName}</strong>
+                                      <span className="text-[11px] text-slate-500 block">{po.customerPhone}</span>
+                                    </div>
+
+                                    <div className="text-[11px] font-bold text-slate-700 bg-slate-50 p-2 rounded-lg border">
+                                      Garments to Check In ({po.items.length}): {po.items.map(i => i.itemName).join(', ')}
+                                    </div>
+
+                                    <button
+                                      onClick={() => openPoReturnChecklist(po)}
+                                      className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5"
+                                    >
+                                      <RotateCcw className="w-4 h-4" /> Process Return Checklist
+                                    </button>
+                                  </div>
+                                ))}
                               </div>
-                              <div className="text-[11px] font-bold text-slate-700 bg-slate-50 p-2 rounded-lg border">
-                                Items ({po.items.length}): {po.items.map(i => i.itemName).join(', ')}
+                            )}
+
+                            {/* COLUMN 3: 2-DAY PICK & PACK ASSEMBLY QUEUE */}
+                            {pickPackQueue.length > 0 && (
+                              <div className="bg-indigo-50/50 border border-indigo-200 rounded-2xl p-4 space-y-3">
+                                <div className="flex items-center justify-between border-b border-indigo-200 pb-2">
+                                  <h5 className="font-extrabold text-indigo-950 text-xs flex items-center gap-1.5 uppercase tracking-wider">
+                                    📦 Pick & Pack Assembly Queue ({pickPackQueue.length})
+                                  </h5>
+                                  <span className="text-[10px] font-extrabold text-indigo-900 bg-white px-2 py-0.5 rounded border border-indigo-300">
+                                    Due in 2 Days
+                                  </span>
+                                </div>
+
+                                {pickPackQueue.map(po => (
+                                  <div key={po.id} className="bg-white border border-indigo-200 p-3.5 rounded-xl space-y-2.5 shadow-sm">
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-mono font-extrabold text-xs text-indigo-900 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">{po.id}</span>
+                                      <span className="text-[10px] font-extrabold bg-indigo-100 text-indigo-900 px-2 py-0.5 rounded-full border border-indigo-300">
+                                        Collect: {po.hireStartDate}
+                                      </span>
+                                    </div>
+
+                                    <div>
+                                      <strong className="text-slate-900 text-xs block">{po.customerName}</strong>
+                                      <span className="text-[11px] text-slate-500 block">{po.customerEmail} • {po.customerPhone}</span>
+                                    </div>
+
+                                    {/* FITTING MEASUREMENTS CARD */}
+                                    {po.measurements && (
+                                      <div className="bg-slate-50 border border-slate-200 p-2 rounded-lg text-[10px] font-bold space-y-0.5">
+                                        <span className="text-slate-400 uppercase text-[9px] block">Measurements:</span>
+                                        <div className="grid grid-cols-3 gap-1 text-center">
+                                          <div>Waist: <span className="text-indigo-900">{po.measurements.waistInches}"</span></div>
+                                          <div>Chest: <span className="text-indigo-900">{po.measurements.chestInches}"</span></div>
+                                          <div>Shoe: <span className="text-indigo-900">{po.measurements.shoeSize}</span></div>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    <div className="text-[11px] font-bold text-slate-700 bg-slate-50 p-2 rounded-lg border">
+                                      Garments to Pick ({po.items.length}): {po.items.map(i => i.itemName).join(', ')}
+                                    </div>
+
+                                    <button
+                                      onClick={() => handleMarkOrderReadyForCollection(po)}
+                                      className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5"
+                                    >
+                                      <CheckCircle2 className="w-4 h-4" /> Mark Assembled & Ready
+                                    </button>
+                                  </div>
+                                ))}
                               </div>
-                              {po.orderStatus !== 'READY_FOR_COLLECTION' && (
-                                <button
-                                  onClick={() => handleMarkOrderReadyForCollection(po)}
-                                  className="w-full py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-lg shadow transition flex items-center justify-center gap-1"
-                                >
-                                  <CheckCircle2 className="w-3.5 h-3.5" /> Mark Ready for Pickup
-                                </button>
-                              )}
-                            </div>
-                          ))
+                            )}
+
+                          </div>
                         )}
                       </div>
-
-                      {/* COLUMN 2: HIRES DUE BACK TODAY (RETURNS) */}
-                      <div className="bg-blue-50/50 border border-blue-200 rounded-2xl p-4 space-y-3">
-                        <div className="flex items-center justify-between border-b border-blue-200 pb-2">
-                          <h5 className="font-extrabold text-blue-950 text-xs flex items-center gap-1.5 uppercase tracking-wider">
-                            🔵 Returns Due Back ({pos.filter(p => p.hireEndDate === calSelectedDate).length})
-                          </h5>
-                          <span className="text-[10px] font-extrabold text-blue-800 bg-white px-2 py-0.5 rounded border border-blue-300">
-                            Return Date
-                          </span>
-                        </div>
-
-                        {pos.filter(p => p.hireEndDate === calSelectedDate).length === 0 ? (
-                          <p className="text-xs text-slate-400 italic py-6 text-center bg-white rounded-xl border border-dashed">
-                            No garment returns due back on {calSelectedDate}.
-                          </p>
-                        ) : (
-                          pos.filter(p => p.hireEndDate === calSelectedDate).map(po => (
-                            <div key={po.id} className="bg-white border border-blue-200 p-3 rounded-xl space-y-2 shadow-sm">
-                              <div className="flex items-center justify-between">
-                                <span className="font-mono font-extrabold text-xs text-blue-900 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">{po.id}</span>
-                                <span className="text-[10px] font-extrabold bg-blue-100 text-blue-900 px-2 py-0.5 rounded-full border border-blue-300">
-                                  Return Due
-                                </span>
-                              </div>
-                              <div>
-                                <strong className="text-slate-900 text-xs block">{po.customerName}</strong>
-                                <span className="text-[11px] text-slate-500 block">{po.customerPhone}</span>
-                              </div>
-                              <div className="text-[11px] font-bold text-slate-700 bg-slate-50 p-2 rounded-lg border">
-                                Items ({po.items.length}): {po.items.map(i => i.itemName).join(', ')}
-                              </div>
-                              <button
-                                onClick={() => openPoReturnChecklist(po)}
-                                className="w-full py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-lg shadow transition flex items-center justify-center gap-1"
-                              >
-                                <RotateCcw className="w-3.5 h-3.5" /> Process Return Checklist
-                              </button>
-                            </div>
-                          ))
-                        )}
-                      </div>
-
-                      {/* COLUMN 3: FUNCTIONS & EVENTS TODAY */}
-                      <div className="bg-purple-50/50 border border-purple-200 rounded-2xl p-4 space-y-3">
-                        <div className="flex items-center justify-between border-b border-purple-200 pb-2">
-                          <h5 className="font-extrabold text-purple-950 text-xs flex items-center gap-1.5 uppercase tracking-wider">
-                            🟣 Functions & Events ({pos.filter(p => p.eventDate === calSelectedDate).length})
-                          </h5>
-                          <span className="text-[10px] font-extrabold text-purple-800 bg-white px-2 py-0.5 rounded border border-purple-300">
-                            Event Date
-                          </span>
-                        </div>
-
-                        {pos.filter(p => p.eventDate === calSelectedDate).length === 0 ? (
-                          <p className="text-xs text-slate-400 italic py-6 text-center bg-white rounded-xl border border-dashed">
-                            No wedding/function events taking place on {calSelectedDate}.
-                          </p>
-                        ) : (
-                          pos.filter(p => p.eventDate === calSelectedDate).map(po => (
-                            <div key={po.id} className="bg-white border border-purple-200 p-3 rounded-xl space-y-2 shadow-sm">
-                              <div className="flex items-center justify-between">
-                                <span className="font-mono font-extrabold text-xs text-purple-900 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">{po.id}</span>
-                                <span className="text-[10px] font-extrabold bg-purple-100 text-purple-900 px-2 py-0.5 rounded-full border border-purple-300">
-                                  🎉 Function Today
-                                </span>
-                              </div>
-                              <div>
-                                <strong className="text-slate-900 text-xs block">{po.customerName}</strong>
-                                <span className="text-[11px] text-slate-500 block">Collection: {po.hireStartDate} • Return: {po.hireEndDate}</span>
-                              </div>
-                              <div className="text-[11px] font-bold text-slate-700 bg-slate-50 p-2 rounded-lg border">
-                                Garments ({po.items.length}): {po.items.map(i => i.itemName).join(', ')}
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-
-                    </div>
-                  </div>
+                    );
+                  })()}
 
                 </div>
               )}
