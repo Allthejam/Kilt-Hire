@@ -319,6 +319,14 @@ export default function KiltHireApp() {
   const [lateFeeReason, setLateFeeReason] = useState<string>('');
   const [showLateFeeOverride, setShowLateFeeOverride] = useState<boolean>(false);
 
+  // UNSAVED RETURN INSPECTION PROTECTION STATE
+  const [showUnsavedReturnWarningModal, setShowUnsavedReturnWarningModal] = useState<boolean>(false);
+  const [pendingNavigationAction, setPendingNavigationAction] = useState<{
+    targetTab?: string;
+    targetName?: string;
+    onConfirm?: () => void;
+  } | null>(null);
+
   // Edit Item & Remove from Rotation Modals
   const [showEditItemModal, setShowEditItemModal] = useState<KiltItem | null>(null);
   const [showRemoveRotationModal, setShowRemoveRotationModal] = useState<KiltItem | null>(null);
@@ -657,6 +665,57 @@ export default function KiltHireApp() {
 
     loadFromFirestore();
   }, []);
+
+  // BROWSER REFRESH & CLOSE TAB PROTECTION FOR UNSAVED RETURN INSPECTIONS
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const hasInspectedItems = assistantTab === 'process_return' && 
+        activeReturnPo !== null && 
+        Object.values(returnChecklist).some(item => item.condition !== 'UNSELECTED' || item.scanned);
+
+      if (hasInspectedItems) {
+        e.preventDefault();
+        e.returnValue = 'You have unsaved garment return inspections in progress. Discard and leave?';
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [assistantTab, activeReturnPo, returnChecklist]);
+
+  // SAFE NAVIGATION WITH UNSAVED RETURN CHECKLIST INTERCEPTION
+  const navigateSafely = (targetTab: string, targetName: string, onConfirm?: () => void) => {
+    const hasInspectedItems = assistantTab === 'process_return' && 
+      activeReturnPo !== null && 
+      Object.values(returnChecklist).some(item => item.condition !== 'UNSELECTED' || item.scanned);
+
+    if (hasInspectedItems) {
+      setPendingNavigationAction({ targetTab, targetName, onConfirm });
+      setShowUnsavedReturnWarningModal(true);
+    } else {
+      if (onConfirm) {
+        onConfirm();
+      } else {
+        setAssistantTab(targetTab as any);
+      }
+    }
+  };
+
+  const handleConfirmDiscardReturnInspection = () => {
+    if (pendingNavigationAction) {
+      setActiveReturnPo(null);
+      setReturnChecklist({});
+      if (pendingNavigationAction.onConfirm) {
+        pendingNavigationAction.onConfirm();
+      } else if (pendingNavigationAction.targetTab) {
+        setAssistantTab(pendingNavigationAction.targetTab as any);
+      }
+      showToast(`🗑️ Discarded unsaved return inspection. Switched to ${pendingNavigationAction.targetName || 'new page'}.`, 'info');
+    }
+    setShowUnsavedReturnWarningModal(false);
+    setPendingNavigationAction(null);
+  };
 
   // ─── AUTH STATE LISTENER ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -2709,7 +2768,7 @@ export default function KiltHireApp() {
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 block mb-2">Shop Floor Quick Tabs</span>
               
               <button
-                onClick={() => setAssistantTab('scanner')}
+                onClick={() => navigateSafely('scanner', 'Auto QR Scanner')}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition ${
                   assistantTab === 'scanner' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
                 }`}
@@ -2721,7 +2780,7 @@ export default function KiltHireApp() {
               </button>
 
               <button
-                onClick={() => setAssistantTab('in_stock')}
+                onClick={() => navigateSafely('in_stock', 'In Stock Inventory')}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition ${
                   assistantTab === 'in_stock' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
                 }`}
@@ -2736,7 +2795,7 @@ export default function KiltHireApp() {
               </button>
 
               <button
-                onClick={() => setAssistantTab('on_hire')}
+                onClick={() => navigateSafely('on_hire', 'On Hire')}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition ${
                   assistantTab === 'on_hire' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
                 }`}
@@ -2751,7 +2810,7 @@ export default function KiltHireApp() {
               </button>
 
               <button
-                onClick={() => setAssistantTab('in_repair')}
+                onClick={() => navigateSafely('in_repair', 'In Repair / Cleaners')}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition ${
                   assistantTab === 'in_repair' ? 'bg-rose-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
                 }`}
@@ -2766,7 +2825,7 @@ export default function KiltHireApp() {
               </button>
 
               <button
-                onClick={() => setAssistantTab('pos')}
+                onClick={() => navigateSafely('pos', 'Active Customer POs')}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition ${
                   assistantTab === 'pos' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-600 hover:bg-slate-100'
                 }`}
@@ -2781,7 +2840,7 @@ export default function KiltHireApp() {
               </button>
 
               <button
-                onClick={() => setAssistantTab('historic_pos')}
+                onClick={() => navigateSafely('historic_pos', 'Historic PO Archive')}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition ${
                   assistantTab === 'historic_pos' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
                 }`}
@@ -2796,7 +2855,7 @@ export default function KiltHireApp() {
               </button>
 
               <button
-                onClick={() => setAssistantTab('calendar')}
+                onClick={() => navigateSafely('calendar', 'Availability Calendar')}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition ${
                   assistantTab === 'calendar' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-600 hover:bg-slate-100'
                 }`}
@@ -5303,10 +5362,10 @@ export default function KiltHireApp() {
 
                     <button 
                       type="button"
-                      onClick={() => {
+                      onClick={() => navigateSafely('pos', 'Active Customer POs', () => {
                         setActiveReturnPo(null);
                         setAssistantTab('pos');
-                      }}
+                      })}
                       className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs rounded-xl transition border border-slate-300 flex items-center gap-1.5"
                     >
                       ← Exit / Back to Customer POs
@@ -9703,6 +9762,60 @@ export default function KiltHireApp() {
                 className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-2"
               >
                 {brevoEmailData.isSending ? 'Sending via Brevo...' : '📧 Send Customer Email via Brevo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ⚠️ UNSAVED RETURN INSPECTION PROTECTION WARNING MODAL */}
+      {showUnsavedReturnWarningModal && activeReturnPo && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border-2 border-rose-500 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-5 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 border border-rose-300 flex items-center justify-center text-rose-600 shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-extrabold text-slate-900">Unsaved Return Inspection Warning</h3>
+                <p className="text-xs text-rose-600 font-bold">Progress on PO {activeReturnPo.id} will be lost!</p>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-xs text-slate-700">
+              <p className="leading-relaxed bg-amber-50/80 p-3 rounded-2xl border border-amber-200 text-amber-950 font-semibold">
+                You are currently processing the return checklist for customer <strong>{activeReturnPo.customerName}</strong> (Order <code>{activeReturnPo.id}</code>).
+              </p>
+              <p className="leading-relaxed">
+                Leaving this page now without clicking <strong>"Confirm PO Batch Return & Process PayPal Deposit Refund"</strong> will discard all your item condition selections, scanned statuses, and deposit refund calculations for this order.
+              </p>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl flex items-center justify-between text-xs">
+              <span className="text-slate-500 font-bold">Attempted Destination:</span>
+              <span className="font-extrabold text-purple-900 bg-purple-100 px-2.5 py-1 rounded-lg border border-purple-300">
+                {pendingNavigationAction?.targetName || 'Another View'}
+              </span>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowUnsavedReturnWarningModal(false);
+                  setPendingNavigationAction(null);
+                }}
+                className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5"
+              >
+                ← Return to Finish Return PO
+              </button>
+
+              <button
+                type="button"
+                onClick={handleConfirmDiscardReturnInspection}
+                className="w-full sm:w-auto px-5 py-2.5 bg-rose-100 hover:bg-rose-200 text-rose-900 border border-rose-300 font-extrabold text-xs rounded-xl transition flex items-center justify-center gap-1.5"
+              >
+                🗑️ Discard & Continue to {pendingNavigationAction?.targetName || 'Page'}
               </button>
             </div>
           </div>
