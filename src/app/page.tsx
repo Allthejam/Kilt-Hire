@@ -417,6 +417,7 @@ export default function KiltHireApp() {
     customerPhone: '',
     eventDate: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
     collectionDate: new Date(Date.now() + 12 * 86400000).toISOString().slice(0, 10),
+    returnDate: new Date(Date.now() + 16 * 86400000).toISOString().slice(0, 10),
     waistInches: 34,
     chestInches: 42,
     sleeveLengthInches: 25,
@@ -1090,6 +1091,7 @@ export default function KiltHireApp() {
       customerPhone: '',
       eventDate: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
       collectionDate: new Date(Date.now() + 12 * 86400000).toISOString().slice(0, 10),
+      returnDate: new Date(Date.now() + 16 * 86400000).toISOString().slice(0, 10),
       waistInches: 34,
       chestInches: 42,
       sleeveLengthInches: 25,
@@ -1148,7 +1150,7 @@ export default function KiltHireApp() {
       customerPhone: fittingForm.customerPhone.trim(),
       eventDate: fittingForm.eventDate,
       hireStartDate: fittingForm.collectionDate,
-      hireEndDate: new Date(new Date(fittingForm.eventDate).getTime() + 2 * 86400000).toISOString().slice(0, 10),
+      hireEndDate: fittingForm.returnDate,
       items: lineItems,
       itemizedSubtotal: rawSubtotal,
       fullRigoutCapApplied,
@@ -3583,8 +3585,22 @@ export default function KiltHireApp() {
                             type="date" 
                             required
                             value={fittingForm.eventDate}
-                            onChange={e => setFittingForm({ ...fittingForm, eventDate: e.target.value })}
+                            onChange={e => {
+                              const newEv = e.target.value;
+                              const autoRet = new Date(new Date(newEv).getTime() + 2 * 86400000).toISOString().slice(0, 10);
+                              setFittingForm({ ...fittingForm, eventDate: newEv, returnDate: autoRet });
+                            }}
                             className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-slate-700 font-extrabold mb-1">Return Date *</label>
+                          <input 
+                            type="date" 
+                            required
+                            value={fittingForm.returnDate}
+                            onChange={e => setFittingForm({ ...fittingForm, returnDate: e.target.value })}
+                            className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm text-xs text-amber-900"
                           />
                         </div>
                       </div>
