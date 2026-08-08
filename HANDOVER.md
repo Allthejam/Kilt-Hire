@@ -161,9 +161,9 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+e3e1735  feat: add automated overdue garment return transactional email template and 1-tap Brevo email dispatch for late returns
 577d515  fix: update mock PO dates and staff notes to be accurate with current date August 8th 2026
 8200c63  fix: default return checklist items to UNSELECTED requiring explicit assistant or admin input before deposit refund submission
-75ed36c  fix: make Item Missing button action trigger explicit state update, red active highlight, and toast notification feedback
 9e5d341  feat: convert Process Return Checklist into a full-page view with 1-tap manual item condition toggles and deposit ledger
 e953140  feat: dynamically hide empty movement sections and replace Column 3 with 2-Day Pick & Pack Assembly Queue
 78ba89e  feat: restore Start New Fitting & Order button at the primary position of the subheader status filter bar
