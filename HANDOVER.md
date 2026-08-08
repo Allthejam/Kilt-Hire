@@ -161,6 +161,7 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+1a9c50a  feat: add unsaved return inspection protection with browser beforeunload warning and in-app exit confirmation modal
 b20692e  fix: render Historic PO Archive workspace with date range filters, customer search, and repeat customer profile history
 bb654a7  feat: split Customer POs into Active POs vs Historic PO Archive with automatic return completion archiving and repeat customer search
 9cdaae7  fix: hide Late Return controls by default for on-time returns with manual override toggle
