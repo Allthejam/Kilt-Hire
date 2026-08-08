@@ -161,6 +161,7 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+e23b3c2  fix: remove Customer Fitting & Measurement Station button from Auto QR Scanner subheader
 955649f  feat: consolidate Start New Fitting & Orders directly into the Booking Schedule & Calendar view and remove Pick & Pack Queue
 96e3500  feat: add explicit Return Date field alongside Collection Date and Event Date in Customer Fitting station
 d6ca884  feat: convert Start New Fitting & Order from popup modal into a full-page workspace tab station
