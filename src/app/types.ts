@@ -92,6 +92,28 @@ export interface QRBatch {
   reprintHistory?: QRReprintLog[];
 }
 
+export interface CustomerMeasurements {
+  waistInches?: number;
+  chestInches?: number;
+  sleeveLengthInches?: number;
+  kiltLengthInches?: number;
+  shoeSize?: string;
+  heightFtInches?: string;
+  jacketStylePreference?: string;
+  tartanPreference?: string;
+  notes?: string;
+}
+
+export type POOrderStatus = 
+  | 'FITTING_DRAFT' 
+  | 'RESERVED_PENDING_PAYMENT' 
+  | 'DEPOSIT_PAID_CONFIRMED' 
+  | 'ASSEMBLY_DUE' 
+  | 'READY_FOR_COLLECTION' 
+  | 'OUT_ON_HIRE' 
+  | 'RETURNED_COMPLETED' 
+  | 'CANCELLED';
+
 export interface POLineItem {
   qrCodeId: string;
   itemName: string;
@@ -122,7 +144,15 @@ export interface PurchaseOrder {
   totalHireFee: number;
   totalDepositHeld: number;
   paypalTransactionId?: string;
-  paymentStatus: 'PAID_WITH_DEPOSIT' | 'DEPOSIT_PARTIALLY_REFUNDED' | 'FULLY_REFUNDED';
+  paymentStatus: 'UNPAID' | 'DEPOSIT_PENDING' | 'PAID_WITH_DEPOSIT' | 'FULL_BALANCE_PAID' | 'DEPOSIT_PARTIALLY_REFUNDED' | 'FULLY_REFUNDED';
+  orderStatus: POOrderStatus;
+  measurements?: CustomerMeasurements;
+  depositPaymentMethod?: 'PAYPAL_ONLINE' | 'IN_STORE_CASH' | 'IN_STORE_CARD';
+  depositPaidAt?: string;
+  balancePaidAt?: string;
+  assembledAt?: string;
+  assembledByStaff?: string;
+  readyNotificationSentAt?: string;
   issuedByStaff: string;
   createdAt: string;
   notes?: string;

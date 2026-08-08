@@ -322,6 +322,7 @@ export const INITIAL_POS: PurchaseOrder[] = [
     totalDepositHeld: 130,
     paypalTransactionId: 'PAYPAL-TX-9881A2X',
     paymentStatus: 'PAID_WITH_DEPOSIT',
+    orderStatus: 'OUT_ON_HIRE',
     issuedByStaff: 'Fiona MacLean',
     createdAt: '2026-07-25 11:20',
     notes: 'Wedding order. Return deadline was yesterday 1st Aug. 1 Day Overdue!'
@@ -373,6 +374,7 @@ export const INITIAL_POS: PurchaseOrder[] = [
     totalDepositHeld: 60,
     paypalTransactionId: 'PAYPAL-TX-7711B8Z',
     paymentStatus: 'PAID_WITH_DEPOSIT',
+    orderStatus: 'OUT_ON_HIRE',
     issuedByStaff: 'Allan',
     createdAt: '2026-07-18 09:45',
     notes: 'Kids outfit. Return deadline was 27th July - 6 Days Overdue! Customer contacted by phone.'
@@ -395,7 +397,7 @@ export const INITIAL_POS: PurchaseOrder[] = [
         hireRate: 50,
         depositAmount: 50,
         returned: true,
-        returnedAt: '2026-07-27 10:15',
+        returnedAt: '2026-07-27 14:10',
         returnCondition: 'GOOD_CLEAN',
         depositAction: 'REFUNDED'
       },
@@ -408,7 +410,7 @@ export const INITIAL_POS: PurchaseOrder[] = [
         hireRate: 50,
         depositAmount: 50,
         returned: true,
-        returnedAt: '2026-07-27 10:15',
+        returnedAt: '2026-07-27 14:10',
         returnCondition: 'GOOD_CLEAN',
         depositAction: 'REFUNDED'
       }
@@ -418,11 +420,12 @@ export const INITIAL_POS: PurchaseOrder[] = [
     fullRigoutDiscount: 0,
     totalHireFee: 100,
     totalDepositHeld: 100,
-    paypalTransactionId: 'PAYPAL-TX-5501C19',
+    paypalTransactionId: 'PAYPAL-TX-3321C9P',
     paymentStatus: 'FULLY_REFUNDED',
+    orderStatus: 'RETURNED_COMPLETED',
     issuedByStaff: 'Allan',
-    createdAt: '2026-07-20 14:10',
-    notes: 'University graduation hire. All items returned clean, deposit refunded.'
+    createdAt: '2026-07-22 14:00',
+    notes: 'Completed hire. Both items returned in good condition. Deposit fully refunded.'
   }
 ];
 

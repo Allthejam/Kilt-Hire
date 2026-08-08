@@ -47,8 +47,15 @@ import {
   SizeGroup,
   CategoryPriceSetting,
   LaundryRecord,
-  StaffRole
+  StaffRole,
+  CustomerMeasurements,
+  POOrderStatus
 } from './types';
+import {
+  sendBrevoEmail,
+  generateCollectionReadyEmailHtml,
+  generatePaymentReminderEmailHtml
+} from '../lib/brevo';
 import { 
   INITIAL_STAFF, 
   INITIAL_INVITES,
@@ -231,8 +238,8 @@ export default function KiltHireApp() {
   // Interface Mode: 'admin_portal' (Full Office) vs 'shop_assistant' (Automated Floor Terminal)
   const [interfaceMode, setInterfaceMode] = useState<'admin_portal' | 'shop_assistant'>('shop_assistant');
 
-  // Shop Assistant Floor Tabs: 'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'calendar' | 'pos'
-  const [assistantTab, setAssistantTab] = useState<'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'calendar' | 'pos'>('scanner');
+  // Shop Assistant Floor Tabs: 'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'calendar' | 'pos' | 'pick_pack'
+  const [assistantTab, setAssistantTab] = useState<'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'calendar' | 'pos' | 'pick_pack'>('scanner');
   const [assistantSearch, setAssistantSearch] = useState('');
   const [assistantSizeFilter, setAssistantSizeFilter] = useState<'ALL' | 'Adult' | 'Kid'>('ALL');
   const [assistantCategoryFilter, setAssistantCategoryFilter] = useState<string>('ALL');
@@ -401,6 +408,39 @@ export default function KiltHireApp() {
   const [showAccPassword, setShowAccPassword] = useState<boolean>(false);
   const [showAccPin, setShowAccPin] = useState<boolean>(false);
   const [accountMsg, setAccountMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  // Customer Fitting Modal State
+  const [showStartFittingModal, setShowStartFittingModal] = useState<boolean>(false);
+  const [fittingForm, setFittingForm] = useState({
+    customerName: '',
+    customerEmail: '',
+    customerPhone: '',
+    eventDate: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
+    collectionDate: new Date(Date.now() + 12 * 86400000).toISOString().slice(0, 10),
+    waistInches: 34,
+    chestInches: 42,
+    sleeveLengthInches: 25,
+    kiltLengthInches: 24,
+    shoeSize: '10',
+    heightFtInches: "5'11",
+    jacketStyle: 'Prince Charlie',
+    tartanPref: 'Royal Stewart',
+    selectedItemIds: [] as string[],
+    depositMethod: 'PAYPAL_ONLINE' as 'PAYPAL_ONLINE' | 'IN_STORE_CASH' | 'IN_STORE_CARD',
+    notes: ''
+  });
+
+  // Brevo Email Modal State
+  const [showBrevoEmailModal, setShowBrevoEmailModal] = useState<boolean>(false);
+  const [brevoEmailData, setBrevoEmailData] = useState<{
+    poId: string;
+    toEmail: string;
+    toName: string;
+    subject: string;
+    htmlContent: string;
+    isSending?: boolean;
+    statusMsg?: string;
+  } | null>(null);
 
   // PO Form state
   const [newPoForm, setNewPoForm] = useState({
@@ -1039,6 +1079,195 @@ export default function KiltHireApp() {
       } catch (err: any) {
         setAccountMsg({ text: err.message || 'Failed to close account.', type: 'error' });
       }
+    }
+  };
+
+  // ─── FITTING & BREVO EMAIL HANDLERS ──────────────────────────────────────────
+  const handleOpenStartFitting = () => {
+    setFittingForm({
+      customerName: '',
+      customerEmail: '',
+      customerPhone: '',
+      eventDate: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
+      collectionDate: new Date(Date.now() + 12 * 86400000).toISOString().slice(0, 10),
+      waistInches: 34,
+      chestInches: 42,
+      sleeveLengthInches: 25,
+      kiltLengthInches: 24,
+      shoeSize: '10',
+      heightFtInches: "5'11",
+      jacketStyle: 'Prince Charlie',
+      tartanPref: 'Royal Stewart',
+      selectedItemIds: [],
+      depositMethod: 'PAYPAL_ONLINE',
+      notes: ''
+    });
+    setShowStartFittingModal(true);
+  };
+
+  const handleSaveFittingSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fittingForm.customerName || !fittingForm.customerEmail) {
+      showToast('Customer Name and Email are required for fitting orders.', 'warning');
+      return;
+    }
+
+    const selectedItems = items.filter(i => fittingForm.selectedItemIds.includes(i.id));
+    if (selectedItems.length === 0) {
+      showToast('Please select at least 1 garment item for the customer fitting outfit.', 'warning');
+      return;
+    }
+
+    const poId = `PO-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+    const lineItems: POLineItem[] = selectedItems.map(item => ({
+      qrCodeId: item.id,
+      itemName: item.name,
+      category: item.category,
+      sizeGroup: item.sizeGroup,
+      size: item.size,
+      hireRate: item.hireRate,
+      depositAmount: item.depositAmount,
+      returned: false
+    }));
+
+    const rawSubtotal = lineItems.reduce((acc, i) => acc + i.hireRate, 0);
+    const hasKilt = lineItems.some(i => i.category === 'Kilts');
+    const hasJacket = lineItems.some(i => i.category === 'Jackets');
+    const fullRigoutCapApplied = hasKilt && hasJacket && rawSubtotal > 120;
+    const totalHireFee = fullRigoutCapApplied ? 120 : rawSubtotal;
+    const fullRigoutDiscount = fullRigoutCapApplied ? rawSubtotal - 120 : 0;
+    const totalDepositHeld = 60; // Standard rigout deposit
+
+    const isPaypal = fittingForm.depositMethod === 'PAYPAL_ONLINE';
+
+    const newPo: PurchaseOrder = {
+      id: poId,
+      customerName: fittingForm.customerName.trim(),
+      customerEmail: fittingForm.customerEmail.trim().toLowerCase(),
+      customerPhone: fittingForm.customerPhone.trim(),
+      eventDate: fittingForm.eventDate,
+      hireStartDate: fittingForm.collectionDate,
+      hireEndDate: new Date(new Date(fittingForm.eventDate).getTime() + 2 * 86400000).toISOString().slice(0, 10),
+      items: lineItems,
+      itemizedSubtotal: rawSubtotal,
+      fullRigoutCapApplied,
+      fullRigoutDiscount,
+      totalHireFee,
+      totalDepositHeld,
+      paymentStatus: isPaypal ? 'UNPAID' : 'PAID_WITH_DEPOSIT',
+      orderStatus: isPaypal ? 'RESERVED_PENDING_PAYMENT' : 'DEPOSIT_PAID_CONFIRMED',
+      depositPaymentMethod: fittingForm.depositMethod,
+      depositPaidAt: isPaypal ? undefined : new Date().toISOString().replace('T', ' ').slice(0, 16),
+      measurements: {
+        waistInches: fittingForm.waistInches,
+        chestInches: fittingForm.chestInches,
+        sleeveLengthInches: fittingForm.sleeveLengthInches,
+        kiltLengthInches: fittingForm.kiltLengthInches,
+        shoeSize: fittingForm.shoeSize,
+        heightFtInches: fittingForm.heightFtInches,
+        jacketStylePreference: fittingForm.jacketStyle,
+        tartanPreference: fittingForm.tartanPref,
+        notes: fittingForm.notes
+      },
+      issuedByStaff: currentUser?.name || 'Allan',
+      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+      notes: `Fitting Order (${fittingForm.depositMethod === 'PAYPAL_ONLINE' ? 'PayPal Invoice Sent' : 'In-Store Deposit Paid'})`
+    };
+
+    try {
+      await upsertPurchaseOrder(newPo);
+      setPos(prev => [newPo, ...prev]);
+      addAuditLog('CREATED_FITTING_ORDER', `Created fitting order ${poId} for ${newPo.customerName} (${newPo.items.length} items, Waist ${fittingForm.waistInches}", Chest ${fittingForm.chestInches}")`, poId);
+      setShowStartFittingModal(false);
+
+      if (isPaypal) {
+        showToast(`🎉 Fitting Order ${poId} reserved! PayPal invoice link generated.`, 'success');
+      } else {
+        showToast(`🎉 Fitting Order ${poId} saved & £${totalDepositHeld} deposit recorded in store!`, 'success');
+      }
+    } catch (err: any) {
+      showToast(`Failed to save fitting order: ${err.message}`, 'warning');
+    }
+  };
+
+  const handleMarkOrderReadyForCollection = async (po: PurchaseOrder) => {
+    try {
+      const updatedPo: PurchaseOrder = {
+        ...po,
+        orderStatus: 'READY_FOR_COLLECTION',
+        assembledAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+        assembledByStaff: currentUser?.name || 'Allan'
+      };
+
+      // Mark stock items as ON_HIRE
+      const itemIdsToOccupy = new Set(po.items.map(li => li.qrCodeId));
+      const updatedItems = items.map(item => {
+        if (itemIdsToOccupy.has(item.id)) {
+          const newItem = { ...item, status: 'ON_HIRE' as ItemStatus, currentPoId: po.id };
+          upsertItem(newItem).catch(() => {});
+          return newItem;
+        }
+        return item;
+      });
+
+      await upsertPurchaseOrder(updatedPo);
+      setPos(prev => prev.map(p => p.id === po.id ? updatedPo : p));
+      setItems(updatedItems);
+
+      addAuditLog('ORDER_READY_FOR_COLLECTION', `Order ${po.id} assembled and marked ready for collection by ${currentUser?.name || 'Allan'}. Items allocated ON_HIRE.`, po.id);
+      showToast(`📦 Order ${po.id} marked ready for collection! Items allocated ON_HIRE.`, 'success');
+
+      // Generate Brevo Collection Email Preview
+      const isFullyPaid = po.paymentStatus === 'FULL_BALANCE_PAID' || po.paymentStatus === 'PAID_WITH_DEPOSIT';
+      const emailHtml = generateCollectionReadyEmailHtml({
+        customerName: po.customerName,
+        poId: po.id,
+        eventDate: po.eventDate,
+        collectionDate: po.hireStartDate,
+        isFullyPaid,
+        totalHireFee: po.totalHireFee,
+        totalDepositHeld: po.totalDepositHeld,
+        itemsCount: po.items.length
+      });
+
+      setBrevoEmailData({
+        poId: po.id,
+        toEmail: po.customerEmail,
+        toName: po.customerName,
+        subject: `Your Highland Rigout (${po.id}) is Ready for Collection!`,
+        htmlContent: emailHtml,
+        statusMsg: isFullyPaid ? 'Order fully paid. Ready for customer collection.' : 'Outstanding balance due upon collection.'
+      });
+      setShowBrevoEmailModal(true);
+    } catch (err: any) {
+      showToast(`Failed to update order status: ${err.message}`, 'warning');
+    }
+  };
+
+  const handleDispatchBrevoEmail = async () => {
+    if (!brevoEmailData) return;
+    setBrevoEmailData(prev => prev ? { ...prev, isSending: true } : null);
+
+    const result = await sendBrevoEmail({
+      toEmail: brevoEmailData.toEmail,
+      toName: brevoEmailData.toName,
+      subject: brevoEmailData.subject,
+      htmlContent: brevoEmailData.htmlContent
+    });
+
+    if (result.success) {
+      const targetPo = pos.find(p => p.id === brevoEmailData.poId);
+      if (targetPo) {
+        const updatedPo = { ...targetPo, readyNotificationSentAt: new Date().toISOString().replace('T', ' ').slice(0, 16) };
+        await upsertPurchaseOrder(updatedPo);
+        setPos(prev => prev.map(p => p.id === targetPo.id ? updatedPo : p));
+      }
+      addAuditLog('SENT_BREVO_CUSTOMER_EMAIL', `Dispatched Brevo customer notification to ${brevoEmailData.toEmail} for ${brevoEmailData.poId}`, brevoEmailData.poId);
+      showToast(`✉️ Customer notification email dispatched via Brevo! (${result.messageId || 'sent'})`, 'success');
+      setShowBrevoEmailModal(false);
+    } else {
+      showToast(`Brevo Email Note: ${result.error}`, 'warning');
+      setBrevoEmailData(prev => prev ? { ...prev, isSending: false } : null);
     }
   };
 
@@ -1934,6 +2163,7 @@ export default function KiltHireApp() {
       totalDepositHeld: totalDep,
       paypalTransactionId: paypalTxId,
       paymentStatus: 'PAID_WITH_DEPOSIT',
+      orderStatus: 'OUT_ON_HIRE',
       issuedByStaff: currentUser.name,
       createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
       notes: newPoForm.notes
@@ -1997,6 +2227,7 @@ export default function KiltHireApp() {
   const onHireItems = items.filter(i => i.status === 'ON_HIRE');
   const inRepairItems = items.filter(i => i.status === 'IN_REPAIR');
   const retiredItems = items.filter(i => i.status === 'RETIRED');
+  const assemblyDuePos = pos.filter(p => p.orderStatus === 'ASSEMBLY_DUE' || p.orderStatus === 'DEPOSIT_PAID_CONFIRMED' || p.orderStatus === 'RESERVED_PENDING_PAYMENT');
 
   // Filtered items helper for shop assistant tabs (with Demographic Adults vs Kids filter, Category filter & Tartan filter)
   const getFilteredItems = (
@@ -2639,6 +2870,13 @@ export default function KiltHireApp() {
               <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm">
                 <div className="flex flex-wrap items-center gap-2">
                   <button
+                    onClick={handleOpenStartFitting}
+                    className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5"
+                  >
+                    <User className="w-4 h-4 text-slate-950" /> Start New Fitting & Order
+                  </button>
+
+                  <button
                     onClick={() => setAssistantTab('scanner')}
                     className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
                       assistantTab === 'scanner' 
@@ -2647,6 +2885,22 @@ export default function KiltHireApp() {
                     }`}
                   >
                     <Zap className="w-4 h-4 text-amber-300" /> Auto QR Scanner
+                  </button>
+
+                  <button
+                    onClick={() => setAssistantTab('pick_pack')}
+                    className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
+                      assistantTab === 'pick_pack' 
+                        ? 'bg-amber-600 text-white shadow-sm' 
+                        : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <PackageCheck className="w-4 h-4" /> Pick & Pack Queue (2-Day Assembly)
+                    <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${
+                      assistantTab === 'pick_pack' ? 'bg-white text-amber-950' : 'bg-amber-100 text-amber-900'
+                    }`}>
+                      {assemblyDuePos.length}
+                    </span>
                   </button>
 
                   <button
@@ -3229,7 +3483,141 @@ export default function KiltHireApp() {
                 </div>
               )}
 
-              {/* IN STOCK LIST TAB */}
+              {/* 2-DAY AFTER-HOURS PICK & PACK ASSEMBLY QUEUE */}
+              {assistantTab === 'pick_pack' && (
+                <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
+                  <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                    <div>
+                      <span className="px-3 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-full text-[11px] font-extrabold inline-flex items-center gap-1 mb-1">
+                        🌙 Quiet Hours / After-Hours Pick & Pack Assembly
+                      </span>
+                      <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+                        <PackageCheck className="w-5 h-5 text-amber-600" /> Orders Due for Collection Assembly ({assemblyDuePos.length})
+                      </h3>
+                      <p className="text-xs text-slate-500 max-w-2xl">
+                        Pick and verify physical garments after hours using your phone's QR camera scanner. Assemble customer bags ready for pickup.
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={handleOpenStartFitting}
+                      className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5"
+                    >
+                      <User className="w-4 h-4" /> Start New Fitting & Order
+                    </button>
+                  </div>
+
+                  {assemblyDuePos.length === 0 ? (
+                    <div className="text-center py-12 bg-slate-50 border border-dashed border-slate-300 rounded-2xl space-y-3">
+                      <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto" />
+                      <h4 className="font-extrabold text-slate-800 text-sm">All Orders Assembled & Up to Date!</h4>
+                      <p className="text-xs text-slate-500">No orders due for collection assembly in the next 2 days.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {assemblyDuePos.map(po => {
+                        const is7DayOverdue = new Date(po.hireStartDate).getTime() - Date.now() <= 7 * 86400000 && (po.paymentStatus === 'UNPAID' || po.paymentStatus === 'DEPOSIT_PENDING');
+
+                        return (
+                          <div key={po.id} className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4 shadow-sm hover:border-amber-400 transition">
+                            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 font-extrabold text-sm flex items-center justify-center shadow">
+                                  {po.customerName.charAt(0)}
+                                </div>
+                                <div>
+                                  <h4 className="font-extrabold text-slate-900 text-base">{po.customerName}</h4>
+                                  <p className="text-xs text-slate-500">{po.customerEmail} • {po.customerPhone}</p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono font-extrabold text-xs bg-white px-2.5 py-1 rounded-lg border border-slate-300 text-amber-900">
+                                  {po.id}
+                                </span>
+                                <span className={`px-2.5 py-1 text-xs font-extrabold rounded-full border ${
+                                  po.orderStatus === 'READY_FOR_COLLECTION' ? 'bg-emerald-100 text-emerald-900 border-emerald-300' :
+                                  po.orderStatus === 'DEPOSIT_PAID_CONFIRMED' ? 'bg-blue-100 text-blue-900 border-blue-300' :
+                                  'bg-amber-100 text-amber-900 border-amber-300'
+                                }`}>
+                                  {po.orderStatus === 'READY_FOR_COLLECTION' ? '✓ Ready for Collection' :
+                                   po.orderStatus === 'DEPOSIT_PAID_CONFIRMED' ? '🔒 Deposit Paid — Pick Due' :
+                                   '⏳ Reserved — Pending Deposit'}
+                                </span>
+                                {is7DayOverdue && (
+                                  <span className="px-2.5 py-1 text-xs font-extrabold bg-rose-100 text-rose-900 border border-rose-300 rounded-full flex items-center gap-1 animate-pulse">
+                                    ⚠️ 7-Day Payment Reminder Due
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* FITTING MEASUREMENTS CARD */}
+                            {po.measurements && (
+                              <div className="bg-white border border-slate-200 p-3 rounded-xl space-y-1 text-xs">
+                                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Fitted Measurements:</span>
+                                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center font-bold">
+                                  <div className="bg-slate-50 p-1.5 rounded border">Waist: <span className="text-amber-800">{po.measurements.waistInches}"</span></div>
+                                  <div className="bg-slate-50 p-1.5 rounded border">Chest: <span className="text-amber-800">{po.measurements.chestInches}"</span></div>
+                                  <div className="bg-slate-50 p-1.5 rounded border">Sleeve: <span className="text-amber-800">{po.measurements.sleeveLengthInches}"</span></div>
+                                  <div className="bg-slate-50 p-1.5 rounded border">Length: <span className="text-amber-800">{po.measurements.kiltLengthInches}"</span></div>
+                                  <div className="bg-slate-50 p-1.5 rounded border">Shoe: <span className="text-amber-800">{po.measurements.shoeSize}</span></div>
+                                  <div className="bg-slate-50 p-1.5 rounded border">Height: <span className="text-amber-800">{po.measurements.heightFtInches}</span></div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* ITEM CHECKLIST TABLE */}
+                            <div className="space-y-2">
+                              <span className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider block">Garments to Pick ({po.items.length} items):</span>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {po.items.map(li => {
+                                  const itemDoc = items.find(i => i.id === li.qrCodeId);
+                                  return (
+                                    <div key={li.qrCodeId} className="bg-white border border-slate-200 p-3 rounded-xl flex items-center justify-between text-xs">
+                                      <div>
+                                        <span className="font-mono font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 mr-1.5">{li.qrCodeId}</span>
+                                        <span className="font-bold text-slate-900">{li.itemName}</span>
+                                        <p className="text-[11px] text-slate-500 mt-0.5">{li.category} ({li.size})</p>
+                                      </div>
+                                      <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded ${itemDoc?.status === 'ON_HIRE' ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' : 'bg-slate-100 text-slate-700'}`}>
+                                        {itemDoc?.status === 'ON_HIRE' ? '✓ Picked & Allocated' : '📦 In Store Shelf'}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            {/* ACTION BAR */}
+                            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200">
+                              <div className="text-xs font-bold text-slate-700">
+                                Collection: <span className="text-amber-800">{po.hireStartDate}</span> • Event: <span className="text-slate-900">{po.eventDate}</span>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                {po.orderStatus !== 'READY_FOR_COLLECTION' && (
+                                  <button
+                                    onClick={() => handleMarkOrderReadyForCollection(po)}
+                                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5"
+                                  >
+                                    <CheckCircle2 className="w-4 h-4" /> Mark Order Assembled & Ready for Collection
+                                  </button>
+                                )}
+                                {po.readyNotificationSentAt && (
+                                  <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                                    ✉️ Brevo Email Sent ({po.readyNotificationSentAt})
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
               {assistantTab === 'in_stock' && (
                 <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-5">
                   <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
@@ -8175,6 +8563,323 @@ export default function KiltHireApp() {
                 className="w-full py-2.5 bg-slate-900 hover:bg-slate-950 text-white font-extrabold text-xs rounded-xl shadow-md transition"
               >
                 Got It, Thanks!
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOMER FITTING & ORDER MODAL */}
+      {showStartFittingModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-3xl w-full p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95">
+            
+            {/* HEADER */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 font-extrabold text-lg flex items-center justify-center shadow">
+                  <User className="w-5 h-5 text-slate-950" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-extrabold text-slate-900">
+                    Start Customer Fitting & Hire Order
+                  </h3>
+                  <p className="text-xs text-slate-500">Record customer fitting measurements & select fit-matched stock.</p>
+                </div>
+              </div>
+              <button onClick={() => setShowStartFittingModal(false)} className="text-slate-400 hover:text-slate-700 p-1.5 hover:bg-slate-100 rounded-xl transition">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveFittingSubmit} className="space-y-5 text-xs">
+              
+              {/* SECTION 1: CUSTOMER DETAILS */}
+              <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-3">
+                <span className="text-[11px] font-extrabold text-amber-800 uppercase tracking-wider block">1. Customer & Event Details</span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-slate-700 font-extrabold mb-1">Full Name</label>
+                    <input 
+                      type="text" 
+                      required
+                      placeholder="e.g. Fiona Sinclair"
+                      value={fittingForm.customerName}
+                      onChange={e => setFittingForm({ ...fittingForm, customerName: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-extrabold mb-1">Email Address</label>
+                    <input 
+                      type="email" 
+                      required
+                      placeholder="e.g. fiona@example.com"
+                      value={fittingForm.customerEmail}
+                      onChange={e => setFittingForm({ ...fittingForm, customerEmail: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-extrabold mb-1">Mobile Phone</label>
+                    <input 
+                      type="text" 
+                      required
+                      placeholder="e.g. 07700 900123"
+                      value={fittingForm.customerPhone}
+                      onChange={e => setFittingForm({ ...fittingForm, customerPhone: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-extrabold mb-1">Collection Date</label>
+                    <input 
+                      type="date" 
+                      required
+                      value={fittingForm.collectionDate}
+                      onChange={e => setFittingForm({ ...fittingForm, collectionDate: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-extrabold mb-1">Event / Function Date</label>
+                    <input 
+                      type="date" 
+                      required
+                      value={fittingForm.eventDate}
+                      onChange={e => setFittingForm({ ...fittingForm, eventDate: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 2: 6 PRECISE FITTING MEASUREMENTS */}
+              <div className="bg-amber-50/70 border border-amber-200 p-4 rounded-2xl space-y-3">
+                <span className="text-[11px] font-extrabold text-amber-900 uppercase tracking-wider block flex items-center gap-1">
+                  📏 2. Precise Fitting Measurements
+                </span>
+
+                <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
+                  <div>
+                    <label className="block text-slate-700 font-extrabold mb-1">Waist (in)</label>
+                    <input 
+                      type="number" 
+                      min={20}
+                      max={60}
+                      value={fittingForm.waistInches}
+                      onChange={e => setFittingForm({ ...fittingForm, waistInches: parseInt(e.target.value) || 34 })}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-mono font-bold text-center text-amber-900 outline-none focus:border-amber-500 shadow-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-extrabold mb-1">Chest (in)</label>
+                    <input 
+                      type="number" 
+                      min={20}
+                      max={60}
+                      value={fittingForm.chestInches}
+                      onChange={e => setFittingForm({ ...fittingForm, chestInches: parseInt(e.target.value) || 42 })}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-mono font-bold text-center text-amber-900 outline-none focus:border-amber-500 shadow-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-extrabold mb-1">Sleeve (in)</label>
+                    <input 
+                      type="number" 
+                      min={15}
+                      max={40}
+                      value={fittingForm.sleeveLengthInches}
+                      onChange={e => setFittingForm({ ...fittingForm, sleeveLengthInches: parseInt(e.target.value) || 25 })}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-mono font-bold text-center text-amber-900 outline-none focus:border-amber-500 shadow-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-extrabold mb-1">Length (in)</label>
+                    <input 
+                      type="number" 
+                      min={15}
+                      max={40}
+                      value={fittingForm.kiltLengthInches}
+                      onChange={e => setFittingForm({ ...fittingForm, kiltLengthInches: parseInt(e.target.value) || 24 })}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-mono font-bold text-center text-amber-900 outline-none focus:border-amber-500 shadow-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-extrabold mb-1">Shoe Size</label>
+                    <input 
+                      type="text" 
+                      value={fittingForm.shoeSize}
+                      onChange={e => setFittingForm({ ...fittingForm, shoeSize: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-mono font-bold text-center text-amber-900 outline-none focus:border-amber-500 shadow-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-extrabold mb-1">Height</label>
+                    <input 
+                      type="text" 
+                      value={fittingForm.heightFtInches}
+                      onChange={e => setFittingForm({ ...fittingForm, heightFtInches: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-mono font-bold text-center text-amber-900 outline-none focus:border-amber-500 shadow-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 3: LIVE FIT-MATCHED STOCK EXPLORER */}
+              <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider">
+                    3. Fit-Matched Available Inventory (Waist {fittingForm.waistInches}", Chest {fittingForm.chestInches}")
+                  </span>
+                  <span className="text-[11px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+                    {fittingForm.selectedItemIds.length} Garments Selected
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1 bg-white border border-slate-200 rounded-xl">
+                  {availableItems.map(item => {
+                    const isSelected = fittingForm.selectedItemIds.includes(item.id);
+                    return (
+                      <div key={item.id} className={`p-2.5 rounded-xl border flex items-center justify-between transition ${isSelected ? 'bg-amber-50 border-amber-400' : 'bg-slate-50 border-slate-200'}`}>
+                        <div>
+                          <span className="font-mono font-extrabold text-amber-900 text-[11px] bg-white px-1.5 py-0.5 rounded border mr-1">{item.id}</span>
+                          <strong className="text-slate-900">{item.name}</strong>
+                          <p className="text-[11px] text-slate-500">{item.category} • {item.tartanOrColour} ({item.size})</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isSelected) {
+                              setFittingForm(prev => ({ ...prev, selectedItemIds: prev.selectedItemIds.filter(id => id !== item.id) }));
+                            } else {
+                              setFittingForm(prev => ({ ...prev, selectedItemIds: [...prev.selectedItemIds, item.id] }));
+                            }
+                          }}
+                          className={`px-2.5 py-1 rounded-lg font-extrabold text-[11px] transition ${isSelected ? 'bg-amber-600 text-white' : 'bg-slate-200 text-slate-800 hover:bg-slate-300'}`}
+                        >
+                          {isSelected ? '✓ Selected' : '+ Add Outfit'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* SECTION 4: DEPOSIT & INVOICING PAYMENT METHOD */}
+              <div className="bg-slate-900 text-white p-4 rounded-2xl space-y-3 shadow-md">
+                <span className="text-[11px] font-extrabold text-amber-400 uppercase tracking-wider block">
+                  4. Deposit & Payment Invoicing Method
+                </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setFittingForm({ ...fittingForm, depositMethod: 'PAYPAL_ONLINE' })}
+                    className={`p-3 rounded-xl border font-bold text-left transition flex items-center justify-between ${
+                      fittingForm.depositMethod === 'PAYPAL_ONLINE' ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-750'
+                    }`}
+                  >
+                    <div>
+                      <span className="block font-extrabold text-xs">🌐 Send PayPal Online Invoice Link</span>
+                      <span className="text-[10px] opacity-90 block mt-0.5">Customer pays £60 deposit online at home</span>
+                    </div>
+                    {fittingForm.depositMethod === 'PAYPAL_ONLINE' && <CheckCircle2 className="w-5 h-5" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFittingForm({ ...fittingForm, depositMethod: 'IN_STORE_CASH' })}
+                    className={`p-3 rounded-xl border font-bold text-left transition flex items-center justify-between ${
+                      fittingForm.depositMethod !== 'PAYPAL_ONLINE' ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-750'
+                    }`}
+                  >
+                    <div>
+                      <span className="block font-extrabold text-xs">🏪 Mark Deposit Paid In Store (£60)</span>
+                      <span className="text-[10px] opacity-90 block mt-0.5">Paid via Cash or Card in shop today</span>
+                    </div>
+                    {fittingForm.depositMethod !== 'PAYPAL_ONLINE' && <CheckCircle2 className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* SUBMIT BUTTON */}
+              <div className="flex items-center justify-between pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowStartFittingModal(false)}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-lg transition flex items-center gap-1.5"
+                >
+                  <CheckCircle2 className="w-4 h-4" /> Save Fitting & Create Order
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* BREVO EMAIL DISPATCH MODAL */}
+      {showBrevoEmailModal && brevoEmailData && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-xl w-full p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white font-extrabold flex items-center justify-center shadow">
+                  ✉️
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900">Brevo Transactional Email Preview</h3>
+                  <p className="text-xs text-slate-500">Order {brevoEmailData.poId} Customer Notification</p>
+                </div>
+              </div>
+
+              <button onClick={() => setShowBrevoEmailModal(false)} className="text-slate-400 hover:text-slate-700 p-1.5 hover:bg-slate-100 rounded-xl transition">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 p-3 rounded-2xl space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-bold">To Recipient:</span>
+                <span className="font-extrabold text-slate-900">{brevoEmailData.toName} &lt;{brevoEmailData.toEmail}&gt;</span>
+              </div>
+              <div className="flex justify-between border-t border-slate-200/60 pt-1">
+                <span className="text-slate-500 font-bold">Subject Line:</span>
+                <span className="font-extrabold text-amber-900">{brevoEmailData.subject}</span>
+              </div>
+            </div>
+
+            {/* HTML PREVIEW CONTAINER */}
+            <div className="border border-slate-300 rounded-2xl overflow-hidden bg-white max-h-64 overflow-y-auto p-4 text-xs shadow-inner">
+              <div dangerouslySetInnerHTML={{ __html: brevoEmailData.htmlContent }} />
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(brevoEmailData.htmlContent);
+                  showToast('📋 Email HTML content copied to clipboard!', 'info');
+                }}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
+              >
+                📋 Copy Email Text
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDispatchBrevoEmail}
+                disabled={brevoEmailData.isSending}
+                className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-2"
+              >
+                {brevoEmailData.isSending ? 'Sending via Brevo...' : '📧 Send Customer Email via Brevo'}
               </button>
             </div>
           </div>
