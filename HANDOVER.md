@@ -161,6 +161,7 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+5e564ec  feat: add Late Return & Security Deposit Retention Section in full-page return workspace with custom fee input, presets, and live ledger update
 e3e1735  feat: add automated overdue garment return transactional email template and 1-tap Brevo email dispatch for late returns
 577d515  fix: update mock PO dates and staff notes to be accurate with current date August 8th 2026
 8200c63  fix: default return checklist items to UNSELECTED requiring explicit assistant or admin input before deposit refund submission
