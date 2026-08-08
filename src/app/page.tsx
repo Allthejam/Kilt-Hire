@@ -5002,9 +5002,9 @@ export default function KiltHireApp() {
 
                                 {/* STATUS BADGE */}
                                 <div>
-                                  {!isScanned ? (
+                                  {!currentSetting.scanned && currentSetting.condition !== 'MISSING' ? (
                                     <span className="px-3 py-1 bg-amber-100 text-amber-900 font-extrabold text-xs rounded-xl border border-amber-300 flex items-center gap-1">
-                                      <Search className="w-3.5 h-3.5 text-amber-600 animate-pulse" /> Awaiting Return (Deposit Held £{li.depositAmount})
+                                      <Search className="w-3.5 h-3.5 text-amber-600 animate-pulse" /> Awaiting Inspection (Deposit Held £{li.depositAmount})
                                     </span>
                                   ) : currentSetting.condition === 'GOOD_CLEAN' ? (
                                     <span className="px-3 py-1 bg-emerald-100 text-emerald-900 font-extrabold text-xs rounded-xl border border-emerald-300 flex items-center gap-1">
@@ -5014,9 +5014,13 @@ export default function KiltHireApp() {
                                     <span className="px-3 py-1 bg-cyan-100 text-cyan-900 font-extrabold text-xs rounded-xl border border-cyan-300 flex items-center gap-1">
                                       🧼 Needs Dry Cleaning (Refund £{li.depositAmount})
                                     </span>
-                                  ) : (
+                                  ) : currentSetting.condition === 'NEEDS_REPAIR' ? (
                                     <span className="px-3 py-1 bg-rose-100 text-rose-900 font-extrabold text-xs rounded-xl border border-rose-300 flex items-center gap-1">
                                       🔧 Needs Repair (Deposit Held £{li.depositAmount})
+                                    </span>
+                                  ) : (
+                                    <span className="px-3 py-1 bg-red-600 text-white font-extrabold text-xs rounded-xl border border-red-700 flex items-center gap-1 shadow-sm">
+                                      ❌ Item Missing (Deposit Retained £{li.depositAmount})
                                     </span>
                                   )}
                                 </div>
@@ -5031,12 +5035,15 @@ export default function KiltHireApp() {
                                 <div className="flex flex-wrap items-center gap-1.5">
                                   <button
                                     type="button"
-                                    onClick={() => setReturnChecklist(prev => ({
-                                      ...prev,
-                                      [li.qrCodeId]: { condition: 'GOOD_CLEAN', scanned: true, notes: 'Returned clean in store' }
-                                    }))}
+                                    onClick={() => {
+                                      setReturnChecklist(prev => ({
+                                        ...prev,
+                                        [li.qrCodeId]: { condition: 'GOOD_CLEAN', scanned: true, notes: 'Returned clean in store' }
+                                      }));
+                                      showToast(`✓ Marked ${li.qrCodeId} as RETURNED CLEAN. £${li.depositAmount} deposit will be refunded.`, 'success');
+                                    }}
                                     className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition shadow-sm border ${
-                                      isScanned && currentSetting.condition === 'GOOD_CLEAN'
+                                      currentSetting.condition === 'GOOD_CLEAN' && currentSetting.scanned
                                         ? 'bg-emerald-600 text-white border-emerald-700 ring-2 ring-emerald-300'
                                         : 'bg-white text-slate-700 border-slate-300 hover:bg-emerald-50 hover:text-emerald-900'
                                     }`}
@@ -5046,12 +5053,15 @@ export default function KiltHireApp() {
 
                                   <button
                                     type="button"
-                                    onClick={() => setReturnChecklist(prev => ({
-                                      ...prev,
-                                      [li.qrCodeId]: { condition: 'NEEDS_CLEANING', scanned: true, notes: 'Needs dry cleaning' }
-                                    }))}
+                                    onClick={() => {
+                                      setReturnChecklist(prev => ({
+                                        ...prev,
+                                        [li.qrCodeId]: { condition: 'NEEDS_CLEANING', scanned: true, notes: 'Needs dry cleaning' }
+                                      }));
+                                      showToast(`🧼 Marked ${li.qrCodeId} for LAUNDRY CLEANING. £${li.depositAmount} deposit will be refunded.`, 'info');
+                                    }}
                                     className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition shadow-sm border ${
-                                      isScanned && currentSetting.condition === 'NEEDS_CLEANING'
+                                      currentSetting.condition === 'NEEDS_CLEANING' && currentSetting.scanned
                                         ? 'bg-cyan-600 text-white border-cyan-700 ring-2 ring-cyan-300'
                                         : 'bg-white text-slate-700 border-slate-300 hover:bg-cyan-50 hover:text-cyan-900'
                                     }`}
@@ -5061,12 +5071,15 @@ export default function KiltHireApp() {
 
                                   <button
                                     type="button"
-                                    onClick={() => setReturnChecklist(prev => ({
-                                      ...prev,
-                                      [li.qrCodeId]: { condition: 'NEEDS_REPAIR', scanned: true, notes: 'Damaged - sent to workshop' }
-                                    }))}
+                                    onClick={() => {
+                                      setReturnChecklist(prev => ({
+                                        ...prev,
+                                        [li.qrCodeId]: { condition: 'NEEDS_REPAIR', scanned: true, notes: 'Damaged - sent to workshop' }
+                                      }));
+                                      showToast(`🔧 Marked ${li.qrCodeId} as DAMAGED. £${li.depositAmount} deposit held for repair.`, 'warning');
+                                    }}
                                     className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition shadow-sm border ${
-                                      isScanned && currentSetting.condition === 'NEEDS_REPAIR'
+                                      currentSetting.condition === 'NEEDS_REPAIR' && currentSetting.scanned
                                         ? 'bg-rose-600 text-white border-rose-700 ring-2 ring-rose-300'
                                         : 'bg-white text-slate-700 border-slate-300 hover:bg-rose-50 hover:text-rose-900'
                                     }`}
@@ -5076,14 +5089,17 @@ export default function KiltHireApp() {
 
                                   <button
                                     type="button"
-                                    onClick={() => setReturnChecklist(prev => ({
-                                      ...prev,
-                                      [li.qrCodeId]: { condition: 'MISSING', scanned: false, notes: 'Item missing / not returned' }
-                                    }))}
+                                    onClick={() => {
+                                      setReturnChecklist(prev => ({
+                                        ...prev,
+                                        [li.qrCodeId]: { condition: 'MISSING', scanned: true, notes: 'Item missing / not returned' }
+                                      }));
+                                      showToast(`❌ Marked ${li.qrCodeId} as MISSING — £${li.depositAmount} deposit RETAINED!`, 'warning');
+                                    }}
                                     className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition shadow-sm border ${
-                                      !isScanned || currentSetting.condition === 'MISSING'
-                                        ? 'bg-amber-500 text-slate-950 border-amber-600 ring-2 ring-amber-300'
-                                        : 'bg-white text-slate-700 border-slate-300 hover:bg-amber-50 hover:text-amber-900'
+                                      currentSetting.condition === 'MISSING'
+                                        ? 'bg-red-600 text-white border-red-700 ring-2 ring-red-300 shadow'
+                                        : 'bg-white text-slate-700 border-slate-300 hover:bg-red-50 hover:text-red-900'
                                     }`}
                                   >
                                     ❌ Item Missing (Retain Deposit)
@@ -5092,18 +5108,18 @@ export default function KiltHireApp() {
                               </div>
 
                               {/* EXPLANATION FOOTNOTE */}
-                              {!isScanned && (
-                                <div className="text-[11px] font-semibold text-amber-900 bg-amber-100/70 p-2 rounded-xl border border-amber-200">
-                                  🔒 Item Missing: Deposit of <strong>£{li.depositAmount}</strong> will be retained until this garment is returned or accounted for.
+                              {currentSetting.condition === 'MISSING' && (
+                                <div className="text-[11px] font-bold text-red-900 bg-red-100/90 p-2.5 rounded-xl border border-red-300 flex items-center gap-1.5">
+                                  <span>🔒 Item Missing: Deposit of <strong>£{li.depositAmount}</strong> will be retained until this garment is returned or accounted for.</span>
                                 </div>
                               )}
-                              {isScanned && currentSetting.condition === 'NEEDS_CLEANING' && (
-                                <div className="text-[11px] font-bold text-cyan-950 bg-cyan-100/80 p-2 rounded-xl border border-cyan-300">
+                              {currentSetting.condition === 'NEEDS_CLEANING' && currentSetting.scanned && (
+                                <div className="text-[11px] font-bold text-cyan-950 bg-cyan-100/80 p-2.5 rounded-xl border border-cyan-300">
                                   🧼 Needs Dry Cleaning: Sent to laundry dispatch. Full deposit of <strong>£{li.depositAmount}</strong> is refunded to customer.
                                 </div>
                               )}
-                              {isScanned && isRepair && (
-                                <div className="text-[11px] font-bold text-rose-900 bg-rose-100/80 p-2 rounded-xl border border-rose-300">
+                              {currentSetting.condition === 'NEEDS_REPAIR' && currentSetting.scanned && (
+                                <div className="text-[11px] font-bold text-rose-900 bg-rose-100/80 p-2.5 rounded-xl border border-rose-300">
                                   🔧 Damaged Garment: Sent to repair workshop & deposit of <strong>£{li.depositAmount}</strong> held for seamstress repair costs.
                                 </div>
                               )}
