@@ -147,7 +147,7 @@ export interface PurchaseOrder {
   paymentStatus: 'UNPAID' | 'DEPOSIT_PENDING' | 'PAID_WITH_DEPOSIT' | 'FULL_BALANCE_PAID' | 'DEPOSIT_PARTIALLY_REFUNDED' | 'FULLY_REFUNDED';
   orderStatus: POOrderStatus;
   measurements?: CustomerMeasurements;
-  depositPaymentMethod?: 'PAYPAL_ONLINE' | 'IN_STORE_CASH' | 'IN_STORE_CARD';
+  depositPaymentMethod?: 'PAYPAL_ONLINE' | 'IN_STORE_CASH' | 'IN_STORE_CARD' | 'PAPER_DIARY_LEGACY';
   depositPaidAt?: string;
   balancePaidAt?: string;
   assembledAt?: string;

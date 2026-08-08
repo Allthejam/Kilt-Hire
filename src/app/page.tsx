@@ -453,7 +453,7 @@ export default function KiltHireApp() {
     collectionDate: new Date(Date.now() + 12 * 86400000).toISOString().slice(0, 10),
     returnDate: new Date(Date.now() + 16 * 86400000).toISOString().slice(0, 10),
     billingMode: 'SINGLE_PRINCIPLE' as 'SINGLE_PRINCIPLE' | 'SPLIT_INDIVIDUAL',
-    depositMethod: 'PAYPAL_ONLINE' as 'PAYPAL_ONLINE' | 'IN_STORE_CASH' | 'IN_STORE_CARD',
+    depositMethod: 'PAYPAL_ONLINE' as 'PAYPAL_ONLINE' | 'IN_STORE_CASH' | 'IN_STORE_CARD' | 'PAPER_DIARY_LEGACY',
     notes: '',
     activeOutfitIndex: 0,
     outfits: [
@@ -1304,6 +1304,7 @@ export default function KiltHireApp() {
     }
 
     const isPaypal = fittingForm.depositMethod === 'PAYPAL_ONLINE';
+    const isLegacyPaper = fittingForm.depositMethod === 'PAPER_DIARY_LEGACY';
     const isSplitBilling = fittingForm.billingMode === 'SPLIT_INDIVIDUAL';
 
     try {
@@ -1335,7 +1336,7 @@ export default function KiltHireApp() {
           const fullRigoutCapApplied = hasKilt && hasJacket && rawSubtotal > 120;
           const totalHireFee = fullRigoutCapApplied ? 120 : rawSubtotal;
           const fullRigoutDiscount = fullRigoutCapApplied ? rawSubtotal - 120 : 0;
-          const totalDepositHeld = 60;
+          const totalDepositHeld = isLegacyPaper ? 0 : 60;
 
           const poId = `PO-2026-${Math.floor(1000 + Math.random() * 9000)}`;
           const po: PurchaseOrder = {
@@ -1363,11 +1364,13 @@ export default function KiltHireApp() {
               kiltLengthInches: outfit.kiltLengthInches,
               shoeSize: outfit.shoeSize,
               heightFtInches: outfit.heightFtInches,
-              notes: `Role: ${outfit.roleLabel} | Party Lead: ${fittingForm.customerName}`
+              notes: `Role: ${outfit.roleLabel} | Party Lead: ${fittingForm.customerName}${isLegacyPaper ? ' | 📖 Paper Diary Legacy Entry' : ''}`
             },
             issuedByStaff: currentUser?.name || 'Allan',
             createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
-            notes: `Wedding Party Order - Paid Separately (${outfit.roleLabel}). Lead: ${fittingForm.customerName}`
+            notes: isLegacyPaper 
+              ? `📖 Legacy Paper Diary Entry (${fittingForm.eventType} Hire: ${outfit.roleLabel}). Payment & Deposit handled offline previously.`
+              : `${fittingForm.eventType} Hire - Paid Separately (${outfit.roleLabel}). Lead: ${fittingForm.customerName}`
           };
 
           await upsertPurchaseOrder(po);
@@ -1404,7 +1407,7 @@ export default function KiltHireApp() {
           allLineItems.push(...lines);
         });
 
-        const totalDepositHeld = fittingForm.outfits.length * 60;
+        const totalDepositHeld = isLegacyPaper ? 0 : fittingForm.outfits.length * 60;
         const poId = `PO-2026-${Math.floor(1000 + Math.random() * 9000)}`;
 
         const po: PurchaseOrder = {
@@ -1432,11 +1435,13 @@ export default function KiltHireApp() {
             kiltLengthInches: fittingForm.outfits[0].kiltLengthInches,
             shoeSize: fittingForm.outfits[0].shoeSize,
             heightFtInches: fittingForm.outfits[0].heightFtInches,
-            notes: `Master Group Order: ${fittingForm.outfits.length} Outfits (${fittingForm.outfits.map(o => o.roleLabel).join(', ')})`
+            notes: `Master Order: ${fittingForm.outfits.length} Outfits (${fittingForm.outfits.map(o => o.roleLabel).join(', ')})${isLegacyPaper ? ' | 📖 Paper Diary Legacy Entry' : ''}`
           },
           issuedByStaff: currentUser?.name || 'Allan',
           createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
-          notes: `Master Wedding Party Order for ${fittingForm.customerName} (${fittingForm.outfits.length} Outfits)`
+          notes: isLegacyPaper
+            ? `📖 Legacy Paper Diary Order for ${fittingForm.customerName} (${fittingForm.outfits.length} Outfit(s)). Deposit & Payment handled offline previously.`
+            : `${fittingForm.eventType} Order for ${fittingForm.customerName} (${fittingForm.outfits.length} Outfit(s))`
         };
 
         await upsertPurchaseOrder(po);
@@ -4280,44 +4285,79 @@ export default function KiltHireApp() {
                     <div className="bg-slate-900 text-white p-5 rounded-2xl space-y-4 shadow-xl">
                       <div className="flex flex-wrap items-center justify-between border-b border-slate-800 pb-2 gap-2">
                         <span className="text-xs font-extrabold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
-                          <CreditCard className="w-4 h-4 text-amber-400" /> Step 4: Group Deposit & Invoice Method
+                          <CreditCard className="w-4 h-4 text-amber-400" /> Step 4: Deposit & Order Entry Method
                         </span>
                         <span className="text-xs font-bold text-emerald-400">
-                          {fittingForm.outfits.length} Rigouts • Total Deposit Held £{fittingForm.outfits.length * 60}
+                          {fittingForm.depositMethod === 'PAPER_DIARY_LEGACY'
+                            ? `📖 Paper Diary Migration (Deposit Bypassed £0)`
+                            : `${fittingForm.outfits.length} Rigout(s) • Total Deposit Held £${fittingForm.outfits.length * 60}`}
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {/* PAYPAL ONLINE INVOICE LINK */}
                         <button
                           type="button"
                           onClick={() => setFittingForm({ ...fittingForm, depositMethod: 'PAYPAL_ONLINE' })}
-                          className={`p-4 rounded-2xl border font-bold text-left transition flex items-center justify-between ${
-                            fittingForm.depositMethod === 'PAYPAL_ONLINE' ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-lg ring-2 ring-amber-400/50' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-750'
+                          className={`p-4 rounded-2xl border font-bold text-left transition flex flex-col justify-between ${
+                            fittingForm.depositMethod === 'PAYPAL_ONLINE' 
+                              ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-lg ring-2 ring-amber-400/50' 
+                              : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-750'
                           }`}
                         >
                           <div>
-                            <span className="block font-extrabold text-sm">🌐 Dispatch PayPal Invoice Links</span>
-                            <span className="text-xs opacity-90 block mt-1">
+                            <span className="block font-extrabold text-xs flex items-center justify-between">
+                              🌐 Dispatch PayPal Link
+                              {fittingForm.depositMethod === 'PAYPAL_ONLINE' && <CheckCircle2 className="w-4 h-4 text-slate-950" />}
+                            </span>
+                            <span className="text-[11px] opacity-90 block mt-1 leading-snug">
                               {fittingForm.billingMode === 'SPLIT_INDIVIDUAL' 
                                 ? `Sends separate PayPal links to all ${fittingForm.outfits.length} customers` 
                                 : `Sends master PayPal link to ${fittingForm.customerName || 'Lead Customer'}`}
                             </span>
                           </div>
-                          {fittingForm.depositMethod === 'PAYPAL_ONLINE' && <CheckCircle2 className="w-6 h-6 shrink-0 ml-2" />}
                         </button>
 
+                        {/* IN STORE DEPOSIT PAID TODAY */}
                         <button
                           type="button"
                           onClick={() => setFittingForm({ ...fittingForm, depositMethod: 'IN_STORE_CASH' })}
-                          className={`p-4 rounded-2xl border font-bold text-left transition flex items-center justify-between ${
-                            fittingForm.depositMethod !== 'PAYPAL_ONLINE' ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-lg ring-2 ring-amber-400/50' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-750'
+                          className={`p-4 rounded-2xl border font-bold text-left transition flex flex-col justify-between ${
+                            fittingForm.depositMethod === 'IN_STORE_CASH' || fittingForm.depositMethod === 'IN_STORE_CARD'
+                              ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-lg ring-2 ring-amber-400/50' 
+                              : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-750'
                           }`}
                         >
                           <div>
-                            <span className="block font-extrabold text-sm">🏪 Mark Deposit Paid In Store (£{fittingForm.outfits.length * 60})</span>
-                            <span className="text-xs opacity-90 block mt-1">Recorded via Cash or Card in shop today — order confirmed immediately</span>
+                            <span className="block font-extrabold text-xs flex items-center justify-between">
+                              🏪 Paid In Store Today (£{fittingForm.outfits.length * 60})
+                              {(fittingForm.depositMethod === 'IN_STORE_CASH' || fittingForm.depositMethod === 'IN_STORE_CARD') && <CheckCircle2 className="w-4 h-4 text-slate-950" />}
+                            </span>
+                            <span className="text-[11px] opacity-90 block mt-1 leading-snug">
+                              Recorded via Cash or Card in shop today — order confirmed immediately
+                            </span>
                           </div>
-                          {fittingForm.depositMethod !== 'PAYPAL_ONLINE' && <CheckCircle2 className="w-6 h-6 shrink-0 ml-2" />}
+                        </button>
+
+                        {/* PAPER DIARY LEGACY MANUAL ENTRY */}
+                        <button
+                          type="button"
+                          onClick={() => setFittingForm({ ...fittingForm, depositMethod: 'PAPER_DIARY_LEGACY' })}
+                          className={`p-4 rounded-2xl border font-bold text-left transition flex flex-col justify-between ${
+                            fittingForm.depositMethod === 'PAPER_DIARY_LEGACY' 
+                              ? 'bg-purple-600 text-white border-purple-400 shadow-lg ring-2 ring-purple-400/50' 
+                              : 'bg-slate-800 border-slate-700 text-purple-200 hover:bg-slate-750'
+                          }`}
+                        >
+                          <div>
+                            <span className="block font-extrabold text-xs flex items-center justify-between">
+                              📖 Paper Diary Manual Entry
+                              {fittingForm.depositMethod === 'PAPER_DIARY_LEGACY' && <CheckCircle2 className="w-4 h-4 text-white" />}
+                            </span>
+                            <span className="text-[11px] opacity-90 block mt-1 leading-snug">
+                              Bypasses PayPal & deposits (payment handled previously offline). Adds to pick queue, calendar & Brevo collection emails as normal.
+                            </span>
+                          </div>
                         </button>
                       </div>
                     </div>
