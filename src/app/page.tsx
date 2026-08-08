@@ -246,6 +246,10 @@ export default function KiltHireApp() {
   const [historicDateFilter, setHistoricDateFilter] = useState<'ALL' | 'THIS_MONTH' | 'LAST_30_DAYS' | 'CUSTOM'>('ALL');
   const [historicStartDate, setHistoricStartDate] = useState<string>('');
   const [historicEndDate, setHistoricEndDate] = useState<string>('');
+  const [historicSortBy, setHistoricSortBy] = useState<'DATE_DESC' | 'DATE_ASC' | 'NAME_ASC' | 'NAME_DESC' | 'FEE_DESC' | 'FEE_ASC'>('DATE_DESC');
+  const [historicRowsPerPage, setHistoricRowsPerPage] = useState<number | 'ALL'>(10);
+  const [historicCurrentPage, setHistoricCurrentPage] = useState<number>(1);
+  const [expandedHistoricPoId, setExpandedHistoricPoId] = useState<string | null>(null);
   const [assistantSizeFilter, setAssistantSizeFilter] = useState<'ALL' | 'Adult' | 'Kid'>('ALL');
   const [assistantCategoryFilter, setAssistantCategoryFilter] = useState<string>('ALL');
   const [assistantTartanFilter, setAssistantTartanFilter] = useState<string>('ALL');
@@ -4606,112 +4610,134 @@ export default function KiltHireApp() {
                     </div>
                   </div>
 
-                  {/* SEARCH & DATE FILTERS BAR */}
+                  {/* TOOLBAR: SEARCH, SORT & ROWS-PER-PAGE */}
                   <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-3">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       {/* SEARCH INPUT */}
-                      <div className="relative">
+                      <div className="relative md:col-span-1">
                         <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                         <input
                           type="text"
-                          placeholder="🔍 Search repeat customers by name, phone number, email, or PO ID..."
+                          placeholder="🔍 Search customer name, phone, email, PO ID..."
                           value={historicPoSearch}
-                          onChange={(e) => setHistoricPoSearch(e.target.value)}
-                          className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-sm"
+                          onChange={(e) => {
+                            setHistoricPoSearch(e.target.value);
+                            setHistoricCurrentPage(1);
+                          }}
+                          className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-sm"
                         />
                       </div>
 
-                      {/* DATE PRESETS */}
+                      {/* SORT CONTROL */}
+                      <div className="flex items-center gap-2">
+                        <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider shrink-0">Sort By:</label>
+                        <select
+                          value={historicSortBy}
+                          onChange={(e) => setHistoricSortBy(e.target.value as any)}
+                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-purple-500 shadow-sm"
+                        >
+                          <option value="DATE_DESC">📅 Hire Date (Newest First)</option>
+                          <option value="DATE_ASC">📅 Hire Date (Oldest First)</option>
+                          <option value="NAME_ASC">👤 Customer Name (A ➔ Z)</option>
+                          <option value="NAME_DESC">👤 Customer Name (Z ➔ A)</option>
+                          <option value="FEE_DESC">💰 Rental Fee (Highest First)</option>
+                          <option value="FEE_ASC">💰 Rental Fee (Lowest First)</option>
+                        </select>
+                      </div>
+
+                      {/* ROWS PER PAGE SELECTOR */}
+                      <div className="flex items-center gap-2">
+                        <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider shrink-0">Show per page:</label>
+                        <div className="flex items-center gap-1 bg-white border border-slate-300 p-1 rounded-xl shadow-sm">
+                          {[10, 20, 50, 100, 'ALL'].map((size) => (
+                            <button
+                              key={size}
+                              type="button"
+                              onClick={() => {
+                                setHistoricRowsPerPage(size as any);
+                                setHistoricCurrentPage(1);
+                              }}
+                              className={`px-2.5 py-1 text-xs font-extrabold rounded-lg transition ${
+                                historicRowsPerPage === size
+                                  ? 'bg-purple-600 text-white shadow-sm'
+                                  : 'text-slate-600 hover:bg-slate-100'
+                              }`}
+                            >
+                              {size}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* DATE RANGE PRESETS */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">Date Range:</span>
+                        <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">Date Filter:</span>
                         <button
                           type="button"
-                          onClick={() => setHistoricDateFilter('ALL')}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition shadow-sm border ${
-                            historicDateFilter === 'ALL'
-                              ? 'bg-purple-600 text-white border-purple-700'
-                              : 'bg-white text-slate-700 border-slate-300 hover:bg-purple-50'
+                          onClick={() => { setHistoricDateFilter('ALL'); setHistoricCurrentPage(1); }}
+                          className={`px-3 py-1 rounded-xl text-xs font-extrabold transition border ${
+                            historicDateFilter === 'ALL' ? 'bg-purple-600 text-white border-purple-700' : 'bg-white text-slate-700 border-slate-300 hover:bg-purple-50'
                           }`}
                         >
                           All Time
                         </button>
                         <button
                           type="button"
-                          onClick={() => setHistoricDateFilter('THIS_MONTH')}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition shadow-sm border ${
-                            historicDateFilter === 'THIS_MONTH'
-                              ? 'bg-purple-600 text-white border-purple-700'
-                              : 'bg-white text-slate-700 border-slate-300 hover:bg-purple-50'
+                          onClick={() => { setHistoricDateFilter('THIS_MONTH'); setHistoricCurrentPage(1); }}
+                          className={`px-3 py-1 rounded-xl text-xs font-extrabold transition border ${
+                            historicDateFilter === 'THIS_MONTH' ? 'bg-purple-600 text-white border-purple-700' : 'bg-white text-slate-700 border-slate-300 hover:bg-purple-50'
                           }`}
                         >
                           This Month (Aug 2026)
                         </button>
                         <button
                           type="button"
-                          onClick={() => setHistoricDateFilter('LAST_30_DAYS')}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition shadow-sm border ${
-                            historicDateFilter === 'LAST_30_DAYS'
-                              ? 'bg-purple-600 text-white border-purple-700'
-                              : 'bg-white text-slate-700 border-slate-300 hover:bg-purple-50'
+                          onClick={() => { setHistoricDateFilter('LAST_30_DAYS'); setHistoricCurrentPage(1); }}
+                          className={`px-3 py-1 rounded-xl text-xs font-extrabold transition border ${
+                            historicDateFilter === 'LAST_30_DAYS' ? 'bg-purple-600 text-white border-purple-700' : 'bg-white text-slate-700 border-slate-300 hover:bg-purple-50'
                           }`}
                         >
                           Last 30 Days
                         </button>
                         <button
                           type="button"
-                          onClick={() => setHistoricDateFilter('CUSTOM')}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition shadow-sm border ${
-                            historicDateFilter === 'CUSTOM'
-                              ? 'bg-purple-600 text-white border-purple-700'
-                              : 'bg-white text-slate-700 border-slate-300 hover:bg-purple-50'
+                          onClick={() => { setHistoricDateFilter('CUSTOM'); setHistoricCurrentPage(1); }}
+                          className={`px-3 py-1 rounded-xl text-xs font-extrabold transition border ${
+                            historicDateFilter === 'CUSTOM' ? 'bg-purple-600 text-white border-purple-700' : 'bg-white text-slate-700 border-slate-300 hover:bg-purple-50'
                           }`}
                         >
                           Custom Range
                         </button>
                       </div>
-                    </div>
 
-                    {/* CUSTOM DATE RANGE PICKER */}
-                    {historicDateFilter === 'CUSTOM' && (
-                      <div className="pt-2 border-t border-slate-200 flex flex-wrap items-center gap-3 text-xs">
-                        <div className="flex items-center gap-1.5">
-                          <label className="font-bold text-slate-600">From Date:</label>
+                      {historicDateFilter === 'CUSTOM' && (
+                        <div className="flex items-center gap-2 text-xs">
                           <input
                             type="date"
                             value={historicStartDate}
-                            onChange={(e) => setHistoricStartDate(e.target.value)}
-                            className="px-3 py-1.5 bg-white border border-slate-300 rounded-xl font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            onChange={(e) => { setHistoricStartDate(e.target.value); setHistoricCurrentPage(1); }}
+                            className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800"
                           />
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <label className="font-bold text-slate-600">To Date:</label>
+                          <span className="text-slate-400">to</span>
                           <input
                             type="date"
                             value={historicEndDate}
-                            onChange={(e) => setHistoricEndDate(e.target.value)}
-                            className="px-3 py-1.5 bg-white border border-slate-300 rounded-xl font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            onChange={(e) => { setHistoricEndDate(e.target.value); setHistoricCurrentPage(1); }}
+                            className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800"
                           />
                         </div>
-                        {(historicStartDate || historicEndDate) && (
-                          <button
-                            type="button"
-                            onClick={() => { setHistoricStartDate(''); setHistoricEndDate(''); }}
-                            className="text-xs text-rose-600 font-extrabold hover:underline"
-                          >
-                            Clear Dates
-                          </button>
-                        )}
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
 
-                  {/* HISTORIC ORDERS LIST & REPEAT CUSTOMER CARDS */}
+                  {/* CONDENSED HISTORIC ORDERS DATA TABLE */}
                   <div className="space-y-4">
                     {(() => {
                       const completedPos = pos.filter(p => p.items.every(i => i.returned) || p.orderStatus === 'RETURNED_COMPLETED');
                       
                       const filteredCompleted = completedPos.filter(p => {
-                        // 1. Text Search Filter
                         if (historicPoSearch) {
                           const query = historicPoSearch.toLowerCase();
                           const matchesName = p.customerName.toLowerCase().includes(query);
@@ -4721,7 +4747,6 @@ export default function KiltHireApp() {
                           if (!matchesName && !matchesPhone && !matchesEmail && !matchesPo) return false;
                         }
 
-                        // 2. Date Filter
                         if (historicDateFilter === 'THIS_MONTH') {
                           return p.eventDate.startsWith('2026-08') || p.hireStartDate.startsWith('2026-08');
                         } else if (historicDateFilter === 'LAST_30_DAYS') {
@@ -4736,7 +4761,20 @@ export default function KiltHireApp() {
                         return true;
                       });
 
-                      if (filteredCompleted.length === 0) {
+                      // Apply Sorting
+                      const sortedCompleted = [...filteredCompleted].sort((a, b) => {
+                        if (historicSortBy === 'DATE_DESC') return new Date(b.hireEndDate).getTime() - new Date(a.hireEndDate).getTime();
+                        if (historicSortBy === 'DATE_ASC') return new Date(a.hireEndDate).getTime() - new Date(b.hireEndDate).getTime();
+                        if (historicSortBy === 'NAME_ASC') return a.customerName.localeCompare(b.customerName);
+                        if (historicSortBy === 'NAME_DESC') return b.customerName.localeCompare(a.customerName);
+                        if (historicSortBy === 'FEE_DESC') return b.totalHireFee - a.totalHireFee;
+                        if (historicSortBy === 'FEE_ASC') return a.totalHireFee - b.totalHireFee;
+                        return 0;
+                      });
+
+                      const totalItems = sortedCompleted.length;
+
+                      if (totalItems === 0) {
                         return (
                           <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
                             <span className="text-3xl">📜</span>
@@ -4750,80 +4788,227 @@ export default function KiltHireApp() {
                         );
                       }
 
+                      // Pagination calculation
+                      const pageSize = historicRowsPerPage === 'ALL' ? totalItems : historicRowsPerPage;
+                      const totalPages = Math.max(1, Math.ceil(totalItems / (pageSize || 1)));
+                      const safeCurrentPage = Math.min(Math.max(1, historicCurrentPage), totalPages);
+                      
+                      const startIndex = (safeCurrentPage - 1) * pageSize;
+                      const endIndex = historicRowsPerPage === 'ALL' ? totalItems : Math.min(startIndex + pageSize, totalItems);
+                      const paginatedList = sortedCompleted.slice(startIndex, endIndex);
+
                       return (
                         <div className="space-y-4">
-                          <div className="flex items-center justify-between text-xs text-slate-500 font-bold px-1">
-                            <span>Showing {filteredCompleted.length} historic order record(s)</span>
-                            <span>Sorted by most recent hire</span>
+                          {/* SUMMARY HEADER */}
+                          <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 font-bold px-1">
+                            <span>
+                              Showing <strong className="text-purple-900">{totalItems > 0 ? startIndex + 1 : 0} – {endIndex}</strong> of <strong className="text-purple-900">{totalItems}</strong> Historic PO Records
+                            </span>
+                            <span>
+                              Page <strong>{safeCurrentPage}</strong> of <strong>{totalPages}</strong>
+                            </span>
                           </div>
 
-                          {filteredCompleted.map(po => {
-                            const totalSpent = po.totalHireFee;
-                            const totalDeposit = po.totalDepositHeld;
-                            const customerHires = completedPos.filter(p => p.customerEmail.toLowerCase() === po.customerEmail.toLowerCase());
-                            const isRepeatCustomer = customerHires.length > 1;
+                          {/* HIGH DENSITY CONDENSED TABLE */}
+                          <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm bg-white">
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left text-xs border-collapse">
+                                <thead>
+                                  <tr className="bg-slate-100/90 text-slate-700 font-extrabold border-b border-slate-200 uppercase tracking-wider text-[10px]">
+                                    <th className="py-3 px-4">PO Number & Status</th>
+                                    <th className="py-3 px-4">Customer & Contact</th>
+                                    <th className="py-3 px-4">Event & Hire Dates</th>
+                                    <th className="py-3 px-4">Garments Hired</th>
+                                    <th className="py-3 px-4 text-right">Hire Fee & Deposit</th>
+                                    <th className="py-3 px-4 text-center">Action</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-200">
+                                  {paginatedList.map((po) => {
+                                    const customerHires = completedPos.filter(p => p.customerEmail.toLowerCase() === po.customerEmail.toLowerCase());
+                                    const isRepeatCustomer = customerHires.length > 1;
+                                    const isExpanded = expandedHistoricPoId === po.id;
 
-                            return (
-                              <div key={po.id} className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 shadow-sm hover:border-purple-300 transition">
-                                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
-                                  <div>
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="font-mono font-extrabold text-purple-900 text-sm bg-purple-100 px-2 py-0.5 rounded border border-purple-300">{po.id}</span>
-                                      <strong className="text-slate-900 text-sm">{po.customerName}</strong>
-                                      <span className="text-xs text-slate-600">({po.customerPhone})</span>
+                                    return (
+                                      <React.Fragment key={po.id}>
+                                        <tr className={`hover:bg-purple-50/50 transition ${isExpanded ? 'bg-purple-50/70 font-semibold' : 'bg-white'}`}>
+                                          <td className="py-3 px-4 align-middle">
+                                            <div className="flex items-center gap-2">
+                                              <span className="font-mono font-extrabold text-purple-900 bg-purple-100 px-2 py-0.5 rounded border border-purple-300">
+                                                {po.id}
+                                              </span>
+                                              <span className="px-2 py-0.5 text-[9px] font-extrabold bg-emerald-100 text-emerald-900 rounded border border-emerald-300">
+                                                ✓ RETURNED
+                                              </span>
+                                            </div>
+                                          </td>
 
-                                      {isRepeatCustomer && (
-                                        <span className="px-2.5 py-0.5 text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 rounded-full flex items-center gap-1">
-                                          ⭐ REPEAT CUSTOMER ({customerHires.length} Hires)
-                                        </span>
-                                      )}
+                                          <td className="py-3 px-4 align-middle">
+                                            <div>
+                                              <strong className="text-slate-900 font-bold block">{po.customerName}</strong>
+                                              <span className="text-[11px] text-slate-500">{po.customerPhone}</span>
+                                              {isRepeatCustomer && (
+                                                <span className="ml-1.5 px-2 py-0.5 text-[9px] font-extrabold bg-amber-100 text-amber-900 rounded-full border border-amber-300 inline-block">
+                                                  ⭐ Repeat ({customerHires.length})
+                                                </span>
+                                              )}
+                                            </div>
+                                          </td>
 
-                                      <span className="px-2.5 py-0.5 text-[10px] font-extrabold bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-full">
-                                        ✓ RETURN COMPLETED & ARCHIVED
-                                      </span>
-                                    </div>
-                                    <span className="text-xs text-slate-500 block mt-1">
-                                      Hire Period: <strong>{po.hireStartDate}</strong> to <strong>{po.hireEndDate}</strong> (Event Date: {po.eventDate})
-                                    </span>
-                                  </div>
+                                          <td className="py-3 px-4 align-middle">
+                                            <div>
+                                              <span className="text-slate-900 font-semibold block">Event: {po.eventDate}</span>
+                                              <span className="text-[10px] text-slate-500">{po.hireStartDate} ➔ {po.hireEndDate}</span>
+                                            </div>
+                                          </td>
 
-                                  <div className="text-right">
-                                    <span className="text-xs text-slate-500 block">Total Rental Revenue</span>
-                                    <span className="font-mono font-extrabold text-emerald-700 text-sm">£{totalSpent} (+ £{totalDeposit} Deposit)</span>
-                                  </div>
-                                </div>
+                                          <td className="py-3 px-4 align-middle">
+                                            <div className="text-[11px]">
+                                              <strong className="text-slate-800">{po.items.length} Item(s):</strong>{' '}
+                                              <span className="text-slate-600 truncate max-w-[200px] inline-block align-bottom">
+                                                {po.items.map(i => i.itemName).join(', ')}
+                                              </span>
+                                            </div>
+                                          </td>
 
-                                {/* ITEM DETAILS */}
-                                <div className="space-y-1.5">
-                                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">Garments Hired in this Order:</span>
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                                    {po.items.map(li => (
-                                      <div key={li.qrCodeId} className="p-2.5 bg-white border border-slate-200 rounded-xl flex items-center justify-between">
-                                        <div>
-                                          <div className="flex items-center gap-1.5">
-                                            <span className="font-mono font-extrabold text-slate-800">{li.qrCodeId}</span>
-                                            <span className="font-semibold text-slate-900">{li.itemName}</span>
-                                          </div>
-                                          <span className="text-[10px] text-slate-500 block">
-                                            {li.sizeGroup} ({li.size}) • Hire Rate £{li.hireRate}
-                                          </span>
-                                        </div>
-                                        <span className="px-2 py-0.5 text-[10px] font-extrabold bg-emerald-100 text-emerald-900 rounded border border-emerald-200">
-                                          ✓ Returned
-                                        </span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
+                                          <td className="py-3 px-4 align-middle text-right font-mono">
+                                            <strong className="text-emerald-700 font-extrabold block text-xs">£{po.totalHireFee}</strong>
+                                            <span className="text-[10px] text-slate-400">£{po.totalDepositHeld} Deposit Refunded</span>
+                                          </td>
 
-                                {po.notes && (
-                                  <div className="text-xs bg-white p-2.5 rounded-xl border border-slate-200 text-slate-700">
-                                    <strong>Staff Inspection Notes:</strong> {po.notes}
-                                  </div>
-                                )}
+                                          <td className="py-3 px-4 align-middle text-center">
+                                            <button
+                                              type="button"
+                                              onClick={() => setExpandedHistoricPoId(isExpanded ? null : po.id)}
+                                              className={`px-3 py-1 rounded-xl text-xs font-extrabold transition shadow-sm border flex items-center gap-1 mx-auto ${
+                                                isExpanded 
+                                                  ? 'bg-purple-600 text-white border-purple-700' 
+                                                  : 'bg-white text-purple-900 border-purple-300 hover:bg-purple-100'
+                                              }`}
+                                            >
+                                              {isExpanded ? '▲ Hide Details' : '👁️ View Details'}
+                                            </button>
+                                          </td>
+                                        </tr>
+
+                                        {/* EXPANDABLE ROW DRAWER */}
+                                        {isExpanded && (
+                                          <tr className="bg-purple-50/90 border-b border-purple-200">
+                                            <td colSpan={6} className="p-4">
+                                              <div className="bg-white border border-purple-200 rounded-2xl p-4 space-y-3 shadow-inner">
+                                                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                                                  <span className="font-extrabold text-xs text-purple-900 uppercase tracking-wider">
+                                                    Garment Line Items & Return Condition Ledger (PO {po.id}):
+                                                  </span>
+                                                  <span className="text-xs text-slate-500 font-mono">
+                                                    PayPal Ref: <strong>{po.paypalTransactionId}</strong>
+                                                  </span>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                                  {po.items.map((li) => (
+                                                    <div key={li.qrCodeId} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                                                      <div>
+                                                        <div className="flex items-center gap-1.5">
+                                                          <span className="font-mono font-extrabold text-slate-900">{li.qrCodeId}</span>
+                                                          <span className="font-semibold text-slate-800">{li.itemName}</span>
+                                                        </div>
+                                                        <span className="text-[10px] text-slate-500 block">
+                                                          {li.sizeGroup} ({li.size}) • Hire Rate £{li.hireRate}
+                                                        </span>
+                                                      </div>
+                                                      <span className="px-2 py-0.5 text-[10px] font-extrabold bg-emerald-100 text-emerald-900 rounded border border-emerald-300">
+                                                        ✓ Returned Clean
+                                                      </span>
+                                                    </div>
+                                                  ))}
+                                                </div>
+
+                                                {po.notes && (
+                                                  <div className="text-xs bg-amber-50/90 p-2.5 rounded-xl border border-amber-200 text-amber-950">
+                                                    <strong>Staff Return Inspection Notes:</strong> {po.notes}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </td>
+                                          </tr>
+                                        )}
+                                      </React.Fragment>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+
+                          {/* PAGINATION CONTROLS (<< < 1 2 3 > >>) */}
+                          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs">
+                            <div className="flex items-center gap-2 font-bold text-slate-600">
+                              <span>Showing {startIndex + 1} to {endIndex} of {totalItems} entries</span>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 font-extrabold">
+                              {/* FIRST PAGE << */}
+                              <button
+                                type="button"
+                                disabled={safeCurrentPage === 1}
+                                onClick={() => setHistoricCurrentPage(1)}
+                                className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-800 disabled:opacity-40 disabled:hover:bg-white border border-slate-300 rounded-lg shadow-sm transition"
+                                title="First Page"
+                              >
+                                &laquo; First
+                              </button>
+
+                              {/* PREV PAGE < */}
+                              <button
+                                type="button"
+                                disabled={safeCurrentPage === 1}
+                                onClick={() => setHistoricCurrentPage(prev => Math.max(1, prev - 1))}
+                                className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 disabled:opacity-40 disabled:hover:bg-white border border-slate-300 rounded-lg shadow-sm transition"
+                              >
+                                &lt; Prev
+                              </button>
+
+                              {/* PAGE NUMBER BUTTONS */}
+                              <div className="flex items-center gap-1">
+                                {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                                  <button
+                                    key={pageNum}
+                                    type="button"
+                                    onClick={() => setHistoricCurrentPage(pageNum)}
+                                    className={`px-3 py-1.5 rounded-lg border transition shadow-sm ${
+                                      safeCurrentPage === pageNum
+                                        ? 'bg-purple-600 text-white border-purple-700'
+                                        : 'bg-white text-slate-700 border-slate-300 hover:bg-purple-50'
+                                    }`}
+                                  >
+                                    {pageNum}
+                                  </button>
+                                ))}
                               </div>
-                            );
-                          })}
+
+                              {/* NEXT PAGE > */}
+                              <button
+                                type="button"
+                                disabled={safeCurrentPage === totalPages}
+                                onClick={() => setHistoricCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                                className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 disabled:opacity-40 disabled:hover:bg-white border border-slate-300 rounded-lg shadow-sm transition"
+                              >
+                                Next &gt;
+                              </button>
+
+                              {/* LAST PAGE >> */}
+                              <button
+                                type="button"
+                                disabled={safeCurrentPage === totalPages}
+                                onClick={() => setHistoricCurrentPage(totalPages)}
+                                className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-800 disabled:opacity-40 disabled:hover:bg-white border border-slate-300 rounded-lg shadow-sm transition"
+                                title="Last Page"
+                              >
+                                Last &raquo;
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       );
                     })()}
