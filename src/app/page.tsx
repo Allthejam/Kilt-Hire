@@ -54,7 +54,8 @@ import {
 import {
   sendBrevoEmail,
   generateCollectionReadyEmailHtml,
-  generatePaymentReminderEmailHtml
+  generatePaymentReminderEmailHtml,
+  generateOverdueReturnEmailHtml
 } from '../lib/brevo';
 import { 
   INITIAL_STAFF, 
@@ -1280,6 +1281,33 @@ export default function KiltHireApp() {
     } catch (err: any) {
       showToast(`Failed to update order status: ${err.message}`, 'warning');
     }
+  };
+
+  // OPEN BREVO OVERDUE GARMENT RETURN EMAIL PREVIEW & DISPATCH
+  const handleOpenOverdueNoticeEmail = (po: PurchaseOrder) => {
+    const todayMs = new Date().getTime();
+    const endMs = new Date(po.hireEndDate).getTime();
+    const daysOverdue = Math.max(1, Math.floor((todayMs - endMs) / 86400000));
+    const itemsListStr = po.items.map(i => `${i.itemName} (${i.size})`).join(', ');
+
+    const emailHtml = generateOverdueReturnEmailHtml({
+      customerName: po.customerName,
+      poId: po.id,
+      returnDeadline: po.hireEndDate,
+      daysOverdue,
+      itemsList: itemsListStr,
+      totalDepositHeld: po.totalDepositHeld
+    });
+
+    setBrevoEmailData({
+      poId: po.id,
+      toEmail: po.customerEmail,
+      toName: po.customerName,
+      subject: `🚨 URGENT: Overdue Garment Return Notice - Order ${po.id}`,
+      htmlContent: emailHtml,
+      statusMsg: `Garment return is ${daysOverdue} day(s) overdue. Security deposit of £${po.totalDepositHeld} subject to forfeiture if unreturned.`
+    });
+    setShowBrevoEmailModal(true);
   };
 
   const handleDispatchBrevoEmail = async () => {
@@ -4312,6 +4340,16 @@ export default function KiltHireApp() {
                               >
                                 <RotateCcw className="w-3.5 h-3.5" /> Process PO Batch Return
                               </button>
+
+                              {!isComplete && overdueInfo.level !== 'ON_TIME' && (
+                                <button
+                                  onClick={() => handleOpenOverdueNoticeEmail(po)}
+                                  className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-extrabold flex items-center gap-1 shadow transition"
+                                  title="Dispatch Brevo Overdue Return Notice"
+                                >
+                                  <Mail className="w-3.5 h-3.5" /> Send Overdue Notice (Brevo)
+                                </button>
+                              )}
 
                               <button
                                 onClick={() => {
