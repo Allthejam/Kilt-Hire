@@ -309,6 +309,11 @@ export default function KiltHireApp() {
     notes: string;
   }>>({});
 
+  // LATE RETURN & DEPOSIT RETENTION STATE
+  const [lateFeeOption, setLateFeeOption] = useState<'NONE' | 'CUSTOM' | 'FULL_DEPOSIT'>('NONE');
+  const [customLateFeeAmount, setCustomLateFeeAmount] = useState<number>(0);
+  const [lateFeeReason, setLateFeeReason] = useState<string>('');
+
   // Edit Item & Remove from Rotation Modals
   const [showEditItemModal, setShowEditItemModal] = useState<KiltItem | null>(null);
   const [showRemoveRotationModal, setShowRemoveRotationModal] = useState<KiltItem | null>(null);
@@ -1633,6 +1638,22 @@ export default function KiltHireApp() {
       }
     });
 
+    // Initialize Late Return Fee State
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const isOverdue = po.hireEndDate < todayStr;
+    if (isOverdue) {
+      const todayMs = new Date().getTime();
+      const endMs = new Date(po.hireEndDate).getTime();
+      const daysOverdue = Math.max(1, Math.floor((todayMs - endMs) / 86400000));
+      setLateFeeOption('NONE'); // Assistant can explicitly toggle fee or waive
+      setCustomLateFeeAmount(15 * daysOverdue); // Suggested £15/day late fee
+      setLateFeeReason(`Order returned ${daysOverdue} day(s) overdue (deadline: ${po.hireEndDate}).`);
+    } else {
+      setLateFeeOption('NONE');
+      setCustomLateFeeAmount(0);
+      setLateFeeReason('');
+    }
+
     setReturnChecklist(initialChecklist as any);
   };
 
@@ -2034,29 +2055,45 @@ export default function KiltHireApp() {
       }
     });
 
+    // Calculate Late Return Retention Fee
+    let retainedLateFee = 0;
+    if (lateFeeOption === 'CUSTOM') {
+      retainedLateFee = Math.min(totalRefundedDeposit, Math.max(0, customLateFeeAmount));
+    } else if (lateFeeOption === 'FULL_DEPOSIT') {
+      retainedLateFee = totalRefundedDeposit;
+    }
+
+    const netRefundToCustomer = Math.max(0, totalRefundedDeposit - retainedLateFee);
     const allReturned = updatedPoItems.every(li => li.returned);
-    const newPaymentStatus = allReturned 
-      ? 'FULLY_REFUNDED' 
-      : 'DEPOSIT_PARTIALLY_REFUNDED';
+    
+    let newPaymentStatus: 'FULLY_REFUNDED' | 'DEPOSIT_PARTIALLY_REFUNDED' | 'PAID_WITH_DEPOSIT' = 'FULLY_REFUNDED';
+    if (!allReturned || retainedLateFee > 0 || totalHeldDepositForRepair > 0 || totalHeldDepositForMissing > 0) {
+      newPaymentStatus = 'DEPOSIT_PARTIALLY_REFUNDED';
+    }
 
     setPos(prev => prev.map(p => {
       if (p.id === activeReturnPo.id) {
         return {
           ...p,
           items: updatedPoItems,
-          paymentStatus: newPaymentStatus
+          paymentStatus: newPaymentStatus,
+          notes: retainedLateFee > 0 
+            ? `${p.notes || ''} [LATE RETURN FEE: Retained £${retainedLateFee} from deposit. Note: ${lateFeeReason || 'Late return penalty'}]`
+            : p.notes
         };
       }
       return p;
     }));
 
-    const summaryDetails = `Processed PO ${activeReturnPo.id} Return for ${activeReturnPo.customerName}: Refunded £${totalRefundedDeposit} deposit. Held £${totalHeldDepositForRepair} for repairs, £${totalHeldDepositForMissing} for missing items.`;
+    const summaryDetails = `Processed PO ${activeReturnPo.id} Return for ${activeReturnPo.customerName}: Net PayPal Refund £${netRefundToCustomer}. Retained £${retainedLateFee} late return fee, £${totalHeldDepositForRepair} for repairs, £${totalHeldDepositForMissing} for missing items.`;
     addAuditLog('PROCESSED_MULTI_ITEM_PO_RETURN', summaryDetails);
 
-    if (totalHeldDepositForMissing > 0) {
-      showToast(`⚠️ PO ${activeReturnPo.id} updated! Refunded £${totalRefundedDeposit}. Held £${totalHeldDepositForMissing} deposit for missing item(s).`, 'warning');
+    if (retainedLateFee > 0) {
+      showToast(`✅ PO ${activeReturnPo.id} return completed! Net PayPal Refund: £${netRefundToCustomer} (£${retainedLateFee} retained for late fee).`, 'success');
+    } else if (totalHeldDepositForMissing > 0 || totalHeldDepositForRepair > 0) {
+      showToast(`⚠️ PO ${activeReturnPo.id} updated! Refunded £${netRefundToCustomer}. Held £${totalHeldDepositForMissing + totalHeldDepositForRepair} deposit for missing/damaged item(s).`, 'warning');
     } else {
-      showToast(`✅ PO ${activeReturnPo.id} full return completed! PayPal £${totalRefundedDeposit} deposit refunded to ${activeReturnPo.customerName}.`, 'success');
+      showToast(`✅ PO ${activeReturnPo.id} full return completed! PayPal £${netRefundToCustomer} deposit refunded to ${activeReturnPo.customerName}.`, 'success');
     }
 
     setActiveReturnPo(null);
@@ -5203,6 +5240,129 @@ export default function KiltHireApp() {
                       </div>
                     </div>
 
+                    {/* ⏰ LATE RETURN & DEPOSIT RETENTION CONTROLS */}
+                    <div className="bg-gradient-to-r from-slate-900 to-amber-950 text-white p-5 rounded-2xl space-y-4 shadow-md border border-amber-900/40">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-900/60 pb-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 font-extrabold flex items-center justify-center border border-amber-500/40">
+                            ⏰
+                          </div>
+                          <div>
+                            <h4 className="font-extrabold text-sm text-amber-300">Late Return & Security Deposit Retention Controls</h4>
+                            <p className="text-[11px] text-amber-200/80">Manually retain full or partial security deposits for overdue returns or late disruption fees.</p>
+                          </div>
+                        </div>
+
+                        {activeReturnPo.hireEndDate < new Date().toISOString().slice(0, 10) && (
+                          <span className="px-3 py-1 bg-red-500/20 text-red-300 border border-red-500/40 rounded-full font-extrabold text-[10px] animate-pulse">
+                            🚨 Return Overdue (Deadline: {activeReturnPo.hireEndDate})
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLateFeeOption('NONE');
+                            setCustomLateFeeAmount(0);
+                          }}
+                          className={`p-3 rounded-xl border text-left transition flex flex-col justify-between space-y-2 ${
+                            lateFeeOption === 'NONE'
+                              ? 'bg-emerald-950/80 border-emerald-500 text-emerald-100 ring-2 ring-emerald-400'
+                              : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-800'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-extrabold text-xs">🟢 Full Deposit Refund</span>
+                            {lateFeeOption === 'NONE' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                          </div>
+                          <p className="text-[11px] text-emerald-200/70">No late penalty applied. Refund 100% of eligible deposit.</p>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLateFeeOption('CUSTOM');
+                            if (customLateFeeAmount === 0) setCustomLateFeeAmount(15);
+                          }}
+                          className={`p-3 rounded-xl border text-left transition flex flex-col justify-between space-y-2 ${
+                            lateFeeOption === 'CUSTOM'
+                              ? 'bg-amber-950/80 border-amber-500 text-amber-100 ring-2 ring-amber-400'
+                              : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-800'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-extrabold text-xs">🟡 Retain Custom Late Fee</span>
+                            {lateFeeOption === 'CUSTOM' && <CheckCircle2 className="w-4 h-4 text-amber-400" />}
+                          </div>
+                          <p className="text-[11px] text-amber-200/70">Deduct custom late fee amount from customer refund.</p>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLateFeeOption('FULL_DEPOSIT');
+                          }}
+                          className={`p-3 rounded-xl border text-left transition flex flex-col justify-between space-y-2 ${
+                            lateFeeOption === 'FULL_DEPOSIT'
+                              ? 'bg-red-950/90 border-red-500 text-red-100 ring-2 ring-red-400'
+                              : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-800'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-extrabold text-xs">🔴 Forfeit Full Deposit</span>
+                            {lateFeeOption === 'FULL_DEPOSIT' && <AlertTriangle className="w-4 h-4 text-red-400" />}
+                          </div>
+                          <p className="text-[11px] text-red-200/70">Forfeit 100% of held security deposit (£{activeReturnPo.totalDepositHeld}).</p>
+                        </button>
+                      </div>
+
+                      {/* CUSTOM AMOUNT & REASON INPUTS */}
+                      {lateFeeOption === 'CUSTOM' && (
+                        <div className="bg-slate-900/90 p-4 rounded-xl border border-amber-800/60 space-y-3">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <label className="text-xs font-extrabold text-amber-300 block">Custom Retention Fee Amount (£):</label>
+                              <span className="text-[11px] text-slate-400">Amount retained from customer deposit for late return</span>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-extrabold text-amber-400">£</span>
+                              <input
+                                type="number"
+                                min="1"
+                                max={activeReturnPo.totalDepositHeld}
+                                value={customLateFeeAmount}
+                                onChange={(e) => setCustomLateFeeAmount(Number(e.target.value))}
+                                className="w-28 px-3 py-1.5 bg-slate-800 border border-amber-600 rounded-xl text-white font-extrabold text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-800">
+                            <span className="text-[10px] text-slate-400 uppercase font-extrabold">Quick Fee Presets:</span>
+                            <button type="button" onClick={() => setCustomLateFeeAmount(15)} className="px-2.5 py-1 bg-slate-800 hover:bg-amber-900/60 text-amber-300 rounded-lg text-xs font-bold border border-amber-700">£15 (1 Day)</button>
+                            <button type="button" onClick={() => setCustomLateFeeAmount(30)} className="px-2.5 py-1 bg-slate-800 hover:bg-amber-900/60 text-amber-300 rounded-lg text-xs font-bold border border-amber-700">£30 (2 Days)</button>
+                            <button type="button" onClick={() => setCustomLateFeeAmount(50)} className="px-2.5 py-1 bg-slate-800 hover:bg-amber-900/60 text-amber-300 rounded-lg text-xs font-bold border border-amber-700">£50 (Heavy Delay)</button>
+                          </div>
+                        </div>
+                      )}
+
+                      {(lateFeeOption === 'CUSTOM' || lateFeeOption === 'FULL_DEPOSIT') && (
+                        <div className="space-y-1">
+                          <label className="text-xs font-extrabold text-amber-300 block">Assistant Audit Reason / Policy Note:</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Returned late without notification; retained fee from deposit."
+                            value={lateFeeReason}
+                            onChange={(e) => setLateFeeReason(e.target.value)}
+                            className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white text-xs placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                          />
+                        </div>
+                      )}
+                    </div>
+
                     {/* LIVE DEPOSIT CALCULATION BREAKDOWN */}
                     {(() => {
                       let cleanRefundSum = 0;
@@ -5218,8 +5378,16 @@ export default function KiltHireApp() {
                         else unselectedCount++;
                       });
 
+                      let retainedLateFee = 0;
+                      if (lateFeeOption === 'CUSTOM') {
+                        retainedLateFee = Math.min(cleanRefundSum, Math.max(0, customLateFeeAmount));
+                      } else if (lateFeeOption === 'FULL_DEPOSIT') {
+                        retainedLateFee = cleanRefundSum;
+                      }
+
+                      const netRefundToCustomer = Math.max(0, cleanRefundSum - retainedLateFee);
                       const totalHeld = activeReturnPo.totalDepositHeld;
-                      const totalRetained = heldRepairSum + heldMissingSum;
+                      const totalRetainedAll = heldRepairSum + heldMissingSum + retainedLateFee;
 
                       return (
                         <div className="bg-slate-900 text-white p-5 rounded-2xl space-y-3 shadow-lg">
@@ -5227,20 +5395,25 @@ export default function KiltHireApp() {
                             <DollarSign className="w-4 h-4" /> Live PayPal Deposit Refund Ledger Breakdown
                           </h4>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs border-t border-slate-800 pt-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs border-t border-slate-800 pt-3">
                             <div>
                               <span className="text-slate-400 block">Total Deposit Held</span>
                               <span className="font-mono font-extrabold text-white text-base">£{totalHeld}</span>
                             </div>
 
                             <div>
-                              <span className="text-slate-400 block">Instant PayPal Refund</span>
-                              <span className="font-mono font-extrabold text-emerald-400 text-base">£{cleanRefundSum}</span>
+                              <span className="text-slate-400 block">Net PayPal Refund</span>
+                              <span className="font-mono font-extrabold text-emerald-400 text-base">£{netRefundToCustomer}</span>
                             </div>
 
                             <div>
-                              <span className="text-slate-400 block">Retained (Missing / Damaged)</span>
-                              <span className="font-mono font-extrabold text-amber-400 text-base">£{totalRetained}</span>
+                              <span className="text-slate-400 block">Missing / Damaged</span>
+                              <span className="font-mono font-extrabold text-amber-400 text-base">£{heldRepairSum + heldMissingSum}</span>
+                            </div>
+
+                            <div>
+                              <span className="text-slate-400 block">Late Fee Retained</span>
+                              <span className="font-mono font-extrabold text-rose-400 text-base">£{retainedLateFee}</span>
                             </div>
                           </div>
 
@@ -5250,9 +5423,10 @@ export default function KiltHireApp() {
                             </p>
                           )}
 
-                          {unselectedCount === 0 && totalRetained > 0 && (
+                          {unselectedCount === 0 && (
                             <p className="text-[11px] text-amber-200 bg-amber-950/60 p-2.5 rounded-xl border border-amber-800">
-                              <strong>Partial Return Action:</strong> £{cleanRefundSum} deposit will be refunded to {activeReturnPo.customerName} via PayPal today. £{totalRetained} will be retained for missing/damaged items until resolved.
+                              <strong>Summary Action:</strong> Net deposit of <strong>£{netRefundToCustomer}</strong> will be refunded to {activeReturnPo.customerName} via PayPal today. 
+                              {totalRetainedAll > 0 && ` Total retained: £${totalRetainedAll} (${retainedLateFee > 0 ? `£${retainedLateFee} late return fee` : ''}${heldRepairSum + heldMissingSum > 0 ? `, £${heldRepairSum + heldMissingSum} missing/damaged` : ''}).`}
                             </p>
                           )}
                         </div>
