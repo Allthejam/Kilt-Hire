@@ -270,9 +270,9 @@ export const INITIAL_POS: PurchaseOrder[] = [
     customerName: 'Gordon MacLeod',
     customerEmail: 'gordon.macleod@highlandwedding.co.uk',
     customerPhone: '07700 900123',
-    eventDate: '2026-07-28',
-    hireStartDate: '2026-07-25',
-    hireEndDate: '2026-08-01', // 1 Day Overdue -> AMBER WARNING
+    eventDate: '2026-08-05',
+    hireStartDate: '2026-08-01',
+    hireEndDate: '2026-08-07', // 1 Day Overdue -> AMBER WARNING
     items: [
       {
         qrCodeId: 'KILT-1001',
@@ -324,17 +324,17 @@ export const INITIAL_POS: PurchaseOrder[] = [
     paymentStatus: 'PAID_WITH_DEPOSIT',
     orderStatus: 'OUT_ON_HIRE',
     issuedByStaff: 'Fiona MacLean',
-    createdAt: '2026-07-25 11:20',
-    notes: 'Wedding order. Return deadline was yesterday 1st Aug. 1 Day Overdue!'
+    createdAt: '2026-08-01 11:20',
+    notes: 'Wedding order. Return deadline was yesterday 7th Aug. 1 Day Overdue!'
   },
   {
     id: 'PO-2026-8802',
     customerName: 'Fiona Sinclair',
     customerEmail: 'fiona.sinclair@edinburgh.co.uk',
     customerPhone: '07890 123456',
-    eventDate: '2026-07-20',
-    hireStartDate: '2026-07-18',
-    hireEndDate: '2026-07-27', // 6 Days Overdue -> RED ALERT!
+    eventDate: '2026-08-01',
+    hireStartDate: '2026-07-28',
+    hireEndDate: '2026-08-02', // 6 Days Overdue -> RED ALERT!
     items: [
       {
         qrCodeId: 'KILT-KIDS-501',
@@ -376,8 +376,8 @@ export const INITIAL_POS: PurchaseOrder[] = [
     paymentStatus: 'PAID_WITH_DEPOSIT',
     orderStatus: 'OUT_ON_HIRE',
     issuedByStaff: 'Allan',
-    createdAt: '2026-07-18 09:45',
-    notes: 'Kids outfit. Return deadline was 27th July - 6 Days Overdue! Customer contacted by phone.'
+    createdAt: '2026-07-28 09:45',
+    notes: 'Kids outfit. Return deadline was 2nd Aug - 6 Days Overdue! Customer contacted by phone.'
   },
   {
     id: 'PO-2026-5501',

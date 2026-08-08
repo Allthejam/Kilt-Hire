@@ -617,6 +617,29 @@ export default function KiltHireApp() {
           setTartanList(DEFAULT_TARTANS);
         }
       } finally {
+        // Sync mock PO notes to accurate August 8th 2026 dates
+        setPos(prev => prev.map(p => {
+          if (p.id === 'PO-2026-9011' && p.notes?.includes('1st Aug')) {
+            return {
+              ...p,
+              hireStartDate: '2026-08-01',
+              eventDate: '2026-08-05',
+              hireEndDate: '2026-08-07',
+              notes: 'Wedding order. Return deadline was yesterday 7th Aug. 1 Day Overdue!'
+            };
+          }
+          if (p.id === 'PO-2026-8802' && p.notes?.includes('27th July')) {
+            return {
+              ...p,
+              hireStartDate: '2026-07-28',
+              eventDate: '2026-08-01',
+              hireEndDate: '2026-08-02',
+              notes: 'Kids outfit. Return deadline was 2nd Aug - 6 Days Overdue! Customer contacted by phone.'
+            };
+          }
+          return p;
+        }));
+
         setIsLoaded(true);
       }
     }
