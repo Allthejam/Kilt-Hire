@@ -233,8 +233,9 @@ export default function KiltHireApp() {
 
   // Shop Assistant Floor Tabs: 'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'calendar' | 'pos'
   const [assistantTab, setAssistantTab] = useState<'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'calendar' | 'pos'>('scanner');
-  const [assistantSearch, setAssistantSearch] = useState('');
   const [assistantSizeFilter, setAssistantSizeFilter] = useState<'ALL' | 'Adult' | 'Kid'>('ALL');
+  const [assistantCategoryFilter, setAssistantCategoryFilter] = useState<string>('ALL');
+  const [assistantTartanFilter, setAssistantTartanFilter] = useState<string>('ALL');
 
   // Inventory tab demographic filter & Sub-Tabs in Admin
   const [inventorySizeFilter, setInventorySizeFilter] = useState<'ALL' | 'Adult' | 'Kid'>('ALL');
@@ -1996,12 +1997,25 @@ export default function KiltHireApp() {
   const inRepairItems = items.filter(i => i.status === 'IN_REPAIR');
   const retiredItems = items.filter(i => i.status === 'RETIRED');
 
-  // Filtered items helper for shop assistant tabs (with Demographic Adults vs Kids filter & active stock)
-  const getFilteredItems = (targetList: KiltItem[], sizeFilter: 'ALL' | 'Adult' | 'Kid' = 'ALL') => {
+  // Filtered items helper for shop assistant tabs (with Demographic Adults vs Kids filter, Category filter & Tartan filter)
+  const getFilteredItems = (
+    targetList: KiltItem[], 
+    sizeFilter: 'ALL' | 'Adult' | 'Kid' = 'ALL',
+    categoryFilter: string = 'ALL',
+    tartanFilter: string = 'ALL'
+  ) => {
     let result = targetList.filter(i => i.status !== 'RETIRED');
 
     if (sizeFilter !== 'ALL') {
       result = result.filter(i => i.sizeGroup === sizeFilter);
+    }
+
+    if (categoryFilter !== 'ALL') {
+      result = result.filter(i => i.category === categoryFilter);
+    }
+
+    if (tartanFilter !== 'ALL') {
+      result = result.filter(i => i.tartanOrColour === tartanFilter);
     }
 
     if (!assistantSearch.trim()) return result;
@@ -3216,29 +3230,142 @@ export default function KiltHireApp() {
 
               {/* IN STOCK LIST TAB */}
               {assistantTab === 'in_stock' && (
-                <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-3">
+                <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-5">
+                  <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
                     <div>
                       <h3 className="text-base font-extrabold text-emerald-900 flex items-center gap-2">
-                        <Package className="w-5 h-5 text-emerald-600" /> Garments Available in Store Right Now ({getFilteredItems(availableItems, assistantSizeFilter).length})
+                        <Package className="w-5 h-5 text-emerald-600" /> Garments Available in Store Right Now ({getFilteredItems(availableItems, assistantSizeFilter, assistantCategoryFilter, assistantTartanFilter).length})
                       </h3>
-                      <p className="text-xs text-slate-500">Stock physically in shop available to hire immediately.</p>
+                      <p className="text-xs text-slate-500">Stock physically in shop available to hire immediately. Filter by Master Pricing Category & Demographic.</p>
                     </div>
 
                     <div className="relative w-full sm:w-64">
                       <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                       <input 
                         type="text"
-                        placeholder="Search size, tartan, name..."
+                        placeholder="Search size, tartan, name, ID..."
                         value={assistantSearch}
                         onChange={e => setAssistantSearch(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-900 outline-none focus:border-amber-500"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-900 outline-none focus:border-amber-500 font-medium"
                       />
                     </div>
                   </div>
 
+                  {/* MASTER PRICING MATRIX CATEGORY & AGE DEMOGRAPHIC FILTERS TOOLBAR */}
+                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-3 shadow-inner">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                        <PriceTag className="w-4 h-4 text-amber-600" /> Master Category Pricing Matrix Filters
+                      </span>
+                      {(assistantSizeFilter !== 'ALL' || assistantCategoryFilter !== 'ALL' || assistantTartanFilter !== 'ALL' || assistantSearch) && (
+                        <button
+                          onClick={() => {
+                            setAssistantSizeFilter('ALL');
+                            setAssistantCategoryFilter('ALL');
+                            setAssistantTartanFilter('ALL');
+                            setAssistantSearch('');
+                          }}
+                          className="text-[11px] font-extrabold text-amber-700 hover:text-amber-900 hover:bg-amber-100 px-2.5 py-1 rounded-lg border border-amber-300 transition"
+                        >
+                          🧹 Reset All Filters
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                      
+                      {/* 1. MASTER PRICING CATEGORY FILTER */}
+                      <div>
+                        <label className="block text-[11px] font-extrabold text-slate-700 mb-1">
+                          Product Category ({pricingMatrix.length} Types)
+                        </label>
+                        <select
+                          value={assistantCategoryFilter}
+                          onChange={e => setAssistantCategoryFilter(e.target.value)}
+                          className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-800 outline-none focus:border-amber-500 shadow-sm"
+                        >
+                          <option value="ALL">All Product Categories ({availableItems.length})</option>
+                          {pricingMatrix.map(pm => {
+                            const catCount = availableItems.filter(i => i.category === pm.category).length;
+                            return (
+                              <option key={pm.category} value={pm.category}>
+                                {pm.category} ({catCount} in stock)
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+
+                      {/* 2. AGE DEMOGRAPHIC FILTER (ADULTS VS KIDS) */}
+                      <div>
+                        <label className="block text-[11px] font-extrabold text-slate-700 mb-1">
+                          Age Demographic (Adults vs Kids Matrix)
+                        </label>
+                        <div className="flex bg-white p-1 rounded-xl border border-slate-300 font-bold">
+                          <button
+                            onClick={() => setAssistantSizeFilter('ALL')}
+                            className={`flex-1 py-1 rounded-lg text-center transition ${assistantSizeFilter === 'ALL' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                          >
+                            All Ages
+                          </button>
+                          <button
+                            onClick={() => setAssistantSizeFilter('Adult')}
+                            className={`flex-1 py-1 rounded-lg flex items-center justify-center gap-1 transition ${assistantSizeFilter === 'Adult' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                          >
+                            <User className="w-3 h-3" /> Adults
+                          </button>
+                          <button
+                            onClick={() => setAssistantSizeFilter('Kid')}
+                            className={`flex-1 py-1 rounded-lg flex items-center justify-center gap-1 transition ${assistantSizeFilter === 'Kid' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                          >
+                            <Baby className="w-3 h-3" /> Kids
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 3. TARTAN / COLOUR FILTER */}
+                      <div>
+                        <label className="block text-[11px] font-extrabold text-slate-700 mb-1">
+                          Tartan / Garment Colour
+                        </label>
+                        <select
+                          value={assistantTartanFilter}
+                          onChange={e => setAssistantTartanFilter(e.target.value)}
+                          className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-800 outline-none focus:border-amber-500 shadow-sm"
+                        >
+                          <option value="ALL">All Tartans & Colours</option>
+                          {Array.from(new Set([...tartanList, ...availableItems.map(i => i.tartanOrColour).filter(Boolean)])).map(t => (
+                            <option key={t} value={t}>{t}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                    </div>
+
+                    {/* MATRIX RATES SUMMARY BADGE */}
+                    {assistantCategoryFilter !== 'ALL' && (() => {
+                      const matrixSetting = pricingMatrix.find(p => p.category === assistantCategoryFilter);
+                      if (!matrixSetting) return null;
+                      return (
+                        <div className="bg-amber-100/90 border border-amber-300 p-2.5 rounded-xl text-[11px] font-bold text-amber-950 flex flex-wrap items-center justify-between gap-2 mt-2">
+                          <span>
+                            🏷️ <strong>{matrixSetting.category} Pricing Matrix Rates:</strong>
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="bg-blue-600 text-white px-2 py-0.5 rounded font-extrabold flex items-center gap-1">
+                              <User className="w-3 h-3" /> Adult: £{matrixSetting.adultHireRate} Hire / £{matrixSetting.adultDeposit} Dep
+                            </span>
+                            <span className="bg-purple-600 text-white px-2 py-0.5 rounded font-extrabold flex items-center gap-1">
+                              <Baby className="w-3 h-3" /> Kid: £{matrixSetting.kidHireRate} Hire / £{matrixSetting.kidDeposit} Dep
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {getFilteredItems(availableItems, assistantSizeFilter).map(item => (
+                    {getFilteredItems(availableItems, assistantSizeFilter, assistantCategoryFilter, assistantTartanFilter).map(item => (
                       <div key={item.id} className="p-4 bg-slate-50 border border-slate-200 hover:border-emerald-400 rounded-2xl space-y-3 transition shadow-sm">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1.5">
@@ -3256,7 +3383,12 @@ export default function KiltHireApp() {
                         </div>
 
                         <div>
-                          <h4 className="font-bold text-slate-900 text-sm">{item.name}</h4>
+                          <div className="flex items-center justify-between">
+                            <h4 className="font-bold text-slate-900 text-sm">{item.name}</h4>
+                            <span className="text-[10px] font-extrabold bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded">
+                              {item.category}
+                            </span>
+                          </div>
                           <p className="text-xs text-slate-600">{item.tartanOrColour} ({item.size})</p>
                         </div>
 
@@ -3319,7 +3451,7 @@ export default function KiltHireApp() {
                   <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-3">
                     <div>
                       <h3 className="text-base font-extrabold text-blue-900 flex items-center gap-2">
-                        <PackageCheck className="w-5 h-5 text-blue-600" /> Garments Currently On Hire With Customers ({getFilteredItems(onHireItems, assistantSizeFilter).length})
+                        <PackageCheck className="w-5 h-5 text-blue-600" /> Garments Currently On Hire With Customers ({getFilteredItems(onHireItems, assistantSizeFilter, assistantCategoryFilter, assistantTartanFilter).length})
                       </h3>
                       <p className="text-xs text-slate-500">Out on rental agreements. Do not search store shelves for these!</p>
                     </div>
@@ -3337,7 +3469,7 @@ export default function KiltHireApp() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {getFilteredItems(onHireItems, assistantSizeFilter).map(item => {
+                    {getFilteredItems(onHireItems, assistantSizeFilter, assistantCategoryFilter, assistantTartanFilter).map(item => {
                       const po = pos.find(p => p.id === item.currentPoId);
                       const overdueInfo = getOverdueStatus(po?.hireEndDate);
 
@@ -3395,16 +3527,16 @@ export default function KiltHireApp() {
                   <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-3">
                     <div>
                       <h3 className="text-base font-extrabold text-rose-900 flex items-center gap-2">
-                        <Wrench className="w-5 h-5 text-rose-600" /> Garments in Repair Workshop ({getFilteredItems(inRepairItems, assistantSizeFilter).length})
+                        <Wrench className="w-5 h-5 text-rose-600" /> Garments in Repair Workshop ({getFilteredItems(inRepairItems, assistantSizeFilter, assistantCategoryFilter, assistantTartanFilter).length})
                       </h3>
-                      <p className="text-xs text-slate-500">Out for seamstress repair or dry cleaning. Do not search store shelves!</p>
+                      <p className="text-xs text-slate-500">Items undergoing maintenance or tailoring repair.</p>
                     </div>
 
                     <div className="relative w-full sm:w-64">
                       <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                       <input 
                         type="text"
-                        placeholder="Search defect or QR..."
+                        placeholder="Search repair items..."
                         value={assistantSearch}
                         onChange={e => setAssistantSearch(e.target.value)}
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-900 outline-none focus:border-rose-500"
