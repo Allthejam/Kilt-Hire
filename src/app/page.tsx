@@ -238,8 +238,8 @@ export default function KiltHireApp() {
   // Interface Mode: 'admin_portal' (Full Office) vs 'shop_assistant' (Automated Floor Terminal)
   const [interfaceMode, setInterfaceMode] = useState<'admin_portal' | 'shop_assistant'>('shop_assistant');
 
-  // Shop Assistant Floor Tabs: 'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'calendar' | 'pos' | 'pick_pack' | 'start_fitting'
-  const [assistantTab, setAssistantTab] = useState<'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'calendar' | 'pos' | 'pick_pack' | 'start_fitting'>('scanner');
+  // Shop Assistant Floor Tabs: 'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'calendar' | 'pos' | 'start_fitting'
+  const [assistantTab, setAssistantTab] = useState<'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'calendar' | 'pos' | 'start_fitting'>('scanner');
   const [assistantSearch, setAssistantSearch] = useState('');
   const [assistantSizeFilter, setAssistantSizeFilter] = useState<'ALL' | 'Adult' | 'Kid'>('ALL');
   const [assistantCategoryFilter, setAssistantCategoryFilter] = useState<string>('ALL');
@@ -1182,7 +1182,7 @@ export default function KiltHireApp() {
       setPos(prev => [newPo, ...prev]);
       addAuditLog('CREATED_FITTING_ORDER', `Created fitting order ${poId} for ${newPo.customerName} (${newPo.items.length} items, Waist ${fittingForm.waistInches}", Chest ${fittingForm.chestInches}")`, poId);
       
-      setAssistantTab('pick_pack');
+      setAssistantTab('calendar');
       setActiveTab('pos');
 
       if (isPaypal) {
@@ -2898,22 +2898,6 @@ export default function KiltHireApp() {
                   </button>
 
                   <button
-                    onClick={() => setAssistantTab('pick_pack')}
-                    className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
-                      assistantTab === 'pick_pack' 
-                        ? 'bg-amber-600 text-white shadow-sm' 
-                        : 'text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    <PackageCheck className="w-4 h-4" /> Pick & Pack Queue (2-Day Assembly)
-                    <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${
-                      assistantTab === 'pick_pack' ? 'bg-white text-amber-950' : 'bg-amber-100 text-amber-900'
-                    }`}>
-                      {assemblyDuePos.length}
-                    </span>
-                  </button>
-
-                  <button
                     onClick={() => setAssistantTab('in_stock')}
                     className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
                       assistantTab === 'in_stock' 
@@ -3798,141 +3782,7 @@ export default function KiltHireApp() {
                 </div>
               )}
 
-              {/* 2-DAY AFTER-HOURS PICK & PACK ASSEMBLY QUEUE */}
-              {assistantTab === 'pick_pack' && (
-                <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
-                  <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
-                    <div>
-                      <span className="px-3 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-full text-[11px] font-extrabold inline-flex items-center gap-1 mb-1">
-                        🌙 Quiet Hours / After-Hours Pick & Pack Assembly
-                      </span>
-                      <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                        <PackageCheck className="w-5 h-5 text-amber-600" /> Orders Due for Collection Assembly ({assemblyDuePos.length})
-                      </h3>
-                      <p className="text-xs text-slate-500 max-w-2xl">
-                        Pick and verify physical garments after hours using your phone's QR camera scanner. Assemble customer bags ready for pickup.
-                      </p>
-                    </div>
 
-                    <button
-                      onClick={handleOpenStartFitting}
-                      className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5"
-                    >
-                      <User className="w-4 h-4" /> Start New Fitting & Order
-                    </button>
-                  </div>
-
-                  {assemblyDuePos.length === 0 ? (
-                    <div className="text-center py-12 bg-slate-50 border border-dashed border-slate-300 rounded-2xl space-y-3">
-                      <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto" />
-                      <h4 className="font-extrabold text-slate-800 text-sm">All Orders Assembled & Up to Date!</h4>
-                      <p className="text-xs text-slate-500">No orders due for collection assembly in the next 2 days.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-6">
-                      {assemblyDuePos.map(po => {
-                        const is7DayOverdue = new Date(po.hireStartDate).getTime() - Date.now() <= 7 * 86400000 && (po.paymentStatus === 'UNPAID' || po.paymentStatus === 'DEPOSIT_PENDING');
-
-                        return (
-                          <div key={po.id} className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4 shadow-sm hover:border-amber-400 transition">
-                            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 font-extrabold text-sm flex items-center justify-center shadow">
-                                  {po.customerName.charAt(0)}
-                                </div>
-                                <div>
-                                  <h4 className="font-extrabold text-slate-900 text-base">{po.customerName}</h4>
-                                  <p className="text-xs text-slate-500">{po.customerEmail} • {po.customerPhone}</p>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-mono font-extrabold text-xs bg-white px-2.5 py-1 rounded-lg border border-slate-300 text-amber-900">
-                                  {po.id}
-                                </span>
-                                <span className={`px-2.5 py-1 text-xs font-extrabold rounded-full border ${
-                                  po.orderStatus === 'READY_FOR_COLLECTION' ? 'bg-emerald-100 text-emerald-900 border-emerald-300' :
-                                  po.orderStatus === 'DEPOSIT_PAID_CONFIRMED' ? 'bg-blue-100 text-blue-900 border-blue-300' :
-                                  'bg-amber-100 text-amber-900 border-amber-300'
-                                }`}>
-                                  {po.orderStatus === 'READY_FOR_COLLECTION' ? '✓ Ready for Collection' :
-                                   po.orderStatus === 'DEPOSIT_PAID_CONFIRMED' ? '🔒 Deposit Paid — Pick Due' :
-                                   '⏳ Reserved — Pending Deposit'}
-                                </span>
-                                {is7DayOverdue && (
-                                  <span className="px-2.5 py-1 text-xs font-extrabold bg-rose-100 text-rose-900 border border-rose-300 rounded-full flex items-center gap-1 animate-pulse">
-                                    ⚠️ 7-Day Payment Reminder Due
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* FITTING MEASUREMENTS CARD */}
-                            {po.measurements && (
-                              <div className="bg-white border border-slate-200 p-3 rounded-xl space-y-1 text-xs">
-                                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Fitted Measurements:</span>
-                                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center font-bold">
-                                  <div className="bg-slate-50 p-1.5 rounded border">Waist: <span className="text-amber-800">{po.measurements.waistInches}"</span></div>
-                                  <div className="bg-slate-50 p-1.5 rounded border">Chest: <span className="text-amber-800">{po.measurements.chestInches}"</span></div>
-                                  <div className="bg-slate-50 p-1.5 rounded border">Sleeve: <span className="text-amber-800">{po.measurements.sleeveLengthInches}"</span></div>
-                                  <div className="bg-slate-50 p-1.5 rounded border">Length: <span className="text-amber-800">{po.measurements.kiltLengthInches}"</span></div>
-                                  <div className="bg-slate-50 p-1.5 rounded border">Shoe: <span className="text-amber-800">{po.measurements.shoeSize}</span></div>
-                                  <div className="bg-slate-50 p-1.5 rounded border">Height: <span className="text-amber-800">{po.measurements.heightFtInches}</span></div>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* ITEM CHECKLIST TABLE */}
-                            <div className="space-y-2">
-                              <span className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider block">Garments to Pick ({po.items.length} items):</span>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                {po.items.map(li => {
-                                  const itemDoc = items.find(i => i.id === li.qrCodeId);
-                                  return (
-                                    <div key={li.qrCodeId} className="bg-white border border-slate-200 p-3 rounded-xl flex items-center justify-between text-xs">
-                                      <div>
-                                        <span className="font-mono font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 mr-1.5">{li.qrCodeId}</span>
-                                        <span className="font-bold text-slate-900">{li.itemName}</span>
-                                        <p className="text-[11px] text-slate-500 mt-0.5">{li.category} ({li.size})</p>
-                                      </div>
-                                      <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded ${itemDoc?.status === 'ON_HIRE' ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' : 'bg-slate-100 text-slate-700'}`}>
-                                        {itemDoc?.status === 'ON_HIRE' ? '✓ Picked & Allocated' : '📦 In Store Shelf'}
-                                      </span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-
-                            {/* ACTION BAR */}
-                            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200">
-                              <div className="text-xs font-bold text-slate-700">
-                                Collection: <span className="text-amber-800">{po.hireStartDate}</span> • Event: <span className="text-slate-900">{po.eventDate}</span>
-                              </div>
-
-                              <div className="flex items-center gap-2">
-                                {po.orderStatus !== 'READY_FOR_COLLECTION' && (
-                                  <button
-                                    onClick={() => handleMarkOrderReadyForCollection(po)}
-                                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5"
-                                  >
-                                    <CheckCircle2 className="w-4 h-4" /> Mark Order Assembled & Ready for Collection
-                                  </button>
-                                )}
-                                {po.readyNotificationSentAt && (
-                                  <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
-                                    ✉️ Brevo Email Sent ({po.readyNotificationSentAt})
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
               {assistantTab === 'in_stock' && (
                 <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-5">
                   <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
@@ -4516,16 +4366,23 @@ export default function KiltHireApp() {
                   <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
                     <div>
                       <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                        <Calendar className="w-5 h-5 text-amber-600" /> Garment Availability & Booking Schedule
+                        <Calendar className="w-5 h-5 text-amber-600" /> Customer Fittings & Booking Schedule Hub
                       </h3>
                       <p className="text-xs text-slate-500">
-                        Check live outfit availability for customer wedding dates, prevent double-bookings, and view hire schedules.
+                        View all customer fittings, collection/event/return dates, pick outfit garments, and check live availability.
                       </p>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        onClick={handleOpenStartFitting}
+                        className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5"
+                      >
+                        <User className="w-4 h-4 text-slate-950" /> Start New Fitting & Order
+                      </button>
+
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase">Target Event Date</label>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase">Target Date</label>
                         <input 
                           type="date"
                           value={calSelectedDate}
@@ -4562,6 +4419,147 @@ export default function KiltHireApp() {
                         </select>
                       </div>
                     </div>
+                  </div>
+
+                  {/* SECTION 1: CUSTOMER FITTINGS & HIRE BOOKINGS SCHEDULE */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                        📅 Scheduled Customer Fitting Orders & Hires ({pos.length})
+                      </h4>
+                      <span className="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full">
+                        Sorted by Collection Date
+                      </span>
+                    </div>
+
+                    {pos.length === 0 ? (
+                      <div className="text-center py-10 bg-slate-50 border border-dashed border-slate-300 rounded-2xl space-y-3">
+                        <Calendar className="w-10 h-10 text-amber-500 mx-auto" />
+                        <p className="text-xs text-slate-500">No fitting orders found in the booking schedule.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
+                        {pos.map(po => {
+                          const is7DayOverdue = new Date(po.hireStartDate).getTime() - Date.now() <= 7 * 86400000 && (po.paymentStatus === 'UNPAID' || po.paymentStatus === 'DEPOSIT_PENDING');
+
+                          return (
+                            <div key={po.id} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3 shadow-sm hover:border-amber-400 transition">
+                              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-9 h-9 rounded-xl bg-amber-500 text-slate-950 font-extrabold text-xs flex items-center justify-center shadow">
+                                    {po.customerName.charAt(0)}
+                                  </div>
+                                  <div>
+                                    <h5 className="font-extrabold text-slate-900 text-sm">{po.customerName}</h5>
+                                    <p className="text-[11px] text-slate-500">{po.customerEmail} • {po.customerPhone}</p>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-mono font-extrabold text-xs bg-white px-2.5 py-1 rounded-lg border border-slate-300 text-amber-900">
+                                    {po.id}
+                                  </span>
+                                  <span className={`px-2.5 py-1 text-xs font-extrabold rounded-full border ${
+                                    po.orderStatus === 'READY_FOR_COLLECTION' ? 'bg-emerald-100 text-emerald-900 border-emerald-300' :
+                                    po.orderStatus === 'DEPOSIT_PAID_CONFIRMED' ? 'bg-blue-100 text-blue-900 border-blue-300' :
+                                    po.orderStatus === 'OUT_ON_HIRE' ? 'bg-indigo-100 text-indigo-900 border-indigo-300' :
+                                    po.orderStatus === 'RETURNED_COMPLETED' ? 'bg-slate-200 text-slate-800 border-slate-300' :
+                                    'bg-amber-100 text-amber-900 border-amber-300'
+                                  }`}>
+                                    {po.orderStatus === 'READY_FOR_COLLECTION' ? '✓ Ready for Collection' :
+                                     po.orderStatus === 'DEPOSIT_PAID_CONFIRMED' ? '🔒 Deposit Paid In Store' :
+                                     po.orderStatus === 'OUT_ON_HIRE' ? '📦 Currently Out on Hire' :
+                                     po.orderStatus === 'RETURNED_COMPLETED' ? '✓ Returned & Completed' :
+                                     '⏳ Reserved — Pending PayPal Deposit'}
+                                  </span>
+                                  {is7DayOverdue && (
+                                    <span className="px-2.5 py-1 text-xs font-extrabold bg-rose-100 text-rose-900 border border-rose-300 rounded-full flex items-center gap-1 animate-pulse">
+                                      ⚠️ 7-Day Payment Due
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* ALL 3 KEY DATES BANNER */}
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-white p-2.5 rounded-xl border border-slate-200 text-xs font-bold text-center">
+                                <div className="bg-amber-50/80 p-2 rounded-lg border border-amber-200">
+                                  <span className="text-[10px] text-slate-500 block uppercase">Collection Date</span>
+                                  <span className="text-amber-900 font-extrabold">{po.hireStartDate}</span>
+                                </div>
+                                <div className="bg-blue-50/80 p-2 rounded-lg border border-blue-200">
+                                  <span className="text-[10px] text-slate-500 block uppercase">Event / Function Date</span>
+                                  <span className="text-blue-900 font-extrabold">{po.eventDate}</span>
+                                </div>
+                                <div className="bg-emerald-50/80 p-2 rounded-lg border border-emerald-200">
+                                  <span className="text-[10px] text-slate-500 block uppercase">Return Date</span>
+                                  <span className="text-emerald-900 font-extrabold">{po.hireEndDate}</span>
+                                </div>
+                              </div>
+
+                              {/* FITTING MEASUREMENTS CARD */}
+                              {po.measurements && (
+                                <div className="bg-white border border-slate-200 p-2.5 rounded-xl space-y-1 text-xs">
+                                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Customer Fitted Measurements:</span>
+                                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center font-bold">
+                                    <div className="bg-slate-50 p-1.5 rounded border">Waist: <span className="text-amber-800">{po.measurements.waistInches}"</span></div>
+                                    <div className="bg-slate-50 p-1.5 rounded border">Chest: <span className="text-amber-800">{po.measurements.chestInches}"</span></div>
+                                    <div className="bg-slate-50 p-1.5 rounded border">Sleeve: <span className="text-amber-800">{po.measurements.sleeveLengthInches}"</span></div>
+                                    <div className="bg-slate-50 p-1.5 rounded border">Length: <span className="text-amber-800">{po.measurements.kiltLengthInches}"</span></div>
+                                    <div className="bg-slate-50 p-1.5 rounded border">Shoe: <span className="text-amber-800">{po.measurements.shoeSize}</span></div>
+                                    <div className="bg-slate-50 p-1.5 rounded border">Height: <span className="text-amber-800">{po.measurements.heightFtInches}</span></div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* GARMENTS LIST */}
+                              <div className="space-y-1.5">
+                                <span className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider block">Rigout Garment Items ({po.items.length} items):</span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  {po.items.map(li => {
+                                    const itemDoc = items.find(i => i.id === li.qrCodeId);
+                                    return (
+                                      <div key={li.qrCodeId} className="bg-white border border-slate-200 p-2 rounded-xl flex items-center justify-between text-xs">
+                                        <div>
+                                          <span className="font-mono font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 mr-1.5">{li.qrCodeId}</span>
+                                          <span className="font-bold text-slate-900">{li.itemName}</span>
+                                          <p className="text-[10px] text-slate-500">{li.category} ({li.size})</p>
+                                        </div>
+                                        <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded ${itemDoc?.status === 'ON_HIRE' ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' : 'bg-slate-100 text-slate-700'}`}>
+                                          {itemDoc?.status === 'ON_HIRE' ? '✓ Allocated ON_HIRE' : '📦 In Store Shelf'}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+
+                              {/* ACTION BAR */}
+                              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200">
+                                <div className="text-xs font-bold text-slate-700">
+                                  Total Fee: <span className="text-amber-800">£{po.totalHireFee}</span> • Deposit Held: <span className="text-emerald-700">£{po.totalDepositHeld}</span>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  {po.orderStatus !== 'READY_FOR_COLLECTION' && po.orderStatus !== 'OUT_ON_HIRE' && po.orderStatus !== 'RETURNED_COMPLETED' && (
+                                    <button
+                                      onClick={() => handleMarkOrderReadyForCollection(po)}
+                                      className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5"
+                                    >
+                                      <CheckCircle2 className="w-4 h-4" /> Mark Ready for Collection
+                                    </button>
+                                  )}
+                                  {po.readyNotificationSentAt && (
+                                    <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                                      ✉️ Brevo Email Sent ({po.readyNotificationSentAt})
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
                   {/* REAL-TIME AVAILABILITY SUMMARY BANNER */}
