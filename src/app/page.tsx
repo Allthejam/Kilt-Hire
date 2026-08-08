@@ -448,6 +448,7 @@ export default function KiltHireApp() {
     customerName: '',
     customerEmail: '',
     customerPhone: '',
+    eventType: 'Wedding Party' as 'Wedding Party' | 'Hogmanay / New Year' | 'Party / Celebration' | 'Ceilidh / Formal' | 'Graduation / Prom' | 'Highland Games' | 'Fashion / Personal' | 'General Hire',
     eventDate: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
     collectionDate: new Date(Date.now() + 12 * 86400000).toISOString().slice(0, 10),
     returnDate: new Date(Date.now() + 16 * 86400000).toISOString().slice(0, 10),
@@ -458,7 +459,7 @@ export default function KiltHireApp() {
     outfits: [
       {
         id: 'outfit-1',
-        roleLabel: 'Groom',
+        roleLabel: 'Customer / Wearer',
         wearerName: '',
         wearerEmail: '',
         wearerPhone: '',
@@ -1206,6 +1207,7 @@ export default function KiltHireApp() {
       customerName: '',
       customerEmail: '',
       customerPhone: '',
+      eventType: 'Wedding Party',
       eventDate: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
       collectionDate: new Date(Date.now() + 12 * 86400000).toISOString().slice(0, 10),
       returnDate: new Date(Date.now() + 16 * 86400000).toISOString().slice(0, 10),
@@ -1216,7 +1218,7 @@ export default function KiltHireApp() {
       outfits: [
         {
           id: 'outfit-1',
-          roleLabel: 'Groom',
+          roleLabel: 'Customer / Wearer',
           wearerName: '',
           wearerEmail: '',
           wearerPhone: '',
@@ -1237,7 +1239,13 @@ export default function KiltHireApp() {
 
   const handleAddOutfit = () => {
     const nextNum = fittingForm.outfits.length + 1;
-    const defaultRole = nextNum === 2 ? 'Best Man' : nextNum === 3 ? 'Groomsman' : nextNum === 4 ? 'Father of Bride' : `Party Member ${nextNum}`;
+    let defaultRole = `Wearer / Outfit #${nextNum}`;
+    if (fittingForm.eventType === 'Wedding Party') {
+      defaultRole = nextNum === 2 ? 'Best Man' : nextNum === 3 ? 'Groomsman' : nextNum === 4 ? 'Father of Bride' : `Party Member ${nextNum}`;
+    } else {
+      defaultRole = nextNum === 2 ? 'Guest / Partner' : `Outfit #${nextNum}`;
+    }
+
     const newOutfit = {
       id: `outfit-${Date.now()}`,
       roleLabel: defaultRole,
@@ -1258,7 +1266,7 @@ export default function KiltHireApp() {
       outfits: [...prev.outfits, newOutfit],
       activeOutfitIndex: prev.outfits.length
     }));
-    showToast(`✨ Added Outfit #${nextNum} (${defaultRole}) to Wedding Party Order.`, 'info');
+    showToast(`✨ Added Outfit #${nextNum} (${defaultRole}) to Order.`, 'info');
   };
 
   const handleRemoveOutfit = (indexToRemove: number) => {
@@ -3826,11 +3834,11 @@ export default function KiltHireApp() {
                   <div className="bg-gradient-to-r from-amber-600 via-amber-700 to-slate-900 text-white rounded-2xl p-6 shadow-lg flex flex-wrap items-center justify-between gap-4">
                     <div className="space-y-1">
                       <span className="px-3 py-1 bg-white/20 backdrop-blur rounded-full text-[11px] font-extrabold uppercase tracking-wider text-amber-200 inline-flex items-center gap-1">
-                        📏 In-Store Wedding Party & Group Fitting Station
+                        📏 In-Store Customer Fitting & Order Station
                       </span>
                       <h2 className="text-2xl font-extrabold tracking-tight text-white">Customer Fitting & Multi-Outfit Order Station</h2>
                       <p className="text-xs text-amber-100 max-w-2xl leading-relaxed">
-                        Configure single or multi-outfit wedding party orders (10+ outfits). Set billing as a single lead customer or send individual PayPal invoices to each party member.
+                        Fit individual customers for general events (parties, Hogmanay, ceilidhs, fashion) or configure multi-outfit wedding party groups (10+ outfits) with single or split billing options.
                       </p>
                     </div>
 
@@ -3859,27 +3867,53 @@ export default function KiltHireApp() {
                     <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-4 shadow-sm">
                       <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                         <div className="flex items-center gap-2 text-amber-900 font-extrabold text-sm">
-                          <User className="w-4 h-4 text-amber-600" /> Step 1: Lead Contact, Event Dates & Invoicing Option
+                          <User className="w-4 h-4 text-amber-600" /> Step 1: Occasion, Contact, Event Dates & Invoicing Option
                         </div>
                         <span className="text-[11px] font-extrabold text-purple-900 bg-purple-100 px-3 py-1 rounded-full border border-purple-300">
-                          {fittingForm.outfits.length} Outfit(s) in Party Order
+                          {fittingForm.outfits.length} Outfit(s) in Order
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                         <div>
-                          <label className="block text-slate-700 font-extrabold mb-1">Principle / Lead Customer Name *</label>
+                          <label className="block text-slate-700 font-extrabold mb-1">Occasion / Event Type *</label>
+                          <select
+                            value={fittingForm.eventType}
+                            onChange={e => {
+                              const newType = e.target.value as any;
+                              setFittingForm(prev => {
+                                const updatedOutfits = [...prev.outfits];
+                                if (updatedOutfits.length > 0 && updatedOutfits[0].roleLabel === 'Groom' && newType !== 'Wedding Party') {
+                                  updatedOutfits[0] = { ...updatedOutfits[0], roleLabel: 'Customer / Wearer' };
+                                }
+                                return { ...prev, eventType: newType, outfits: updatedOutfits };
+                              });
+                            }}
+                            className="w-full bg-amber-50/70 border border-amber-300 rounded-xl p-3 text-slate-900 font-extrabold outline-none focus:border-amber-500 shadow-sm text-sm"
+                          >
+                            <option value="Wedding Party">💒 Wedding Party</option>
+                            <option value="Hogmanay / New Year">🎆 Hogmanay / New Year's Eve</option>
+                            <option value="Party / Celebration">🎂 Birthday / Party Celebration</option>
+                            <option value="Ceilidh / Formal">🎻 Ceilidh / Formal Dinner</option>
+                            <option value="Graduation / Prom">🎓 Graduation / Prom</option>
+                            <option value="Highland Games">🏴󠁧󠁢󠁳󠁣󠁴󠁮󠁿 Highland Games / Gathering</option>
+                            <option value="Fashion / Personal">✨ Fashion / Personal Hire</option>
+                            <option value="General Hire">🎉 General Party / Event</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-slate-700 font-extrabold mb-1">Principle / Customer Name *</label>
                           <input 
                             type="text" 
                             required
-                            placeholder="e.g. Gordon MacLeod (Groom)"
+                            placeholder="e.g. Gordon MacLeod"
                             value={fittingForm.customerName}
                             onChange={e => setFittingForm({ ...fittingForm, customerName: e.target.value })}
                             className="w-full bg-white border border-slate-300 rounded-xl p-3 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm text-sm"
                           />
                         </div>
                         <div>
-                          <label className="block text-slate-700 font-extrabold mb-1">Lead Email Address *</label>
+                          <label className="block text-slate-700 font-extrabold mb-1">Customer Email Address *</label>
                           <input 
                             type="email" 
                             required
@@ -3900,6 +3934,9 @@ export default function KiltHireApp() {
                             className="w-full bg-white border border-slate-300 rounded-xl p-3 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm text-sm"
                           />
                         </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
                         <div>
                           <label className="block text-slate-700 font-extrabold mb-1">Collection Date *</label>
                           <input 
@@ -4060,7 +4097,7 @@ export default function KiltHireApp() {
 
                                 {/* ROLE PRESETS */}
                                 <div className="flex flex-wrap items-center gap-1">
-                                  {['Groom', 'Best Man', 'Groomsman', 'Father of Bride', 'Page Boy', 'Usher'].map((role) => (
+                                  {['Customer / Wearer', 'Party Guest', 'Groom', 'Best Man', 'Groomsman', 'Father of Bride', 'Page Boy', 'Usher', 'Fashion / Personal'].map((role) => (
                                     <button
                                       key={role}
                                       type="button"
