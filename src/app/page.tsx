@@ -2505,12 +2505,12 @@ export default function KiltHireApp() {
         </div>
       )}
 
-      {/* VERTICAL SIDEBAR NAVIGATION */}
+      {/* VERTICAL PERMANENTLY LOCKED SIDEBAR NAVIGATION */}
       <aside className={`no-print
-        fixed inset-y-0 left-0 z-50 w-72 bg-white border-r border-slate-200 flex flex-col justify-between transition-transform duration-300 shadow-lg lg:translate-x-0 lg:static lg:shadow-none
+        fixed inset-y-0 left-0 z-50 w-72 h-screen bg-white border-r border-slate-200 flex flex-col justify-between transition-transform duration-300 shadow-xl lg:translate-x-0 lg:shadow-none
         ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
-        <div className="p-5 space-y-6">
+        <div className="p-5 space-y-5 overflow-y-auto flex-1">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl overflow-hidden shadow-md border border-amber-500/40 shrink-0">
@@ -2693,7 +2693,7 @@ export default function KiltHireApp() {
           )}
         </div>
 
-        <div className="p-4 border-t border-slate-200 bg-slate-50/70 space-y-3">
+        <div className="p-4 border-t border-slate-200 bg-slate-50/95 shrink-0 space-y-2.5 shadow-inner">
           <div className="flex items-center justify-between">
             <div 
               onClick={handleOpenMyAccount}
@@ -2764,9 +2764,8 @@ export default function KiltHireApp() {
         />
       )}
 
-      {/* MAIN WORKSPACE */}
-      {/* MAIN WORKSPACE */}
-      <div className="flex-1 flex flex-col min-w-0 max-w-full overflow-x-hidden">
+      {/* MAIN WORKSPACE (OFFSET BY LOCKED SIDEBAR WIDTH) */}
+      <div className="flex-1 flex flex-col min-w-0 max-w-full overflow-x-hidden lg:pl-72">
         
         {/* PWA INSTALL TOP BANNER */}
         {!isStandalone && !installDismissed && (
