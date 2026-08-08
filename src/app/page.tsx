@@ -73,6 +73,7 @@ import {
   Camera, 
   Printer, 
   PlusCircle, 
+  Plus,
   Wrench, 
   CheckCircle2, 
   AlertTriangle, 
@@ -442,7 +443,6 @@ export default function KiltHireApp() {
   const [showAccPin, setShowAccPin] = useState<boolean>(false);
   const [accountMsg, setAccountMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  // Customer Fitting Modal State
   const [showStartFittingModal, setShowStartFittingModal] = useState<boolean>(false);
   const [fittingForm, setFittingForm] = useState({
     customerName: '',
@@ -451,17 +451,27 @@ export default function KiltHireApp() {
     eventDate: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
     collectionDate: new Date(Date.now() + 12 * 86400000).toISOString().slice(0, 10),
     returnDate: new Date(Date.now() + 16 * 86400000).toISOString().slice(0, 10),
-    waistInches: 34,
-    chestInches: 42,
-    sleeveLengthInches: 25,
-    kiltLengthInches: 24,
-    shoeSize: '10',
-    heightFtInches: "5'11",
-    jacketStyle: 'Prince Charlie',
-    tartanPref: 'Royal Stewart',
-    selectedItemIds: [] as string[],
+    billingMode: 'SINGLE_PRINCIPLE' as 'SINGLE_PRINCIPLE' | 'SPLIT_INDIVIDUAL',
     depositMethod: 'PAYPAL_ONLINE' as 'PAYPAL_ONLINE' | 'IN_STORE_CASH' | 'IN_STORE_CARD',
-    notes: ''
+    notes: '',
+    activeOutfitIndex: 0,
+    outfits: [
+      {
+        id: 'outfit-1',
+        roleLabel: 'Groom',
+        wearerName: '',
+        wearerEmail: '',
+        wearerPhone: '',
+        waistInches: 34,
+        chestInches: 42,
+        sleeveLengthInches: 25,
+        kiltLengthInches: 24,
+        shoeSize: '10',
+        heightFtInches: "5'11",
+        selectedItemIds: [] as string[],
+        paidSeparately: false
+      }
+    ]
   });
 
   // Brevo Email Modal State
@@ -1199,103 +1209,242 @@ export default function KiltHireApp() {
       eventDate: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
       collectionDate: new Date(Date.now() + 12 * 86400000).toISOString().slice(0, 10),
       returnDate: new Date(Date.now() + 16 * 86400000).toISOString().slice(0, 10),
+      billingMode: 'SINGLE_PRINCIPLE',
+      depositMethod: 'PAYPAL_ONLINE',
+      notes: '',
+      activeOutfitIndex: 0,
+      outfits: [
+        {
+          id: 'outfit-1',
+          roleLabel: 'Groom',
+          wearerName: '',
+          wearerEmail: '',
+          wearerPhone: '',
+          waistInches: 34,
+          chestInches: 42,
+          sleeveLengthInches: 25,
+          kiltLengthInches: 24,
+          shoeSize: '10',
+          heightFtInches: "5'11",
+          selectedItemIds: [],
+          paidSeparately: false
+        }
+      ]
+    });
+    setAssistantTab('start_fitting');
+    setActiveTab('start_fitting');
+  };
+
+  const handleAddOutfit = () => {
+    const nextNum = fittingForm.outfits.length + 1;
+    const defaultRole = nextNum === 2 ? 'Best Man' : nextNum === 3 ? 'Groomsman' : nextNum === 4 ? 'Father of Bride' : `Party Member ${nextNum}`;
+    const newOutfit = {
+      id: `outfit-${Date.now()}`,
+      roleLabel: defaultRole,
+      wearerName: '',
+      wearerEmail: '',
+      wearerPhone: '',
       waistInches: 34,
       chestInches: 42,
       sleeveLengthInches: 25,
       kiltLengthInches: 24,
       shoeSize: '10',
       heightFtInches: "5'11",
-      jacketStyle: 'Prince Charlie',
-      tartanPref: 'Royal Stewart',
       selectedItemIds: [],
-      depositMethod: 'PAYPAL_ONLINE',
-      notes: ''
+      paidSeparately: fittingForm.billingMode === 'SPLIT_INDIVIDUAL'
+    };
+    setFittingForm(prev => ({
+      ...prev,
+      outfits: [...prev.outfits, newOutfit],
+      activeOutfitIndex: prev.outfits.length
+    }));
+    showToast(`✨ Added Outfit #${nextNum} (${defaultRole}) to Wedding Party Order.`, 'info');
+  };
+
+  const handleRemoveOutfit = (indexToRemove: number) => {
+    if (fittingForm.outfits.length <= 1) {
+      showToast('Order must contain at least 1 outfit.', 'warning');
+      return;
+    }
+    setFittingForm(prev => {
+      const updated = prev.outfits.filter((_, idx) => idx !== indexToRemove);
+      const newActive = Math.min(prev.activeOutfitIndex, updated.length - 1);
+      return {
+        ...prev,
+        outfits: updated,
+        activeOutfitIndex: newActive
+      };
     });
-    setAssistantTab('start_fitting');
-    setActiveTab('start_fitting');
+    showToast('🗑️ Outfit removed from Wedding Party Order.', 'info');
   };
 
   const handleSaveFittingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fittingForm.customerName || !fittingForm.customerEmail) {
-      showToast('Customer Name and Email are required for fitting orders.', 'warning');
+      showToast('Lead Customer Name and Email are required for fitting orders.', 'warning');
       return;
     }
 
-    const selectedItems = items.filter(i => fittingForm.selectedItemIds.includes(i.id));
-    if (selectedItems.length === 0) {
-      showToast('Please select at least 1 garment item for the customer fitting outfit.', 'warning');
-      return;
+    // Validate that each outfit has at least 1 garment item
+    for (let idx = 0; idx < fittingForm.outfits.length; idx++) {
+      const out = fittingForm.outfits[idx];
+      if (out.selectedItemIds.length === 0) {
+        showToast(`Outfit #${idx + 1} (${out.roleLabel}) has no garments selected! Please pick garments for all outfits.`, 'warning');
+        setFittingForm(prev => ({ ...prev, activeOutfitIndex: idx }));
+        return;
+      }
     }
-
-    const poId = `PO-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-    const lineItems: POLineItem[] = selectedItems.map(item => ({
-      qrCodeId: item.id,
-      itemName: item.name,
-      category: item.category,
-      sizeGroup: item.sizeGroup,
-      size: item.size,
-      hireRate: item.hireRate,
-      depositAmount: item.depositAmount,
-      returned: false
-    }));
-
-    const rawSubtotal = lineItems.reduce((acc, i) => acc + i.hireRate, 0);
-    const hasKilt = lineItems.some(i => i.category === 'Kilts');
-    const hasJacket = lineItems.some(i => i.category === 'Jackets');
-    const fullRigoutCapApplied = hasKilt && hasJacket && rawSubtotal > 120;
-    const totalHireFee = fullRigoutCapApplied ? 120 : rawSubtotal;
-    const fullRigoutDiscount = fullRigoutCapApplied ? rawSubtotal - 120 : 0;
-    const totalDepositHeld = 60; // Standard rigout deposit
 
     const isPaypal = fittingForm.depositMethod === 'PAYPAL_ONLINE';
-
-    const newPo: PurchaseOrder = {
-      id: poId,
-      customerName: fittingForm.customerName.trim(),
-      customerEmail: fittingForm.customerEmail.trim().toLowerCase(),
-      customerPhone: fittingForm.customerPhone.trim(),
-      eventDate: fittingForm.eventDate,
-      hireStartDate: fittingForm.collectionDate,
-      hireEndDate: fittingForm.returnDate,
-      items: lineItems,
-      itemizedSubtotal: rawSubtotal,
-      fullRigoutCapApplied,
-      fullRigoutDiscount,
-      totalHireFee,
-      totalDepositHeld,
-      paymentStatus: isPaypal ? 'UNPAID' : 'PAID_WITH_DEPOSIT',
-      orderStatus: isPaypal ? 'RESERVED_PENDING_PAYMENT' : 'DEPOSIT_PAID_CONFIRMED',
-      depositPaymentMethod: fittingForm.depositMethod,
-      depositPaidAt: isPaypal ? undefined : new Date().toISOString().replace('T', ' ').slice(0, 16),
-      measurements: {
-        waistInches: fittingForm.waistInches,
-        chestInches: fittingForm.chestInches,
-        sleeveLengthInches: fittingForm.sleeveLengthInches,
-        kiltLengthInches: fittingForm.kiltLengthInches,
-        shoeSize: fittingForm.shoeSize,
-        heightFtInches: fittingForm.heightFtInches,
-        jacketStylePreference: fittingForm.jacketStyle,
-        tartanPreference: fittingForm.tartanPref,
-        notes: fittingForm.notes
-      },
-      issuedByStaff: currentUser?.name || 'Allan',
-      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
-      notes: `Fitting Order (${fittingForm.depositMethod === 'PAYPAL_ONLINE' ? 'PayPal Invoice Sent' : 'In-Store Deposit Paid'})`
-    };
+    const isSplitBilling = fittingForm.billingMode === 'SPLIT_INDIVIDUAL';
 
     try {
-      await upsertPurchaseOrder(newPo);
-      setPos(prev => [newPo, ...prev]);
-      addAuditLog('CREATED_FITTING_ORDER', `Created fitting order ${poId} for ${newPo.customerName} (${newPo.items.length} items, Waist ${fittingForm.waistInches}", Chest ${fittingForm.chestInches}")`, poId);
-      
+      const createdPos: PurchaseOrder[] = [];
+
+      if (isSplitBilling) {
+        // Individual invoices generated per wearer / outfit
+        for (let i = 0; i < fittingForm.outfits.length; i++) {
+          const outfit = fittingForm.outfits[i];
+          const wearerName = outfit.wearerName || (i === 0 ? fittingForm.customerName : `${fittingForm.customerName} (${outfit.roleLabel})`);
+          const wearerEmail = outfit.wearerEmail || fittingForm.customerEmail;
+          const wearerPhone = outfit.wearerPhone || fittingForm.customerPhone;
+
+          const outfitItems = items.filter(it => outfit.selectedItemIds.includes(it.id));
+          const lineItems: POLineItem[] = outfitItems.map(it => ({
+            qrCodeId: it.id,
+            itemName: it.name,
+            category: it.category,
+            sizeGroup: it.sizeGroup,
+            size: it.size,
+            hireRate: it.hireRate,
+            depositAmount: it.depositAmount,
+            returned: false
+          }));
+
+          const rawSubtotal = lineItems.reduce((acc, it) => acc + it.hireRate, 0);
+          const hasKilt = lineItems.some(it => it.category === 'Kilts');
+          const hasJacket = lineItems.some(it => it.category === 'Jackets');
+          const fullRigoutCapApplied = hasKilt && hasJacket && rawSubtotal > 120;
+          const totalHireFee = fullRigoutCapApplied ? 120 : rawSubtotal;
+          const fullRigoutDiscount = fullRigoutCapApplied ? rawSubtotal - 120 : 0;
+          const totalDepositHeld = 60;
+
+          const poId = `PO-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+          const po: PurchaseOrder = {
+            id: poId,
+            customerName: wearerName.trim(),
+            customerEmail: wearerEmail.trim().toLowerCase(),
+            customerPhone: wearerPhone.trim(),
+            eventDate: fittingForm.eventDate,
+            hireStartDate: fittingForm.collectionDate,
+            hireEndDate: fittingForm.returnDate,
+            items: lineItems,
+            itemizedSubtotal: rawSubtotal,
+            fullRigoutCapApplied,
+            fullRigoutDiscount,
+            totalHireFee,
+            totalDepositHeld,
+            paymentStatus: isPaypal ? 'UNPAID' : 'PAID_WITH_DEPOSIT',
+            orderStatus: isPaypal ? 'RESERVED_PENDING_PAYMENT' : 'DEPOSIT_PAID_CONFIRMED',
+            depositPaymentMethod: fittingForm.depositMethod,
+            depositPaidAt: isPaypal ? undefined : new Date().toISOString().replace('T', ' ').slice(0, 16),
+            measurements: {
+              waistInches: outfit.waistInches,
+              chestInches: outfit.chestInches,
+              sleeveLengthInches: outfit.sleeveLengthInches,
+              kiltLengthInches: outfit.kiltLengthInches,
+              shoeSize: outfit.shoeSize,
+              heightFtInches: outfit.heightFtInches,
+              notes: `Role: ${outfit.roleLabel} | Party Lead: ${fittingForm.customerName}`
+            },
+            issuedByStaff: currentUser?.name || 'Allan',
+            createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+            notes: `Wedding Party Order - Paid Separately (${outfit.roleLabel}). Lead: ${fittingForm.customerName}`
+          };
+
+          await upsertPurchaseOrder(po);
+          createdPos.push(po);
+        }
+      } else {
+        // Consolidated Master Order billed to Lead Principle Customer
+        const allLineItems: POLineItem[] = [];
+        let grandSubtotal = 0;
+        let grandDiscount = 0;
+
+        fittingForm.outfits.forEach((outfit) => {
+          const outfitItems = items.filter(it => outfit.selectedItemIds.includes(it.id));
+          const lines: POLineItem[] = outfitItems.map(it => ({
+            qrCodeId: it.id,
+            itemName: `${it.name} (${outfit.roleLabel}${outfit.wearerName ? `: ${outfit.wearerName}` : ''})`,
+            category: it.category,
+            sizeGroup: it.sizeGroup,
+            size: it.size,
+            hireRate: it.hireRate,
+            depositAmount: it.depositAmount,
+            returned: false
+          }));
+
+          const rawSubtotal = lines.reduce((acc, it) => acc + it.hireRate, 0);
+          const hasKilt = lines.some(it => it.category === 'Kilts');
+          const hasJacket = lines.some(it => it.category === 'Jackets');
+          const capApplied = hasKilt && hasJacket && rawSubtotal > 120;
+          const outfitHireFee = capApplied ? 120 : rawSubtotal;
+          
+          grandSubtotal += outfitHireFee;
+          if (capApplied) grandDiscount += (rawSubtotal - 120);
+
+          allLineItems.push(...lines);
+        });
+
+        const totalDepositHeld = fittingForm.outfits.length * 60;
+        const poId = `PO-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+
+        const po: PurchaseOrder = {
+          id: poId,
+          customerName: fittingForm.customerName.trim(),
+          customerEmail: fittingForm.customerEmail.trim().toLowerCase(),
+          customerPhone: fittingForm.customerPhone.trim(),
+          eventDate: fittingForm.eventDate,
+          hireStartDate: fittingForm.collectionDate,
+          hireEndDate: fittingForm.returnDate,
+          items: allLineItems,
+          itemizedSubtotal: grandSubtotal + grandDiscount,
+          fullRigoutCapApplied: grandDiscount > 0,
+          fullRigoutDiscount: grandDiscount,
+          totalHireFee: grandSubtotal,
+          totalDepositHeld,
+          paymentStatus: isPaypal ? 'UNPAID' : 'PAID_WITH_DEPOSIT',
+          orderStatus: isPaypal ? 'RESERVED_PENDING_PAYMENT' : 'DEPOSIT_PAID_CONFIRMED',
+          depositPaymentMethod: fittingForm.depositMethod,
+          depositPaidAt: isPaypal ? undefined : new Date().toISOString().replace('T', ' ').slice(0, 16),
+          measurements: {
+            waistInches: fittingForm.outfits[0].waistInches,
+            chestInches: fittingForm.outfits[0].chestInches,
+            sleeveLengthInches: fittingForm.outfits[0].sleeveLengthInches,
+            kiltLengthInches: fittingForm.outfits[0].kiltLengthInches,
+            shoeSize: fittingForm.outfits[0].shoeSize,
+            heightFtInches: fittingForm.outfits[0].heightFtInches,
+            notes: `Master Group Order: ${fittingForm.outfits.length} Outfits (${fittingForm.outfits.map(o => o.roleLabel).join(', ')})`
+          },
+          issuedByStaff: currentUser?.name || 'Allan',
+          createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+          notes: `Master Wedding Party Order for ${fittingForm.customerName} (${fittingForm.outfits.length} Outfits)`
+        };
+
+        await upsertPurchaseOrder(po);
+        createdPos.push(po);
+      }
+
+      setPos(prev => [...createdPos, ...prev]);
+      addAuditLog('CREATED_FITTING_ORDER', `Created fitting order for ${fittingForm.customerName} (${fittingForm.outfits.length} outfit(s), Billing: ${fittingForm.billingMode})`);
+
       setAssistantTab('calendar');
       setActiveTab('pos');
 
-      if (isPaypal) {
-        showToast(`🎉 Fitting Order ${poId} reserved! PayPal invoice link generated.`, 'success');
+      if (isSplitBilling) {
+        showToast(`🎉 Created ${createdPos.length} separate fitting POs! Individual PayPal invoice links dispatched to each customer.`, 'success');
       } else {
-        showToast(`🎉 Fitting Order ${poId} saved & £${totalDepositHeld} deposit recorded in store!`, 'success');
+        showToast(`🎉 Master Fitting Order ${createdPos[0].id} created for ${fittingForm.customerName} (${fittingForm.outfits.length} outfits)!`, 'success');
       }
     } catch (err: any) {
       showToast(`Failed to save fitting order: ${err.message}`, 'warning');
@@ -3677,11 +3826,11 @@ export default function KiltHireApp() {
                   <div className="bg-gradient-to-r from-amber-600 via-amber-700 to-slate-900 text-white rounded-2xl p-6 shadow-lg flex flex-wrap items-center justify-between gap-4">
                     <div className="space-y-1">
                       <span className="px-3 py-1 bg-white/20 backdrop-blur rounded-full text-[11px] font-extrabold uppercase tracking-wider text-amber-200 inline-flex items-center gap-1">
-                        📏 In-Store Floor Station
+                        📏 In-Store Wedding Party & Group Fitting Station
                       </span>
-                      <h2 className="text-2xl font-extrabold tracking-tight text-white">Customer Fitting & Measurement Station</h2>
+                      <h2 className="text-2xl font-extrabold tracking-tight text-white">Customer Fitting & Multi-Outfit Order Station</h2>
                       <p className="text-xs text-amber-100 max-w-2xl leading-relaxed">
-                        Record customer measurements, explore live fit-matched store inventory in real-time, and issue a PayPal invoice link or record in-store deposit.
+                        Configure single or multi-outfit wedding party orders (10+ outfits). Set billing as a single lead customer or send individual PayPal invoices to each party member.
                       </p>
                     </div>
 
@@ -3691,7 +3840,7 @@ export default function KiltHireApp() {
                         onClick={handleOpenStartFitting}
                         className="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl border border-white/20 transition flex items-center gap-1.5"
                       >
-                        <RotateCcw className="w-3.5 h-3.5" /> Clear Form
+                        <RotateCcw className="w-3.5 h-3.5" /> Reset Form
                       </button>
                       <button
                         type="button"
@@ -3706,29 +3855,35 @@ export default function KiltHireApp() {
                   {/* FITTING FORM WORKSPACE */}
                   <form onSubmit={handleSaveFittingSubmit} className="space-y-6 text-xs">
                     
-                    {/* SECTION 1: CUSTOMER & EVENT DETAILS */}
-                    <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-3 shadow-sm">
-                      <div className="flex items-center gap-2 text-amber-900 font-extrabold text-sm border-b border-slate-200 pb-2">
-                        <User className="w-4 h-4 text-amber-600" /> Step 1: Customer & Event Information
+                    {/* SECTION 1: LEAD CUSTOMER, EVENT DATES & BILLING MODE */}
+                    <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-4 shadow-sm">
+                      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                        <div className="flex items-center gap-2 text-amber-900 font-extrabold text-sm">
+                          <User className="w-4 h-4 text-amber-600" /> Step 1: Lead Contact, Event Dates & Invoicing Option
+                        </div>
+                        <span className="text-[11px] font-extrabold text-purple-900 bg-purple-100 px-3 py-1 rounded-full border border-purple-300">
+                          {fittingForm.outfits.length} Outfit(s) in Party Order
+                        </span>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div>
-                          <label className="block text-slate-700 font-extrabold mb-1">Customer Full Name *</label>
+                          <label className="block text-slate-700 font-extrabold mb-1">Principle / Lead Customer Name *</label>
                           <input 
                             type="text" 
                             required
-                            placeholder="e.g. Fiona Sinclair"
+                            placeholder="e.g. Gordon MacLeod (Groom)"
                             value={fittingForm.customerName}
                             onChange={e => setFittingForm({ ...fittingForm, customerName: e.target.value })}
                             className="w-full bg-white border border-slate-300 rounded-xl p-3 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm text-sm"
                           />
                         </div>
                         <div>
-                          <label className="block text-slate-700 font-extrabold mb-1">Email Address *</label>
+                          <label className="block text-slate-700 font-extrabold mb-1">Lead Email Address *</label>
                           <input 
                             type="email" 
                             required
-                            placeholder="e.g. fiona@example.com"
+                            placeholder="e.g. gordon@example.com"
                             value={fittingForm.customerEmail}
                             onChange={e => setFittingForm({ ...fittingForm, customerEmail: e.target.value })}
                             className="w-full bg-white border border-slate-300 rounded-xl p-3 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm text-sm"
@@ -3780,145 +3935,319 @@ export default function KiltHireApp() {
                           />
                         </div>
                       </div>
-                    </div>
 
-                    {/* SECTION 2: 6 PRECISE FITTING MEASUREMENTS */}
-                    <div className="bg-amber-50/80 border border-amber-200 p-5 rounded-2xl space-y-4 shadow-sm">
-                      <div className="flex items-center justify-between border-b border-amber-200 pb-2">
-                        <div className="flex items-center gap-2 text-amber-950 font-extrabold text-sm">
-                          📏 Step 2: Precise Customer Fitting Measurements
-                        </div>
-                        <span className="text-[11px] font-bold text-amber-800 bg-white px-2.5 py-0.5 rounded-full border border-amber-300">
-                          Real-Time Fit Filter Active
-                        </span>
-                      </div>
+                      {/* BILLING RESPONSIBILITY SELECTOR */}
+                      <div className="pt-3 border-t border-slate-200 space-y-2">
+                        <label className="block text-slate-900 font-extrabold text-xs">Group Order Payment & Invoicing Responsibility:</label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setFittingForm(prev => ({ ...prev, billingMode: 'SINGLE_PRINCIPLE' }))}
+                            className={`p-3.5 rounded-2xl border text-left font-bold transition flex items-center justify-between ${
+                              fittingForm.billingMode === 'SINGLE_PRINCIPLE'
+                                ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md ring-2 ring-amber-400/50'
+                                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                            }`}
+                          >
+                            <div>
+                              <span className="block font-extrabold text-xs">👑 Lead Customer Pays Entire Group Order</span>
+                              <span className="text-[11px] opacity-90 block mt-0.5">Single master invoice sent to {fittingForm.customerName || 'Lead Customer'} for all outfits</span>
+                            </div>
+                            {fittingForm.billingMode === 'SINGLE_PRINCIPLE' && <CheckCircle2 className="w-5 h-5 shrink-0 ml-2" />}
+                          </button>
 
-                      <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
-                        <div className="bg-white p-3 rounded-xl border border-amber-200 shadow-sm text-center">
-                          <label className="block text-slate-700 font-extrabold text-xs mb-1">Waist (in)</label>
-                          <input 
-                            type="number" 
-                            min={20}
-                            max={60}
-                            value={fittingForm.waistInches}
-                            onChange={e => setFittingForm({ ...fittingForm, waistInches: parseInt(e.target.value) || 34 })}
-                            className="w-full bg-amber-50 border border-amber-300 rounded-lg p-2 font-mono font-extrabold text-center text-lg text-amber-900 outline-none focus:border-amber-600 shadow-inner"
-                          />
-                        </div>
-
-                        <div className="bg-white p-3 rounded-xl border border-amber-200 shadow-sm text-center">
-                          <label className="block text-slate-700 font-extrabold text-xs mb-1">Chest (in)</label>
-                          <input 
-                            type="number" 
-                            min={20}
-                            max={60}
-                            value={fittingForm.chestInches}
-                            onChange={e => setFittingForm({ ...fittingForm, chestInches: parseInt(e.target.value) || 42 })}
-                            className="w-full bg-amber-50 border border-amber-300 rounded-lg p-2 font-mono font-extrabold text-center text-lg text-amber-900 outline-none focus:border-amber-600 shadow-inner"
-                          />
-                        </div>
-
-                        <div className="bg-white p-3 rounded-xl border border-amber-200 shadow-sm text-center">
-                          <label className="block text-slate-700 font-extrabold text-xs mb-1">Sleeve (in)</label>
-                          <input 
-                            type="number" 
-                            min={15}
-                            max={40}
-                            value={fittingForm.sleeveLengthInches}
-                            onChange={e => setFittingForm({ ...fittingForm, sleeveLengthInches: parseInt(e.target.value) || 25 })}
-                            className="w-full bg-amber-50 border border-amber-300 rounded-lg p-2 font-mono font-extrabold text-center text-lg text-amber-900 outline-none focus:border-amber-600 shadow-inner"
-                          />
-                        </div>
-
-                        <div className="bg-white p-3 rounded-xl border border-amber-200 shadow-sm text-center">
-                          <label className="block text-slate-700 font-extrabold text-xs mb-1">Length (in)</label>
-                          <input 
-                            type="number" 
-                            min={15}
-                            max={40}
-                            value={fittingForm.kiltLengthInches}
-                            onChange={e => setFittingForm({ ...fittingForm, kiltLengthInches: parseInt(e.target.value) || 24 })}
-                            className="w-full bg-amber-50 border border-amber-300 rounded-lg p-2 font-mono font-extrabold text-center text-lg text-amber-900 outline-none focus:border-amber-600 shadow-inner"
-                          />
-                        </div>
-
-                        <div className="bg-white p-3 rounded-xl border border-amber-200 shadow-sm text-center">
-                          <label className="block text-slate-700 font-extrabold text-xs mb-1">Shoe Size</label>
-                          <input 
-                            type="text" 
-                            value={fittingForm.shoeSize}
-                            onChange={e => setFittingForm({ ...fittingForm, shoeSize: e.target.value })}
-                            className="w-full bg-amber-50 border border-amber-300 rounded-lg p-2 font-mono font-extrabold text-center text-lg text-amber-900 outline-none focus:border-amber-600 shadow-inner"
-                          />
-                        </div>
-
-                        <div className="bg-white p-3 rounded-xl border border-amber-200 shadow-sm text-center">
-                          <label className="block text-slate-700 font-extrabold text-xs mb-1">Height</label>
-                          <input 
-                            type="text" 
-                            value={fittingForm.heightFtInches}
-                            onChange={e => setFittingForm({ ...fittingForm, heightFtInches: e.target.value })}
-                            className="w-full bg-amber-50 border border-amber-300 rounded-lg p-2 font-mono font-extrabold text-center text-lg text-amber-900 outline-none focus:border-amber-600 shadow-inner"
-                          />
+                          <button
+                            type="button"
+                            onClick={() => setFittingForm(prev => ({ ...prev, billingMode: 'SPLIT_INDIVIDUAL' }))}
+                            className={`p-3.5 rounded-2xl border text-left font-bold transition flex items-center justify-between ${
+                              fittingForm.billingMode === 'SPLIT_INDIVIDUAL'
+                                ? 'bg-purple-600 text-white border-purple-700 shadow-md ring-2 ring-purple-500/50'
+                                : 'bg-white text-slate-700 border-slate-300 hover:bg-purple-50'
+                            }`}
+                          >
+                            <div>
+                              <span className="block font-extrabold text-xs">💳 Individual Invoices (Paid Separately)</span>
+                              <span className="text-[11px] opacity-90 block mt-0.5">Sends individual invoice links directly to each wearer's email address</span>
+                            </div>
+                            {fittingForm.billingMode === 'SPLIT_INDIVIDUAL' && <CheckCircle2 className="w-5 h-5 shrink-0 ml-2" />}
+                          </button>
                         </div>
                       </div>
                     </div>
 
-                    {/* SECTION 3: FIT-MATCHED AVAILABLE INVENTORY EXPLORER */}
-                    <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-3 shadow-sm">
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
-                        <div className="flex items-center gap-2 text-slate-900 font-extrabold text-sm">
-                          <Package className="w-4 h-4 text-emerald-600" /> Step 3: Fit-Matched Store Inventory (Waist {fittingForm.waistInches}", Chest {fittingForm.chestInches}")
+                    {/* SECTION 2: MULTI-OUTFIT WEDDING PARTY TABS & WEARER CONFIGURATION */}
+                    <div className="bg-amber-50/90 border border-amber-300 p-5 rounded-2xl space-y-4 shadow-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-300 pb-3">
+                        <div>
+                          <h4 className="text-sm font-extrabold text-amber-950 flex items-center gap-2">
+                            👔 Step 2: Configure Outfits ({fittingForm.outfits.length} Outfits in Order)
+                          </h4>
+                          <p className="text-[11px] text-amber-800">
+                            Switch between outfits below to set wearer role, measurements, and select fit-matched garments.
+                          </p>
                         </div>
-                        <span className="text-xs font-extrabold text-amber-900 bg-amber-100 px-3 py-1 rounded-full border border-amber-300">
-                          {fittingForm.selectedItemIds.length} Garments Selected for Outfit
-                        </span>
+
+                        <button
+                          type="button"
+                          onClick={handleAddOutfit}
+                          className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5"
+                        >
+                          <Plus className="w-4 h-4" /> + Add Another Outfit to Order
+                        </button>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-72 overflow-y-auto p-1">
-                        {availableItems.map(item => {
-                          const isSelected = fittingForm.selectedItemIds.includes(item.id);
+                      {/* OUTFIT TAB NAVIGATION BAR */}
+                      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
+                        {fittingForm.outfits.map((outfit, index) => {
+                          const isActive = fittingForm.activeOutfitIndex === index;
+                          const wearerDisplayName = outfit.wearerName || (index === 0 && fittingForm.customerName ? fittingForm.customerName : `Outfit #${index + 1}`);
+
                           return (
-                            <div key={item.id} className={`p-3.5 rounded-2xl border flex flex-col justify-between space-y-2 transition ${isSelected ? 'bg-amber-50 border-amber-400 shadow-md ring-2 ring-amber-400/50' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
-                              <div>
-                                <div className="flex items-center justify-between mb-1">
-                                  <span className="font-mono font-extrabold text-amber-900 text-xs bg-amber-100 px-2 py-0.5 rounded border border-amber-300">{item.id}</span>
-                                  <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">In Stock</span>
-                                </div>
-                                <h4 className="font-extrabold text-slate-900 text-xs leading-snug">{item.name}</h4>
-                                <p className="text-[11px] text-slate-500 mt-1">{item.category} • {item.tartanOrColour}</p>
-                                <p className="text-[11px] font-bold text-amber-900 mt-0.5">Size: {item.size}</p>
-                              </div>
+                            <div key={outfit.id} className="shrink-0 flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setFittingForm(prev => ({ ...prev, activeOutfitIndex: index }))}
+                                className={`px-4 py-2 rounded-xl text-xs font-extrabold transition shadow-sm border flex items-center gap-2 ${
+                                  isActive
+                                    ? 'bg-amber-500 text-slate-950 border-amber-600 ring-2 ring-amber-400'
+                                    : 'bg-white text-slate-700 border-slate-300 hover:bg-amber-100'
+                                }`}
+                              >
+                                <span>{index === 0 ? '👑' : '👔'} #{index + 1}: {outfit.roleLabel}</span>
+                                <span className="text-[10px] opacity-80">({wearerDisplayName})</span>
+                                {outfit.selectedItemIds.length > 0 && (
+                                  <span className="px-1.5 py-0.5 text-[9px] bg-emerald-600 text-white rounded-full">
+                                    {outfit.selectedItemIds.length} items
+                                  </span>
+                                )}
+                              </button>
 
-                              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                                <span className="font-extrabold text-slate-900 text-xs">£{item.hireRate} <span className="text-[10px] text-slate-500 font-normal">/ period</span></span>
+                              {fittingForm.outfits.length > 1 && (
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    if (isSelected) {
-                                      setFittingForm(prev => ({ ...prev, selectedItemIds: prev.selectedItemIds.filter(id => id !== item.id) }));
-                                    } else {
-                                      setFittingForm(prev => ({ ...prev, selectedItemIds: [...prev.selectedItemIds, item.id] }));
-                                    }
-                                  }}
-                                  className={`px-3 py-1.5 rounded-xl font-extrabold text-xs transition flex items-center gap-1 ${isSelected ? 'bg-amber-600 text-white shadow-sm' : 'bg-slate-100 hover:bg-slate-200 text-slate-800'}`}
+                                  onClick={() => handleRemoveOutfit(index)}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                                  title="Remove Outfit"
                                 >
-                                  {isSelected ? '✓ In Outfit' : '+ Add to Rigout'}
+                                  <X className="w-3.5 h-3.5" />
                                 </button>
-                              </div>
+                              )}
                             </div>
                           );
                         })}
                       </div>
+
+                      {/* ACTIVE OUTFIT DETAILS & MEASUREMENTS */}
+                      {(() => {
+                        const activeIndex = fittingForm.activeOutfitIndex;
+                        const currentOutfit = fittingForm.outfits[activeIndex] || fittingForm.outfits[0];
+
+                        const updateCurrentOutfit = (fields: Partial<typeof currentOutfit>) => {
+                          setFittingForm(prev => {
+                            const newOutfits = [...prev.outfits];
+                            newOutfits[activeIndex] = { ...newOutfits[activeIndex], ...fields };
+                            return { ...prev, outfits: newOutfits };
+                          });
+                        };
+
+                        return (
+                          <div className="bg-white p-5 rounded-2xl border border-amber-200 space-y-4 shadow-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                              <div className="flex items-center gap-2">
+                                <span className="font-extrabold text-slate-900 text-xs">
+                                  Configuring Outfit #{activeIndex + 1} ({currentOutfit.roleLabel}):
+                                </span>
+
+                                {/* ROLE PRESETS */}
+                                <div className="flex flex-wrap items-center gap-1">
+                                  {['Groom', 'Best Man', 'Groomsman', 'Father of Bride', 'Page Boy', 'Usher'].map((role) => (
+                                    <button
+                                      key={role}
+                                      type="button"
+                                      onClick={() => updateCurrentOutfit({ roleLabel: role })}
+                                      className={`px-2.5 py-1 text-[10px] font-extrabold rounded-lg transition border ${
+                                        currentOutfit.roleLabel === role
+                                          ? 'bg-purple-600 text-white border-purple-700'
+                                          : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
+                                      }`}
+                                    >
+                                      {role}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* INDIVIDUAL INVOICE CHECKBOX */}
+                              <label className="flex items-center gap-2 text-xs font-bold text-purple-900 bg-purple-50 px-3 py-1.5 rounded-xl border border-purple-200 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={currentOutfit.paidSeparately}
+                                  onChange={(e) => updateCurrentOutfit({ paidSeparately: e.target.checked })}
+                                  className="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500"
+                                />
+                                <span>☑️ Order paid separately (send own invoice)</span>
+                              </label>
+                            </div>
+
+                            {/* WEARER CONTACT INFO */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              <div>
+                                <label className="block text-slate-700 font-extrabold text-[11px] mb-1">Wearer Full Name</label>
+                                <input
+                                  type="text"
+                                  placeholder={activeIndex === 0 ? fittingForm.customerName || 'e.g. Gordon MacLeod' : 'e.g. James MacLeod'}
+                                  value={currentOutfit.wearerName}
+                                  onChange={(e) => updateCurrentOutfit({ wearerName: e.target.value })}
+                                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-bold text-slate-900 outline-none focus:border-amber-500"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-slate-700 font-extrabold text-[11px] mb-1">Wearer Email Address</label>
+                                <input
+                                  type="email"
+                                  placeholder={activeIndex === 0 ? fittingForm.customerEmail || 'e.g. wearer@example.com' : 'e.g. james@example.com'}
+                                  value={currentOutfit.wearerEmail}
+                                  onChange={(e) => updateCurrentOutfit({ wearerEmail: e.target.value })}
+                                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-bold text-slate-900 outline-none focus:border-amber-500"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-slate-700 font-extrabold text-[11px] mb-1">Wearer Mobile Phone</label>
+                                <input
+                                  type="text"
+                                  placeholder={activeIndex === 0 ? fittingForm.customerPhone || 'e.g. 07700 900123' : 'e.g. 07700 900456'}
+                                  value={currentOutfit.wearerPhone}
+                                  onChange={(e) => updateCurrentOutfit({ wearerPhone: e.target.value })}
+                                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-bold text-slate-900 outline-none focus:border-amber-500"
+                                />
+                              </div>
+                            </div>
+
+                            {/* 6 PRECISE MEASUREMENTS FOR CURRENT OUTFIT */}
+                            <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
+                                Precise Measurements for {currentOutfit.roleLabel} ({currentOutfit.wearerName || 'Party Member'}):
+                              </span>
+                              <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
+                                <div className="bg-amber-50/70 p-2.5 rounded-xl border border-amber-200 text-center">
+                                  <label className="block text-slate-700 font-extrabold text-[11px] mb-1">Waist (in)</label>
+                                  <input 
+                                    type="number" min={20} max={60}
+                                    value={currentOutfit.waistInches}
+                                    onChange={e => updateCurrentOutfit({ waistInches: parseInt(e.target.value) || 34 })}
+                                    className="w-full bg-white border border-amber-300 rounded-lg p-1.5 font-mono font-extrabold text-center text-base text-amber-950 outline-none"
+                                  />
+                                </div>
+                                <div className="bg-amber-50/70 p-2.5 rounded-xl border border-amber-200 text-center">
+                                  <label className="block text-slate-700 font-extrabold text-[11px] mb-1">Chest (in)</label>
+                                  <input 
+                                    type="number" min={20} max={60}
+                                    value={currentOutfit.chestInches}
+                                    onChange={e => updateCurrentOutfit({ chestInches: parseInt(e.target.value) || 42 })}
+                                    className="w-full bg-white border border-amber-300 rounded-lg p-1.5 font-mono font-extrabold text-center text-base text-amber-950 outline-none"
+                                  />
+                                </div>
+                                <div className="bg-amber-50/70 p-2.5 rounded-xl border border-amber-200 text-center">
+                                  <label className="block text-slate-700 font-extrabold text-[11px] mb-1">Sleeve (in)</label>
+                                  <input 
+                                    type="number" min={15} max={40}
+                                    value={currentOutfit.sleeveLengthInches}
+                                    onChange={e => updateCurrentOutfit({ sleeveLengthInches: parseInt(e.target.value) || 25 })}
+                                    className="w-full bg-white border border-amber-300 rounded-lg p-1.5 font-mono font-extrabold text-center text-base text-amber-950 outline-none"
+                                  />
+                                </div>
+                                <div className="bg-amber-50/70 p-2.5 rounded-xl border border-amber-200 text-center">
+                                  <label className="block text-slate-700 font-extrabold text-[11px] mb-1">Kilt Length (in)</label>
+                                  <input 
+                                    type="number" min={15} max={40}
+                                    value={currentOutfit.kiltLengthInches}
+                                    onChange={e => updateCurrentOutfit({ kiltLengthInches: parseInt(e.target.value) || 24 })}
+                                    className="w-full bg-white border border-amber-300 rounded-lg p-1.5 font-mono font-extrabold text-center text-base text-amber-950 outline-none"
+                                  />
+                                </div>
+                                <div className="bg-amber-50/70 p-2.5 rounded-xl border border-amber-200 text-center">
+                                  <label className="block text-slate-700 font-extrabold text-[11px] mb-1">Shoe Size</label>
+                                  <input 
+                                    type="text"
+                                    value={currentOutfit.shoeSize}
+                                    onChange={e => updateCurrentOutfit({ shoeSize: e.target.value })}
+                                    className="w-full bg-white border border-amber-300 rounded-lg p-1.5 font-mono font-extrabold text-center text-base text-amber-950 outline-none"
+                                  />
+                                </div>
+                                <div className="bg-amber-50/70 p-2.5 rounded-xl border border-amber-200 text-center">
+                                  <label className="block text-slate-700 font-extrabold text-[11px] mb-1">Height</label>
+                                  <input 
+                                    type="text"
+                                    value={currentOutfit.heightFtInches}
+                                    onChange={e => updateCurrentOutfit({ heightFtInches: e.target.value })}
+                                    className="w-full bg-white border border-amber-300 rounded-lg p-1.5 font-mono font-extrabold text-center text-base text-amber-950 outline-none"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* FIT-MATCHED STORE INVENTORY PICKER FOR CURRENT OUTFIT */}
+                            <div className="space-y-2 pt-2 border-t border-slate-100">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5">
+                                  <Package className="w-4 h-4 text-emerald-600" /> Step 3: Pick Garments for {currentOutfit.roleLabel} (Waist {currentOutfit.waistInches}", Chest {currentOutfit.chestInches}")
+                                </span>
+                                <span className="text-xs font-extrabold text-amber-900 bg-amber-100 px-3 py-1 rounded-full border border-amber-300">
+                                  {currentOutfit.selectedItemIds.length} Garments Picked
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-60 overflow-y-auto p-1">
+                                {availableItems.map((item) => {
+                                  const isSelected = currentOutfit.selectedItemIds.includes(item.id);
+
+                                  return (
+                                    <div key={item.id} className={`p-3 rounded-2xl border flex flex-col justify-between space-y-2 transition ${isSelected ? 'bg-amber-50 border-amber-400 shadow-md ring-2 ring-amber-400/50' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
+                                      <div>
+                                        <div className="flex items-center justify-between mb-1">
+                                          <span className="font-mono font-extrabold text-amber-900 text-[11px] bg-amber-100 px-2 py-0.5 rounded border border-amber-300">{item.id}</span>
+                                          <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">In Stock</span>
+                                        </div>
+                                        <h5 className="font-extrabold text-slate-900 text-xs leading-snug">{item.name}</h5>
+                                        <p className="text-[10px] text-slate-500 mt-0.5">{item.category} • {item.tartanOrColour}</p>
+                                        <p className="text-[10px] font-bold text-amber-900 mt-0.5">Size: {item.size}</p>
+                                      </div>
+
+                                      <div className="flex items-center justify-between pt-1.5 border-t border-slate-100">
+                                        <span className="font-extrabold text-slate-900 text-xs">£{item.hireRate}</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (isSelected) {
+                                              updateCurrentOutfit({ selectedItemIds: currentOutfit.selectedItemIds.filter(id => id !== item.id) });
+                                            } else {
+                                              updateCurrentOutfit({ selectedItemIds: [...currentOutfit.selectedItemIds, item.id] });
+                                            }
+                                          }}
+                                          className={`px-3 py-1 rounded-xl font-extrabold text-xs transition ${isSelected ? 'bg-amber-600 text-white shadow-sm' : 'bg-slate-100 hover:bg-slate-200 text-slate-800'}`}
+                                        >
+                                          {isSelected ? '✓ Picked' : '+ Pick Item'}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
 
-                    {/* SECTION 4: DEPOSIT PAYMENT & INVOICING OPTIONS */}
+                    {/* SECTION 4: MASTER DEPOSIT & INVOICING DISPATCH OPTIONS */}
                     <div className="bg-slate-900 text-white p-5 rounded-2xl space-y-4 shadow-xl">
-                      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                      <div className="flex flex-wrap items-center justify-between border-b border-slate-800 pb-2 gap-2">
                         <span className="text-xs font-extrabold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
-                          <CreditCard className="w-4 h-4 text-amber-400" /> Step 4: Deposit & Invoicing Option
+                          <CreditCard className="w-4 h-4 text-amber-400" /> Step 4: Group Deposit & Invoice Method
                         </span>
-                        <span className="text-xs font-bold text-emerald-400">Rigout Hire Cap £120 Auto-Applied</span>
+                        <span className="text-xs font-bold text-emerald-400">
+                          {fittingForm.outfits.length} Rigouts • Total Deposit Held £{fittingForm.outfits.length * 60}
+                        </span>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -3930,8 +4259,12 @@ export default function KiltHireApp() {
                           }`}
                         >
                           <div>
-                            <span className="block font-extrabold text-sm">🌐 Send PayPal Online Invoice Link</span>
-                            <span className="text-xs opacity-90 block mt-1">Generates instant invoice link for customer to pay £60 deposit online at home</span>
+                            <span className="block font-extrabold text-sm">🌐 Dispatch PayPal Invoice Links</span>
+                            <span className="text-xs opacity-90 block mt-1">
+                              {fittingForm.billingMode === 'SPLIT_INDIVIDUAL' 
+                                ? `Sends separate PayPal links to all ${fittingForm.outfits.length} customers` 
+                                : `Sends master PayPal link to ${fittingForm.customerName || 'Lead Customer'}`}
+                            </span>
                           </div>
                           {fittingForm.depositMethod === 'PAYPAL_ONLINE' && <CheckCircle2 className="w-6 h-6 shrink-0 ml-2" />}
                         </button>
@@ -3944,7 +4277,7 @@ export default function KiltHireApp() {
                           }`}
                         >
                           <div>
-                            <span className="block font-extrabold text-sm">🏪 Mark Deposit Paid In Store (£60)</span>
+                            <span className="block font-extrabold text-sm">🏪 Mark Deposit Paid In Store (£{fittingForm.outfits.length * 60})</span>
                             <span className="text-xs opacity-90 block mt-1">Recorded via Cash or Card in shop today — order confirmed immediately</span>
                           </div>
                           {fittingForm.depositMethod !== 'PAYPAL_ONLINE' && <CheckCircle2 className="w-6 h-6 shrink-0 ml-2" />}
@@ -3953,13 +4286,13 @@ export default function KiltHireApp() {
                     </div>
 
                     {/* SUBMIT ACTION BAR */}
-                    <div className="flex items-center justify-between pt-4 border-t border-slate-200">
+                    <div className="flex flex-wrap items-center justify-between pt-4 border-t border-slate-200 gap-3">
                       <button
                         type="button"
                         onClick={() => { setAssistantTab('scanner'); setActiveTab('scanner'); }}
                         className="px-5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
                       >
-                        Cancel & Exit Station
+                        Cancel
                       </button>
 
                       <button
