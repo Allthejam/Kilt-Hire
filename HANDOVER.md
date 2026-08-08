@@ -161,10 +161,10 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+5483ec1  feat: add multi-outfit wedding party fitting workflow with role tags, outfit tabs, and principle vs split individual invoice billing options
 ab64053  feat: convert Historic PO Archive into condensed data table with column sorting, rows-per-page selector (10, 20, 50, 100, ALL), expandable detail drawers, and << < > >> pagination
 1a9c50a  feat: add unsaved return inspection protection with browser beforeunload warning and in-app exit confirmation modal
 b20692e  fix: render Historic PO Archive workspace with date range filters, customer search, and repeat customer profile history
-bb654a7  feat: split Customer POs into Active POs vs Historic PO Archive with automatic return completion archiving and repeat customer search
 5e564ec  feat: add Late Return & Security Deposit Retention Section in full-page return workspace with custom fee input, presets, and live ledger update
 9e5d341  feat: convert Process Return Checklist into a full-page view with 1-tap manual item condition toggles and deposit ledger
 e953140  feat: dynamically hide empty movement sections and replace Column 3 with 2-Day Pick & Pack Assembly Queue
