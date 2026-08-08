@@ -362,9 +362,19 @@ export default function KiltHireApp() {
   const [analyticsSearchQuery, setAnalyticsSearchQuery] = useState<string>('');
 
   // Availability & Booking Calendar state (Shop Assistant Mode)
-  const [calSelectedDate, setCalSelectedDate] = useState<string>('2026-08-05');
+  const [calSelectedDate, setCalSelectedDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [calTartanFilter, setCalTartanFilter] = useState<string>('ALL');
   const [calCategoryFilter, setCalCategoryFilter] = useState<string>('ALL');
+  const [calMonthYear, setCalMonthYear] = useState<{ year: number; month: number }>({
+    year: new Date().getFullYear(),
+    month: new Date().getMonth()
+  });
+  const [calendarNotes, setCalendarNotes] = useState<{ id: string; date: string; text: string; type: 'NOTE' | 'EVENT' | 'CLOSURE'; createdAt: string }[]>([
+    { id: 'CN-1', date: new Date().toISOString().slice(0, 10), text: 'Sinclair wedding party pickup (5 kilts at 10am)', type: 'EVENT', createdAt: '2026-08-01' },
+    { id: 'CN-2', date: '2026-08-15', text: 'Store open early 8:30am for Highland Games deliveries', type: 'NOTE', createdAt: '2026-08-02' }
+  ]);
+  const [newCalNoteText, setNewCalNoteText] = useState('');
+  const [newCalNoteType, setNewCalNoteType] = useState<'NOTE' | 'EVENT' | 'CLOSURE'>('NOTE');
 
   // Invite & Staff Management Form State
   const [newInviteEmail, setNewInviteEmail] = useState('');
@@ -4362,372 +4372,441 @@ export default function KiltHireApp() {
               {/* SHOP ASSISTANT AVAILABILITY & BOOKING CALENDAR */}
               {assistantTab === 'calendar' && (
                 <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
-                  {/* CALENDAR HEADER & FILTER CONTROLS */}
+                  
+                  {/* CALENDAR HEADER BAR */}
                   <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
                     <div>
-                      <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                        <Calendar className="w-5 h-5 text-amber-600" /> Customer Fittings & Booking Schedule Hub
+                      <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+                        <Calendar className="w-6 h-6 text-amber-600" /> Hire Calendar & Booking Schedule
                       </h3>
                       <p className="text-xs text-slate-500">
-                        View all customer fittings, collection/event/return dates, pick outfit garments, and check live availability.
+                        Interactive monthly schedule with color-coded pickups, returns, custom notes, and daily order tracking.
                       </p>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
                       <button
                         onClick={handleOpenStartFitting}
-                        className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5"
+                        className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5"
                       >
-                        <User className="w-4 h-4 text-slate-950" /> Start New Fitting & Order
+                        <User className="w-4 h-4 text-slate-950" /> + Start New Fitting & Order
                       </button>
-
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase">Target Date</label>
-                        <input 
-                          type="date"
-                          value={calSelectedDate}
-                          onChange={e => setCalSelectedDate(e.target.value)}
-                          className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase">Filter Tartan</label>
-                        <select
-                          value={calTartanFilter}
-                          onChange={e => setCalTartanFilter(e.target.value)}
-                          className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
-                        >
-                          <option value="ALL">All Tartans & Colours</option>
-                          {tartanList.map(t => (
-                            <option key={t} value={t}>{t}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase">Category</label>
-                        <select
-                          value={calCategoryFilter}
-                          onChange={e => setCalCategoryFilter(e.target.value)}
-                          className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
-                        >
-                          <option value="ALL">All Categories</option>
-                          {CATEGORIES.map(c => (
-                            <option key={c} value={c}>{c}</option>
-                          ))}
-                        </select>
-                      </div>
                     </div>
                   </div>
 
-                  {/* SECTION 1: CUSTOMER FITTINGS & HIRE BOOKINGS SCHEDULE */}
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                        📅 Scheduled Customer Fitting Orders & Hires ({pos.length})
-                      </h4>
-                      <span className="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full">
-                        Sorted by Collection Date
+                  {/* LEGEND BAR */}
+                  <div className="bg-slate-50 border border-slate-200 p-3 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs">
+                    <span className="font-extrabold text-slate-500 uppercase tracking-wider text-[10px] flex items-center gap-1">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-600" /> Calendar Color Legend:
+                    </span>
+                    <div className="flex flex-wrap items-center gap-3 font-bold">
+                      <span className="flex items-center gap-1.5 text-amber-900 bg-amber-100 px-2.5 py-1 rounded-lg border border-amber-300">
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span> 🟡 Hires Out (Pickups)
+                      </span>
+                      <span className="flex items-center gap-1.5 text-blue-900 bg-blue-100 px-2.5 py-1 rounded-lg border border-blue-300">
+                        <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span> 🔵 Hires Due Back (Returns)
+                      </span>
+                      <span className="flex items-center gap-1.5 text-purple-900 bg-purple-100 px-2.5 py-1 rounded-lg border border-purple-300">
+                        <span className="w-2.5 h-2.5 rounded-full bg-purple-500"></span> 🟣 Functions & Events
+                      </span>
+                      <span className="flex items-center gap-1.5 text-rose-900 bg-rose-100 px-2.5 py-1 rounded-lg border border-rose-300">
+                        <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span> 🔴 Store Notes / Closures
+                      </span>
+                      <span className="flex items-center gap-1.5 text-emerald-900 bg-emerald-100 px-2.5 py-1 rounded-lg border border-emerald-400">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> 🟢 Date Selected
                       </span>
                     </div>
-
-                    {pos.length === 0 ? (
-                      <div className="text-center py-10 bg-slate-50 border border-dashed border-slate-300 rounded-2xl space-y-3">
-                        <Calendar className="w-10 h-10 text-amber-500 mx-auto" />
-                        <p className="text-xs text-slate-500">No fitting orders found in the booking schedule.</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
-                        {pos.map(po => {
-                          const is7DayOverdue = new Date(po.hireStartDate).getTime() - Date.now() <= 7 * 86400000 && (po.paymentStatus === 'UNPAID' || po.paymentStatus === 'DEPOSIT_PENDING');
-
-                          return (
-                            <div key={po.id} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3 shadow-sm hover:border-amber-400 transition">
-                              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-9 h-9 rounded-xl bg-amber-500 text-slate-950 font-extrabold text-xs flex items-center justify-center shadow">
-                                    {po.customerName.charAt(0)}
-                                  </div>
-                                  <div>
-                                    <h5 className="font-extrabold text-slate-900 text-sm">{po.customerName}</h5>
-                                    <p className="text-[11px] text-slate-500">{po.customerEmail} • {po.customerPhone}</p>
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="font-mono font-extrabold text-xs bg-white px-2.5 py-1 rounded-lg border border-slate-300 text-amber-900">
-                                    {po.id}
-                                  </span>
-                                  <span className={`px-2.5 py-1 text-xs font-extrabold rounded-full border ${
-                                    po.orderStatus === 'READY_FOR_COLLECTION' ? 'bg-emerald-100 text-emerald-900 border-emerald-300' :
-                                    po.orderStatus === 'DEPOSIT_PAID_CONFIRMED' ? 'bg-blue-100 text-blue-900 border-blue-300' :
-                                    po.orderStatus === 'OUT_ON_HIRE' ? 'bg-indigo-100 text-indigo-900 border-indigo-300' :
-                                    po.orderStatus === 'RETURNED_COMPLETED' ? 'bg-slate-200 text-slate-800 border-slate-300' :
-                                    'bg-amber-100 text-amber-900 border-amber-300'
-                                  }`}>
-                                    {po.orderStatus === 'READY_FOR_COLLECTION' ? '✓ Ready for Collection' :
-                                     po.orderStatus === 'DEPOSIT_PAID_CONFIRMED' ? '🔒 Deposit Paid In Store' :
-                                     po.orderStatus === 'OUT_ON_HIRE' ? '📦 Currently Out on Hire' :
-                                     po.orderStatus === 'RETURNED_COMPLETED' ? '✓ Returned & Completed' :
-                                     '⏳ Reserved — Pending PayPal Deposit'}
-                                  </span>
-                                  {is7DayOverdue && (
-                                    <span className="px-2.5 py-1 text-xs font-extrabold bg-rose-100 text-rose-900 border border-rose-300 rounded-full flex items-center gap-1 animate-pulse">
-                                      ⚠️ 7-Day Payment Due
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* ALL 3 KEY DATES BANNER */}
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-white p-2.5 rounded-xl border border-slate-200 text-xs font-bold text-center">
-                                <div className="bg-amber-50/80 p-2 rounded-lg border border-amber-200">
-                                  <span className="text-[10px] text-slate-500 block uppercase">Collection Date</span>
-                                  <span className="text-amber-900 font-extrabold">{po.hireStartDate}</span>
-                                </div>
-                                <div className="bg-blue-50/80 p-2 rounded-lg border border-blue-200">
-                                  <span className="text-[10px] text-slate-500 block uppercase">Event / Function Date</span>
-                                  <span className="text-blue-900 font-extrabold">{po.eventDate}</span>
-                                </div>
-                                <div className="bg-emerald-50/80 p-2 rounded-lg border border-emerald-200">
-                                  <span className="text-[10px] text-slate-500 block uppercase">Return Date</span>
-                                  <span className="text-emerald-900 font-extrabold">{po.hireEndDate}</span>
-                                </div>
-                              </div>
-
-                              {/* FITTING MEASUREMENTS CARD */}
-                              {po.measurements && (
-                                <div className="bg-white border border-slate-200 p-2.5 rounded-xl space-y-1 text-xs">
-                                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Customer Fitted Measurements:</span>
-                                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center font-bold">
-                                    <div className="bg-slate-50 p-1.5 rounded border">Waist: <span className="text-amber-800">{po.measurements.waistInches}"</span></div>
-                                    <div className="bg-slate-50 p-1.5 rounded border">Chest: <span className="text-amber-800">{po.measurements.chestInches}"</span></div>
-                                    <div className="bg-slate-50 p-1.5 rounded border">Sleeve: <span className="text-amber-800">{po.measurements.sleeveLengthInches}"</span></div>
-                                    <div className="bg-slate-50 p-1.5 rounded border">Length: <span className="text-amber-800">{po.measurements.kiltLengthInches}"</span></div>
-                                    <div className="bg-slate-50 p-1.5 rounded border">Shoe: <span className="text-amber-800">{po.measurements.shoeSize}</span></div>
-                                    <div className="bg-slate-50 p-1.5 rounded border">Height: <span className="text-amber-800">{po.measurements.heightFtInches}</span></div>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* GARMENTS LIST */}
-                              <div className="space-y-1.5">
-                                <span className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider block">Rigout Garment Items ({po.items.length} items):</span>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                  {po.items.map(li => {
-                                    const itemDoc = items.find(i => i.id === li.qrCodeId);
-                                    return (
-                                      <div key={li.qrCodeId} className="bg-white border border-slate-200 p-2 rounded-xl flex items-center justify-between text-xs">
-                                        <div>
-                                          <span className="font-mono font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 mr-1.5">{li.qrCodeId}</span>
-                                          <span className="font-bold text-slate-900">{li.itemName}</span>
-                                          <p className="text-[10px] text-slate-500">{li.category} ({li.size})</p>
-                                        </div>
-                                        <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded ${itemDoc?.status === 'ON_HIRE' ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' : 'bg-slate-100 text-slate-700'}`}>
-                                          {itemDoc?.status === 'ON_HIRE' ? '✓ Allocated ON_HIRE' : '📦 In Store Shelf'}
-                                        </span>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-
-                              {/* ACTION BAR */}
-                              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200">
-                                <div className="text-xs font-bold text-slate-700">
-                                  Total Fee: <span className="text-amber-800">£{po.totalHireFee}</span> • Deposit Held: <span className="text-emerald-700">£{po.totalDepositHeld}</span>
-                                </div>
-
-                                <div className="flex items-center gap-2">
-                                  {po.orderStatus !== 'READY_FOR_COLLECTION' && po.orderStatus !== 'OUT_ON_HIRE' && po.orderStatus !== 'RETURNED_COMPLETED' && (
-                                    <button
-                                      onClick={() => handleMarkOrderReadyForCollection(po)}
-                                      className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5"
-                                    >
-                                      <CheckCircle2 className="w-4 h-4" /> Mark Ready for Collection
-                                    </button>
-                                  )}
-                                  {po.readyNotificationSentAt && (
-                                    <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
-                                      ✉️ Brevo Email Sent ({po.readyNotificationSentAt})
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
                   </div>
 
-                  {/* REAL-TIME AVAILABILITY SUMMARY BANNER */}
-                  {(() => {
-                    const selDate = new Date(calSelectedDate);
-                    selDate.setHours(0, 0, 0, 0);
+                  {/* TOP SECTION GRID: CALENDAR (2/3) + NOTES & EVENTS CARD (1/3) */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    
+                    {/* LEFT COLUMN: INTERACTIVE MONTHLY CALENDAR GRID (2/3) */}
+                    <div className="lg:col-span-2 bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4 shadow-sm">
+                      
+                      {/* MONTH & YEAR NAVIGATOR BAR */}
+                      <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              setCalMonthYear(prev => {
+                                const newM = prev.month === 0 ? 11 : prev.month - 1;
+                                const newY = prev.month === 0 ? prev.year - 1 : prev.year;
+                                return { year: newY, month: newM };
+                              });
+                            }}
+                            className="p-2 bg-white hover:bg-slate-100 text-slate-700 font-bold rounded-xl border border-slate-300 text-xs transition"
+                          >
+                            ◄ Prev Month
+                          </button>
+                          <button
+                            onClick={() => {
+                              const now = new Date();
+                              setCalMonthYear({ year: now.getFullYear(), month: now.getMonth() });
+                              setCalSelectedDate(now.toISOString().slice(0, 10));
+                            }}
+                            className="px-3 py-2 bg-white hover:bg-slate-100 text-amber-900 font-extrabold rounded-xl border border-amber-300 text-xs transition"
+                          >
+                            Today
+                          </button>
+                          <button
+                            onClick={() => {
+                              setCalMonthYear(prev => {
+                                const newM = prev.month === 11 ? 0 : prev.month + 1;
+                                const newY = prev.month === 11 ? prev.year + 1 : prev.year;
+                                return { year: newY, month: newM };
+                              });
+                            }}
+                            className="p-2 bg-white hover:bg-slate-100 text-slate-700 font-bold rounded-xl border border-slate-300 text-xs transition"
+                          >
+                            Next Month ►
+                          </button>
+                        </div>
 
-                    // Find all POs active on calSelectedDate
-                    const activePosOnDate = pos.filter(p => {
-                      const start = new Date(p.hireStartDate);
-                      const end = new Date(p.hireEndDate);
-                      start.setHours(0, 0, 0, 0);
-                      end.setHours(0, 0, 0, 0);
-                      return selDate >= start && selDate <= end;
-                    });
+                        <h4 className="text-base font-extrabold text-slate-900">
+                          {new Date(calMonthYear.year, calMonthYear.month, 1).toLocaleString('default', { month: 'long', year: 'numeric' })}
+                        </h4>
+                      </div>
 
-                    // Collect item IDs hired on this date
-                    const hiredItemIdsOnDate = new Set<string>();
-                    activePosOnDate.forEach(p => p.items.forEach(li => hiredItemIdsOnDate.add(li.qrCodeId)));
+                      {/* MONTH DAYS GRID */}
+                      {(() => {
+                        const { year, month } = calMonthYear;
+                        const firstDayOfMonth = new Date(year, month, 1);
+                        const startDayOfWeek = (firstDayOfMonth.getDay() + 6) % 7; // Monday = 0
+                        const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-                    const filteredItems = items.filter(i => {
-                      if (i.status === 'RETIRED') return false;
-                      if (assistantSizeFilter !== 'ALL' && i.sizeGroup !== assistantSizeFilter) return false;
-                      if (calTartanFilter !== 'ALL' && i.tartanOrColour !== calTartanFilter) return false;
-                      if (calCategoryFilter !== 'ALL' && i.category !== calCategoryFilter) return false;
-                      return true;
-                    });
+                        const cells = [];
+                        // Empty padding cells before 1st of month
+                        for (let i = 0; i < startDayOfWeek; i++) {
+                          cells.push(null);
+                        }
+                        // Actual day cells
+                        for (let d = 1; d <= daysInMonth; d++) {
+                          const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                          cells.push({ day: d, dateStr });
+                        }
 
-                    const availableCountOnDate = filteredItems.filter(i => !hiredItemIdsOnDate.has(i.id) && i.status !== 'IN_REPAIR' && i.status !== 'NEEDS_CLEANING').length;
-                    const hiredCountOnDate = filteredItems.filter(i => hiredItemIdsOnDate.has(i.id)).length;
+                        const daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-                    return (
-                      <div className="space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-1">
-                            <span className="text-xs font-bold text-emerald-800 flex items-center gap-1">
-                              <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Available for {calSelectedDate}
-                            </span>
-                            <span className="text-2xl font-extrabold text-emerald-950 block">{availableCountOnDate} Garments</span>
-                            <span className="text-[10px] text-emerald-700 font-semibold">Ready in shop for immediate hire</span>
+                        return (
+                          <div className="space-y-2">
+                            {/* DAYS HEADER */}
+                            <div className="grid grid-cols-7 gap-1 text-center font-extrabold text-slate-500 text-[11px] uppercase">
+                              {daysOfWeek.map(day => (
+                                <div key={day} className="py-1">{day}</div>
+                              ))}
+                            </div>
+
+                            {/* DATES GRID */}
+                            <div className="grid grid-cols-7 gap-1.5">
+                              {cells.map((cell, idx) => {
+                                if (!cell) {
+                                  return <div key={`empty-${idx}`} className="h-20 bg-slate-100/50 rounded-xl border border-transparent"></div>;
+                                }
+
+                                const isSelected = cell.dateStr === calSelectedDate;
+                                const isToday = cell.dateStr === new Date().toISOString().slice(0, 10);
+
+                                // Find POs matching this date
+                                const outCount = pos.filter(p => p.hireStartDate === cell.dateStr).length;
+                                const inCount = pos.filter(p => p.hireEndDate === cell.dateStr).length;
+                                const eventCount = pos.filter(p => p.eventDate === cell.dateStr).length;
+                                const noteCount = calendarNotes.filter(n => n.date === cell.dateStr).length;
+
+                                return (
+                                  <div
+                                    key={cell.dateStr}
+                                    onClick={() => setCalSelectedDate(cell.dateStr)}
+                                    className={`h-20 p-1.5 rounded-xl border cursor-pointer transition flex flex-col justify-between ${
+                                      isSelected ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-400 shadow-md' :
+                                      isToday ? 'bg-amber-50 border-amber-400 font-extrabold' :
+                                      'bg-white border-slate-200 hover:border-amber-400 hover:shadow-sm'
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <span className={`text-xs font-extrabold ${isSelected ? 'text-emerald-950' : isToday ? 'text-amber-900' : 'text-slate-800'}`}>
+                                        {cell.day}
+                                      </span>
+                                      {isToday && (
+                                        <span className="text-[9px] font-extrabold bg-amber-500 text-slate-950 px-1 rounded">Today</span>
+                                      )}
+                                    </div>
+
+                                    {/* BADGES */}
+                                    <div className="space-y-0.5 text-[9px] font-extrabold">
+                                      {outCount > 0 && (
+                                        <span className="block bg-amber-500 text-slate-950 px-1 rounded text-center truncate">
+                                          🟡 {outCount} Out
+                                        </span>
+                                      )}
+                                      {inCount > 0 && (
+                                        <span className="block bg-blue-600 text-white px-1 rounded text-center truncate">
+                                          🔵 {inCount} In
+                                        </span>
+                                      )}
+                                      {eventCount > 0 && (
+                                        <span className="block bg-purple-600 text-white px-1 rounded text-center truncate">
+                                          🟣 {eventCount} Event
+                                        </span>
+                                      )}
+                                      {noteCount > 0 && (
+                                        <span className="block bg-rose-500 text-white px-1 rounded text-center truncate">
+                                          🔴 {noteCount} Note
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
+                        );
+                      })()}
+                    </div>
 
-                          <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl space-y-1">
-                            <span className="text-xs font-bold text-blue-800 flex items-center gap-1">
-                              <PackageCheck className="w-4 h-4 text-blue-600" /> Booked / On Hire
-                            </span>
-                            <span className="text-2xl font-extrabold text-blue-950 block">{hiredCountOnDate} Garments</span>
-                            <span className="text-[10px] text-blue-700 font-semibold">Across {activePosOnDate.length} Customer Hires</span>
-                          </div>
+                    {/* RIGHT COLUMN: NOTES & CUSTOM STORE EVENTS CARD (1/3) */}
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4 shadow-sm flex flex-col justify-between">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                          <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
+                            📌 Calendar Notes & Events
+                          </h4>
+                          <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+                            {calSelectedDate}
+                          </span>
+                        </div>
 
-                          <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl space-y-1">
-                            <span className="text-xs font-bold text-amber-900 flex items-center gap-1">
-                              <Calendar className="w-4 h-4 text-amber-600" /> Active Hires On Date
-                            </span>
-                            <span className="text-2xl font-extrabold text-amber-950 block">{activePosOnDate.length} Customer POs</span>
-                            <span className="text-[10px] text-amber-800 font-semibold">Scheduled for pickup/return</span>
+                        {/* ADD NOTE INLINE FORM */}
+                        <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2 shadow-sm">
+                          <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">Add Note / Event for {calSelectedDate}:</span>
+                          <input 
+                            type="text" 
+                            placeholder="e.g. Bridal Party pickup at 11am..."
+                            value={newCalNoteText}
+                            onChange={e => setNewCalNoteText(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-slate-900 outline-none focus:border-amber-500"
+                          />
+                          <div className="flex items-center justify-between gap-2">
+                            <select
+                              value={newCalNoteType}
+                              onChange={e => setNewCalNoteType(e.target.value as any)}
+                              className="bg-slate-50 border border-slate-300 rounded-lg p-1.5 text-[11px] font-bold text-slate-800 outline-none"
+                            >
+                              <option value="NOTE">📝 General Note</option>
+                              <option value="EVENT">🎉 Special Function</option>
+                              <option value="CLOSURE">🔒 Store Closure</option>
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!newCalNoteText.trim()) return;
+                                const newN = {
+                                  id: `CN-${Date.now()}`,
+                                  date: calSelectedDate,
+                                  text: newCalNoteText.trim(),
+                                  type: newCalNoteType,
+                                  createdAt: new Date().toISOString().slice(0, 10)
+                                };
+                                setCalendarNotes(prev => [newN, ...prev]);
+                                setNewCalNoteText('');
+                                showToast(`Saved calendar note for ${calSelectedDate}!`, 'success');
+                              }}
+                              className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-lg shadow transition"
+                            >
+                              + Add Note
+                            </button>
                           </div>
                         </div>
 
-                        {/* GARMENT AVAILABILITY MATRIX GRID */}
-                        <div className="space-y-3">
-                          <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                            <Layers className="w-4 h-4 text-amber-600" /> Live Garment Availability Matrix for {calSelectedDate} ({filteredItems.length} Items)
-                          </h4>
-
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                            {filteredItems.map(item => {
-                              const isHiredOnDate = hiredItemIdsOnDate.has(item.id);
-                              const activePo = activePosOnDate.find(p => p.items.some(li => li.qrCodeId === item.id));
-
-                              return (
-                                <div key={item.id} className={`p-4 rounded-2xl border space-y-2.5 transition shadow-sm ${
-                                  isHiredOnDate ? 'bg-blue-50/80 border-blue-300' :
-                                  item.status === 'IN_REPAIR' ? 'bg-rose-50/80 border-rose-300' :
-                                  item.status === 'NEEDS_CLEANING' ? 'bg-cyan-50/80 border-cyan-300' :
-                                  'bg-emerald-50/60 border-emerald-300'
-                                }`}>
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="font-mono font-extrabold text-slate-900 text-xs bg-white px-2 py-0.5 rounded border border-slate-200">
-                                        {item.id}
-                                      </span>
-                                      <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded ${item.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900' : 'bg-blue-100 text-blue-900'}`}>
-                                        {item.sizeGroup}
-                                      </span>
-                                    </div>
-
-                                    <span className={`px-2.5 py-0.5 text-[10px] font-extrabold rounded-full border ${
-                                      isHiredOnDate ? 'bg-blue-600 text-white border-blue-700' :
-                                      item.status === 'IN_REPAIR' ? 'bg-rose-600 text-white border-rose-700' :
-                                      item.status === 'NEEDS_CLEANING' ? 'bg-cyan-600 text-white border-cyan-700' :
-                                      'bg-emerald-600 text-white border-emerald-700'
-                                    }`}>
-                                      {isHiredOnDate ? '🔒 BOOKED ON DATE' :
-                                       item.status === 'IN_REPAIR' ? '🔧 IN REPAIR' :
-                                       item.status === 'NEEDS_CLEANING' ? '🧼 LAUNDRY' :
-                                       '🟢 AVAILABLE'}
-                                    </span>
-                                  </div>
-
-                                  <div>
-                                    <h4 className="font-bold text-slate-900 text-xs">{item.name}</h4>
-                                    <p className="text-[11px] text-slate-600">{item.tartanOrColour} ({item.size})</p>
-                                  </div>
-
-                                  {isHiredOnDate && activePo && (
-                                    <div className="bg-white p-2 rounded-xl text-[11px] space-y-0.5 border border-blue-200 text-slate-700 shadow-sm">
-                                      <p><span className="text-slate-500">Customer:</span> <strong>{activePo.customerName}</strong></p>
-                                      <p><span className="text-slate-500">PO Ref:</span> <span className="font-mono font-bold text-blue-700">{activePo.id}</span></p>
-                                      <p><span className="text-slate-500">Hire Period:</span> {activePo.hireStartDate} to {activePo.hireEndDate}</p>
-                                    </div>
-                                  )}
-
-                                  {!isHiredOnDate && item.status === 'AVAILABLE' && (
-                                    <button
-                                      onClick={() => {
-                                        setNewPoForm(prev => ({
-                                          ...prev,
-                                          hireStartDate: calSelectedDate,
-                                          hireEndDate: calSelectedDate,
-                                          selectedItemIds: [item.id]
-                                        }));
-                                        setShowCreatePoModal(true);
-                                      }}
-                                      className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center justify-center gap-1.5"
-                                    >
-                                      <PlusCircle className="w-3.5 h-3.5" /> Book Hire for {item.id}
-                                    </button>
-                                  )}
+                        {/* NOTES LIST FOR SELECTED DATE */}
+                        <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                          <span className="text-[10px] font-extrabold text-slate-400 uppercase block">Notes on Selected Date:</span>
+                          {calendarNotes.filter(n => n.date === calSelectedDate).length === 0 ? (
+                            <p className="text-xs text-slate-400 italic bg-white p-3 rounded-xl border border-dashed text-center">
+                              No store notes for {calSelectedDate}. Use the form above to add one.
+                            </p>
+                          ) : (
+                            calendarNotes.filter(n => n.date === calSelectedDate).map(note => (
+                              <div key={note.id} className="p-2.5 bg-white border border-slate-200 rounded-xl flex items-center justify-between gap-2 shadow-sm">
+                                <div className="space-y-0.5">
+                                  <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
+                                    note.type === 'EVENT' ? 'bg-purple-100 text-purple-900' :
+                                    note.type === 'CLOSURE' ? 'bg-rose-100 text-rose-900' :
+                                    'bg-amber-100 text-amber-900'
+                                  }`}>
+                                    {note.type === 'EVENT' ? '🎉 Function' : note.type === 'CLOSURE' ? '🔒 Closure' : '📝 Note'}
+                                  </span>
+                                  <p className="text-xs font-bold text-slate-900">{note.text}</p>
                                 </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {/* UPCOMING HIRE SCHEDULE LEDGER */}
-                        <div className="space-y-3 pt-4 border-t border-slate-100">
-                          <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                            <Clock className="w-4 h-4 text-amber-600" /> Upcoming Active Hires Schedule
-                          </h4>
-
-                          <div className="space-y-3">
-                            {pos.map(p => (
-                              <div key={p.id} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-wrap items-center justify-between gap-3">
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-mono font-extrabold text-amber-800 text-xs bg-white px-2 py-0.5 rounded border border-slate-200">{p.id}</span>
-                                    <span className="font-extrabold text-slate-900 text-xs">{p.customerName}</span>
-                                    <span className="text-xs text-slate-500">({p.customerPhone})</span>
-                                  </div>
-                                  <p className="text-xs text-slate-600 mt-1">
-                                    <strong>Hire Dates:</strong> {p.hireStartDate} ➔ {p.hireEndDate} ({p.items.length} Items)
-                                  </p>
-                                </div>
-
                                 <button
-                                  onClick={() => openPoReturnChecklist(p)}
-                                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center gap-1"
+                                  onClick={() => setCalendarNotes(prev => prev.filter(n => n.id !== note.id))}
+                                  className="text-slate-400 hover:text-rose-600 p-1 text-xs font-bold transition"
                                 >
-                                  <RotateCcw className="w-3.5 h-3.5" /> View Return Checklist
+                                  ✕
                                 </button>
                               </div>
-                            ))}
-                          </div>
+                            ))
+                          )}
                         </div>
                       </div>
-                    );
-                  })()}
+
+                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 font-semibold space-y-1">
+                        💡 <strong>Staff Tip:</strong> Click any day on the calendar to see exact orders going out & coming back in for that date below!
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* BOTTOM SECTION: TRACK BOOKINGS & OUTFIT MOVEMENT FOR SELECTED DATE */}
+                  <div className="space-y-4 pt-4 border-t border-slate-100">
+                    <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 border border-slate-200 p-4 rounded-2xl">
+                      <div>
+                        <h4 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                          📋 Order Tracking & Garment Movement for <span className="text-amber-900 underline decoration-amber-400">{calSelectedDate}</span>
+                        </h4>
+                        <p className="text-xs text-slate-500">Review all outfits scheduled for pickup, due back in, or active on this selected date.</p>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-xs font-bold">
+                        <span className="bg-amber-100 text-amber-900 border border-amber-300 px-3 py-1.5 rounded-xl">
+                          🟡 {pos.filter(p => p.hireStartDate === calSelectedDate).length} Outgoing Pickups
+                        </span>
+                        <span className="bg-blue-100 text-blue-900 border border-blue-300 px-3 py-1.5 rounded-xl">
+                          🔵 {pos.filter(p => p.hireEndDate === calSelectedDate).length} Returns Due
+                        </span>
+                        <span className="bg-purple-100 text-purple-900 border border-purple-300 px-3 py-1.5 rounded-xl">
+                          🟣 {pos.filter(p => p.eventDate === calSelectedDate).length} Events
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 3 TRACKER COLUMNS */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      
+                      {/* COLUMN 1: HIRES GOING OUT TODAY (PICKUPS) */}
+                      <div className="bg-amber-50/50 border border-amber-200 rounded-2xl p-4 space-y-3">
+                        <div className="flex items-center justify-between border-b border-amber-200 pb-2">
+                          <h5 className="font-extrabold text-amber-950 text-xs flex items-center gap-1.5 uppercase tracking-wider">
+                            🟡 Outgoing Pickups ({pos.filter(p => p.hireStartDate === calSelectedDate).length})
+                          </h5>
+                          <span className="text-[10px] font-extrabold text-amber-800 bg-white px-2 py-0.5 rounded border border-amber-300">
+                            Collection Date
+                          </span>
+                        </div>
+
+                        {pos.filter(p => p.hireStartDate === calSelectedDate).length === 0 ? (
+                          <p className="text-xs text-slate-400 italic py-6 text-center bg-white rounded-xl border border-dashed">
+                            No outgoing pickups scheduled for {calSelectedDate}.
+                          </p>
+                        ) : (
+                          pos.filter(p => p.hireStartDate === calSelectedDate).map(po => (
+                            <div key={po.id} className="bg-white border border-amber-200 p-3 rounded-xl space-y-2 shadow-sm">
+                              <div className="flex items-center justify-between">
+                                <span className="font-mono font-extrabold text-xs text-amber-900 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">{po.id}</span>
+                                <span className="text-[10px] font-extrabold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full border border-amber-300">
+                                  {po.orderStatus === 'READY_FOR_COLLECTION' ? '✓ Ready' : '⏳ Pick Needed'}
+                                </span>
+                              </div>
+                              <div>
+                                <strong className="text-slate-900 text-xs block">{po.customerName}</strong>
+                                <span className="text-[11px] text-slate-500 block">{po.customerEmail} • {po.customerPhone}</span>
+                              </div>
+                              <div className="text-[11px] font-bold text-slate-700 bg-slate-50 p-2 rounded-lg border">
+                                Items ({po.items.length}): {po.items.map(i => i.itemName).join(', ')}
+                              </div>
+                              {po.orderStatus !== 'READY_FOR_COLLECTION' && (
+                                <button
+                                  onClick={() => handleMarkOrderReadyForCollection(po)}
+                                  className="w-full py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-lg shadow transition flex items-center justify-center gap-1"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" /> Mark Ready for Pickup
+                                </button>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+
+                      {/* COLUMN 2: HIRES DUE BACK TODAY (RETURNS) */}
+                      <div className="bg-blue-50/50 border border-blue-200 rounded-2xl p-4 space-y-3">
+                        <div className="flex items-center justify-between border-b border-blue-200 pb-2">
+                          <h5 className="font-extrabold text-blue-950 text-xs flex items-center gap-1.5 uppercase tracking-wider">
+                            🔵 Returns Due Back ({pos.filter(p => p.hireEndDate === calSelectedDate).length})
+                          </h5>
+                          <span className="text-[10px] font-extrabold text-blue-800 bg-white px-2 py-0.5 rounded border border-blue-300">
+                            Return Date
+                          </span>
+                        </div>
+
+                        {pos.filter(p => p.hireEndDate === calSelectedDate).length === 0 ? (
+                          <p className="text-xs text-slate-400 italic py-6 text-center bg-white rounded-xl border border-dashed">
+                            No garment returns due back on {calSelectedDate}.
+                          </p>
+                        ) : (
+                          pos.filter(p => p.hireEndDate === calSelectedDate).map(po => (
+                            <div key={po.id} className="bg-white border border-blue-200 p-3 rounded-xl space-y-2 shadow-sm">
+                              <div className="flex items-center justify-between">
+                                <span className="font-mono font-extrabold text-xs text-blue-900 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">{po.id}</span>
+                                <span className="text-[10px] font-extrabold bg-blue-100 text-blue-900 px-2 py-0.5 rounded-full border border-blue-300">
+                                  Return Due
+                                </span>
+                              </div>
+                              <div>
+                                <strong className="text-slate-900 text-xs block">{po.customerName}</strong>
+                                <span className="text-[11px] text-slate-500 block">{po.customerPhone}</span>
+                              </div>
+                              <div className="text-[11px] font-bold text-slate-700 bg-slate-50 p-2 rounded-lg border">
+                                Items ({po.items.length}): {po.items.map(i => i.itemName).join(', ')}
+                              </div>
+                              <button
+                                onClick={() => openPoReturnChecklist(po)}
+                                className="w-full py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-lg shadow transition flex items-center justify-center gap-1"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" /> Process Return Checklist
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+
+                      {/* COLUMN 3: FUNCTIONS & EVENTS TODAY */}
+                      <div className="bg-purple-50/50 border border-purple-200 rounded-2xl p-4 space-y-3">
+                        <div className="flex items-center justify-between border-b border-purple-200 pb-2">
+                          <h5 className="font-extrabold text-purple-950 text-xs flex items-center gap-1.5 uppercase tracking-wider">
+                            🟣 Functions & Events ({pos.filter(p => p.eventDate === calSelectedDate).length})
+                          </h5>
+                          <span className="text-[10px] font-extrabold text-purple-800 bg-white px-2 py-0.5 rounded border border-purple-300">
+                            Event Date
+                          </span>
+                        </div>
+
+                        {pos.filter(p => p.eventDate === calSelectedDate).length === 0 ? (
+                          <p className="text-xs text-slate-400 italic py-6 text-center bg-white rounded-xl border border-dashed">
+                            No wedding/function events taking place on {calSelectedDate}.
+                          </p>
+                        ) : (
+                          pos.filter(p => p.eventDate === calSelectedDate).map(po => (
+                            <div key={po.id} className="bg-white border border-purple-200 p-3 rounded-xl space-y-2 shadow-sm">
+                              <div className="flex items-center justify-between">
+                                <span className="font-mono font-extrabold text-xs text-purple-900 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">{po.id}</span>
+                                <span className="text-[10px] font-extrabold bg-purple-100 text-purple-900 px-2 py-0.5 rounded-full border border-purple-300">
+                                  🎉 Function Today
+                                </span>
+                              </div>
+                              <div>
+                                <strong className="text-slate-900 text-xs block">{po.customerName}</strong>
+                                <span className="text-[11px] text-slate-500 block">Collection: {po.hireStartDate} • Return: {po.hireEndDate}</span>
+                              </div>
+                              <div className="text-[11px] font-bold text-slate-700 bg-slate-50 p-2 rounded-lg border">
+                                Garments ({po.items.length}): {po.items.map(i => i.itemName).join(', ')}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+
+                    </div>
+                  </div>
+
                 </div>
               )}
 
