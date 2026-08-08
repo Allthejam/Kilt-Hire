@@ -2887,7 +2887,7 @@ export default function KiltHireApp() {
                   </button>
 
                   <button
-                    onClick={() => setAssistantTab('scanner')}
+                    onClick={() => { setAssistantTab('scanner'); setActiveTab('scanner'); }}
                     className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
                       assistantTab === 'scanner' 
                         ? 'bg-emerald-600 text-white shadow-sm' 
@@ -2898,7 +2898,7 @@ export default function KiltHireApp() {
                   </button>
 
                   <button
-                    onClick={() => setAssistantTab('in_stock')}
+                    onClick={() => { setAssistantTab('in_stock'); setActiveTab('inventory'); }}
                     className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
                       assistantTab === 'in_stock' 
                         ? 'bg-emerald-600 text-white shadow-sm' 
@@ -2914,7 +2914,7 @@ export default function KiltHireApp() {
                   </button>
 
                   <button
-                    onClick={() => setAssistantTab('on_hire')}
+                    onClick={() => { setAssistantTab('on_hire'); setActiveTab('inventory'); }}
                     className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
                       assistantTab === 'on_hire' 
                         ? 'bg-blue-600 text-white shadow-sm' 
@@ -2930,7 +2930,7 @@ export default function KiltHireApp() {
                   </button>
 
                   <button
-                    onClick={() => setAssistantTab('in_repair')}
+                    onClick={() => { setAssistantTab('in_repair'); setActiveTab('repairs'); }}
                     className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
                       assistantTab === 'in_repair' 
                         ? 'bg-rose-600 text-white shadow-sm' 
@@ -2946,7 +2946,7 @@ export default function KiltHireApp() {
                   </button>
 
                   <button
-                    onClick={() => setAssistantTab('needs_cleaning')}
+                    onClick={() => { setAssistantTab('needs_cleaning'); setActiveTab('laundry'); }}
                     className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
                       assistantTab === 'needs_cleaning' 
                         ? 'bg-cyan-600 text-white shadow-sm' 
@@ -2962,7 +2962,7 @@ export default function KiltHireApp() {
                   </button>
 
                   <button
-                    onClick={() => setAssistantTab('pos')}
+                    onClick={() => { setAssistantTab('pos'); setActiveTab('pos'); }}
                     className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
                       assistantTab === 'pos' 
                         ? 'bg-amber-500 text-slate-950 shadow-sm' 
@@ -2978,7 +2978,7 @@ export default function KiltHireApp() {
                   </button>
 
                   <button
-                    onClick={() => setAssistantTab('calendar')}
+                    onClick={() => { setAssistantTab('calendar'); setActiveTab('pos'); }}
                     className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
                       assistantTab === 'calendar' 
                         ? 'bg-amber-500 text-slate-950 shadow-sm' 
@@ -3478,7 +3478,7 @@ export default function KiltHireApp() {
               )}
 
               {/* FULL PAGE: DEDICATED CUSTOMER FITTING & MEASUREMENT STATION */}
-              {(assistantTab === 'start_fitting' || activeTab === 'start_fitting') && (
+              {assistantTab === 'start_fitting' && (
                 <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6 animate-in fade-in zoom-in-95">
                   
                   {/* STATION HEADER BANNER */}
