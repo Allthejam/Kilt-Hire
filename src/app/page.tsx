@@ -313,6 +313,7 @@ export default function KiltHireApp() {
   const [lateFeeOption, setLateFeeOption] = useState<'NONE' | 'CUSTOM' | 'FULL_DEPOSIT'>('NONE');
   const [customLateFeeAmount, setCustomLateFeeAmount] = useState<number>(0);
   const [lateFeeReason, setLateFeeReason] = useState<string>('');
+  const [showLateFeeOverride, setShowLateFeeOverride] = useState<boolean>(false);
 
   // Edit Item & Remove from Rotation Modals
   const [showEditItemModal, setShowEditItemModal] = useState<KiltItem | null>(null);
@@ -1648,10 +1649,12 @@ export default function KiltHireApp() {
       setLateFeeOption('NONE'); // Assistant can explicitly toggle fee or waive
       setCustomLateFeeAmount(15 * daysOverdue); // Suggested £15/day late fee
       setLateFeeReason(`Order returned ${daysOverdue} day(s) overdue (deadline: ${po.hireEndDate}).`);
+      setShowLateFeeOverride(true);
     } else {
       setLateFeeOption('NONE');
       setCustomLateFeeAmount(0);
       setLateFeeReason('');
+      setShowLateFeeOverride(false);
     }
 
     setReturnChecklist(initialChecklist as any);
@@ -5240,25 +5243,36 @@ export default function KiltHireApp() {
                       </div>
                     </div>
 
-                    {/* ⏰ LATE RETURN & DEPOSIT RETENTION CONTROLS */}
-                    <div className="bg-gradient-to-r from-slate-900 to-amber-950 text-white p-5 rounded-2xl space-y-4 shadow-md border border-amber-900/40">
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-900/60 pb-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 font-extrabold flex items-center justify-center border border-amber-500/40">
-                            ⏰
+                    {/* ⏰ LATE RETURN & DEPOSIT RETENTION CONTROLS (Conditionally Rendered for Overdue POs or Staff Override) */}
+                    {activeReturnPo.hireEndDate < new Date().toISOString().slice(0, 10) || showLateFeeOverride ? (
+                      <div className="bg-gradient-to-r from-slate-900 to-amber-950 text-white p-5 rounded-2xl space-y-4 shadow-md border border-amber-900/40">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-900/60 pb-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 font-extrabold flex items-center justify-center border border-amber-500/40">
+                              ⏰
+                            </div>
+                            <div>
+                              <h4 className="font-extrabold text-sm text-amber-300">Late Return & Security Deposit Retention Controls</h4>
+                              <p className="text-[11px] text-amber-200/80">Manually retain full or partial security deposits for overdue returns or late disruption fees.</p>
+                            </div>
                           </div>
-                          <div>
-                            <h4 className="font-extrabold text-sm text-amber-300">Late Return & Security Deposit Retention Controls</h4>
-                            <p className="text-[11px] text-amber-200/80">Manually retain full or partial security deposits for overdue returns or late disruption fees.</p>
+
+                          <div className="flex items-center gap-2">
+                            {activeReturnPo.hireEndDate < new Date().toISOString().slice(0, 10) ? (
+                              <span className="px-3 py-1 bg-red-500/20 text-red-300 border border-red-500/40 rounded-full font-extrabold text-[10px] animate-pulse">
+                                🚨 Return Overdue (Deadline: {activeReturnPo.hireEndDate})
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setShowLateFeeOverride(false)}
+                                className="text-[11px] text-slate-400 hover:text-white underline"
+                              >
+                                ✕ Hide Late Fee Controls
+                              </button>
+                            )}
                           </div>
                         </div>
-
-                        {activeReturnPo.hireEndDate < new Date().toISOString().slice(0, 10) && (
-                          <span className="px-3 py-1 bg-red-500/20 text-red-300 border border-red-500/40 rounded-full font-extrabold text-[10px] animate-pulse">
-                            🚨 Return Overdue (Deadline: {activeReturnPo.hireEndDate})
-                          </span>
-                        )}
-                      </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                         <button
@@ -5362,6 +5376,17 @@ export default function KiltHireApp() {
                         </div>
                       )}
                     </div>
+                    ) : (
+                      <div className="flex justify-end pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setShowLateFeeOverride(true)}
+                          className="text-[11px] font-bold text-slate-500 hover:text-amber-800 flex items-center gap-1 transition"
+                        >
+                          <span>⚙️ Need to assess a late fee or deposit retention override? (Click to expand)</span>
+                        </button>
+                      </div>
+                    )}
 
                     {/* LIVE DEPOSIT CALCULATION BREAKDOWN */}
                     {(() => {
