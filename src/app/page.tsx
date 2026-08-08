@@ -2981,6 +2981,17 @@ export default function KiltHireApp() {
                       📅 Live
                     </span>
                   </button>
+
+                  <button
+                    onClick={handleOpenStartFitting}
+                    className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
+                      assistantTab === 'start_fitting' 
+                        ? 'bg-amber-500 text-slate-950 shadow-sm ring-2 ring-amber-400' 
+                        : 'bg-amber-100/90 text-amber-950 hover:bg-amber-200 border border-amber-300'
+                    }`}
+                  >
+                    <User className="w-4 h-4 text-amber-900" /> Start New Fitting & Order
+                  </button>
                 </div>
 
                 {/* ADULTS VS KIDS SIZE DEMOGRAPHIC TOGGLE FILTER */}
