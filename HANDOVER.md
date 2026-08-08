@@ -161,10 +161,10 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+d6ca884  feat: convert Start New Fitting & Order from popup modal into a full-page workspace tab station
 7346147  feat: implement store customer fitting workflow, 6-point measurement stock matching, 2-day after-hours pick queue, and Brevo transactional email dispatch
 6f57aa8  fix: sanitize all Firestore setDoc objects with sanitizeForFirestore helper to strip undefined fields and prevent FirebaseError
 7bb07b0  feat: add Master Category Pricing Matrix filters (Adults vs Kids, Product Categories & Tartans) to In Stock page on staff side
-de8bada  fix: move User Guide & Operations Manual to very bottom app footer and sidebar to eliminate mobile header crowding
 c004095  fix: responsive header and workspace layout to prevent mobile horizontal scrolling
 3ca74c6  feat: add PWA support - installable web app, manifest.json, sw.js, PWA icons, iOS install modal & top install banner
 be8993a  feat: switch QR scanner from jsQR to ZXing BrowserMultiFormatReader for better mobile scanning
