@@ -243,6 +243,9 @@ export default function KiltHireApp() {
   const [assistantTab, setAssistantTab] = useState<'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'calendar' | 'pos' | 'historic_pos' | 'start_fitting' | 'process_return'>('scanner');
   const [assistantSearch, setAssistantSearch] = useState('');
   const [historicPoSearch, setHistoricPoSearch] = useState('');
+  const [historicDateFilter, setHistoricDateFilter] = useState<'ALL' | 'THIS_MONTH' | 'LAST_30_DAYS' | 'CUSTOM'>('ALL');
+  const [historicStartDate, setHistoricStartDate] = useState<string>('');
+  const [historicEndDate, setHistoricEndDate] = useState<string>('');
   const [assistantSizeFilter, setAssistantSizeFilter] = useState<'ALL' | 'Adult' | 'Kid'>('ALL');
   const [assistantCategoryFilter, setAssistantCategoryFilter] = useState<string>('ALL');
   const [assistantTartanFilter, setAssistantTartanFilter] = useState<string>('ALL');
@@ -4514,6 +4517,256 @@ export default function KiltHireApp() {
                           </div>
                         );
                       });
+                    })()}
+                  </div>
+                </div>
+              )}
+
+              {/* 📜 HISTORIC PURCHASE ORDERS ARCHIVE & REPEAT CUSTOMER SEARCH */}
+              {assistantTab === 'historic_pos' && (
+                <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
+                  
+                  {/* HEADER BAR */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                    <div>
+                      <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                        <FileText className="w-5 h-5 text-purple-600" /> 📜 Historic Purchase Orders & Repeat Customer Archive
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        Complete archive of all returned and completed hires over time. Search repeat customers by name, phone, or filter by date range.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setAssistantTab('pos')}
+                        className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5"
+                      >
+                        📋 View Active POs ({pos.filter(p => !p.items.every(i => i.returned) && p.orderStatus !== 'RETURNED_COMPLETED').length})
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* SEARCH & DATE FILTERS BAR */}
+                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {/* SEARCH INPUT */}
+                      <div className="relative">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                        <input
+                          type="text"
+                          placeholder="🔍 Search repeat customers by name, phone number, email, or PO ID..."
+                          value={historicPoSearch}
+                          onChange={(e) => setHistoricPoSearch(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-sm"
+                        />
+                      </div>
+
+                      {/* DATE PRESETS */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">Date Range:</span>
+                        <button
+                          type="button"
+                          onClick={() => setHistoricDateFilter('ALL')}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition shadow-sm border ${
+                            historicDateFilter === 'ALL'
+                              ? 'bg-purple-600 text-white border-purple-700'
+                              : 'bg-white text-slate-700 border-slate-300 hover:bg-purple-50'
+                          }`}
+                        >
+                          All Time
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setHistoricDateFilter('THIS_MONTH')}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition shadow-sm border ${
+                            historicDateFilter === 'THIS_MONTH'
+                              ? 'bg-purple-600 text-white border-purple-700'
+                              : 'bg-white text-slate-700 border-slate-300 hover:bg-purple-50'
+                          }`}
+                        >
+                          This Month (Aug 2026)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setHistoricDateFilter('LAST_30_DAYS')}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition shadow-sm border ${
+                            historicDateFilter === 'LAST_30_DAYS'
+                              ? 'bg-purple-600 text-white border-purple-700'
+                              : 'bg-white text-slate-700 border-slate-300 hover:bg-purple-50'
+                          }`}
+                        >
+                          Last 30 Days
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setHistoricDateFilter('CUSTOM')}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition shadow-sm border ${
+                            historicDateFilter === 'CUSTOM'
+                              ? 'bg-purple-600 text-white border-purple-700'
+                              : 'bg-white text-slate-700 border-slate-300 hover:bg-purple-50'
+                          }`}
+                        >
+                          Custom Range
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* CUSTOM DATE RANGE PICKER */}
+                    {historicDateFilter === 'CUSTOM' && (
+                      <div className="pt-2 border-t border-slate-200 flex flex-wrap items-center gap-3 text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <label className="font-bold text-slate-600">From Date:</label>
+                          <input
+                            type="date"
+                            value={historicStartDate}
+                            onChange={(e) => setHistoricStartDate(e.target.value)}
+                            className="px-3 py-1.5 bg-white border border-slate-300 rounded-xl font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          />
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <label className="font-bold text-slate-600">To Date:</label>
+                          <input
+                            type="date"
+                            value={historicEndDate}
+                            onChange={(e) => setHistoricEndDate(e.target.value)}
+                            className="px-3 py-1.5 bg-white border border-slate-300 rounded-xl font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          />
+                        </div>
+                        {(historicStartDate || historicEndDate) && (
+                          <button
+                            type="button"
+                            onClick={() => { setHistoricStartDate(''); setHistoricEndDate(''); }}
+                            className="text-xs text-rose-600 font-extrabold hover:underline"
+                          >
+                            Clear Dates
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* HISTORIC ORDERS LIST & REPEAT CUSTOMER CARDS */}
+                  <div className="space-y-4">
+                    {(() => {
+                      const completedPos = pos.filter(p => p.items.every(i => i.returned) || p.orderStatus === 'RETURNED_COMPLETED');
+                      
+                      const filteredCompleted = completedPos.filter(p => {
+                        // 1. Text Search Filter
+                        if (historicPoSearch) {
+                          const query = historicPoSearch.toLowerCase();
+                          const matchesName = p.customerName.toLowerCase().includes(query);
+                          const matchesPhone = p.customerPhone.toLowerCase().includes(query);
+                          const matchesEmail = p.customerEmail.toLowerCase().includes(query);
+                          const matchesPo = p.id.toLowerCase().includes(query);
+                          if (!matchesName && !matchesPhone && !matchesEmail && !matchesPo) return false;
+                        }
+
+                        // 2. Date Filter
+                        if (historicDateFilter === 'THIS_MONTH') {
+                          return p.eventDate.startsWith('2026-08') || p.hireStartDate.startsWith('2026-08');
+                        } else if (historicDateFilter === 'LAST_30_DAYS') {
+                          const eventMs = new Date(p.eventDate).getTime();
+                          const thirtyDaysAgo = new Date().getTime() - (30 * 24 * 60 * 60 * 1000);
+                          return eventMs >= thirtyDaysAgo;
+                        } else if (historicDateFilter === 'CUSTOM') {
+                          if (historicStartDate && p.hireStartDate < historicStartDate) return false;
+                          if (historicEndDate && p.hireEndDate > historicEndDate) return false;
+                        }
+
+                        return true;
+                      });
+
+                      if (filteredCompleted.length === 0) {
+                        return (
+                          <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                            <span className="text-3xl">📜</span>
+                            <h4 className="font-extrabold text-slate-900 text-sm">No Historic PO Records Found</h4>
+                            <p className="text-xs text-slate-500">
+                              {historicPoSearch || historicDateFilter !== 'ALL'
+                                ? `No past orders match your search / date filter criteria.` 
+                                : 'Completed orders automatically appear here after return checklist verification!'}
+                            </p>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between text-xs text-slate-500 font-bold px-1">
+                            <span>Showing {filteredCompleted.length} historic order record(s)</span>
+                            <span>Sorted by most recent hire</span>
+                          </div>
+
+                          {filteredCompleted.map(po => {
+                            const totalSpent = po.totalHireFee;
+                            const totalDeposit = po.totalDepositHeld;
+                            const customerHires = completedPos.filter(p => p.customerEmail.toLowerCase() === po.customerEmail.toLowerCase());
+                            const isRepeatCustomer = customerHires.length > 1;
+
+                            return (
+                              <div key={po.id} className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 shadow-sm hover:border-purple-300 transition">
+                                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                                  <div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="font-mono font-extrabold text-purple-900 text-sm bg-purple-100 px-2 py-0.5 rounded border border-purple-300">{po.id}</span>
+                                      <strong className="text-slate-900 text-sm">{po.customerName}</strong>
+                                      <span className="text-xs text-slate-600">({po.customerPhone})</span>
+
+                                      {isRepeatCustomer && (
+                                        <span className="px-2.5 py-0.5 text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 rounded-full flex items-center gap-1">
+                                          ⭐ REPEAT CUSTOMER ({customerHires.length} Hires)
+                                        </span>
+                                      )}
+
+                                      <span className="px-2.5 py-0.5 text-[10px] font-extrabold bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-full">
+                                        ✓ RETURN COMPLETED & ARCHIVED
+                                      </span>
+                                    </div>
+                                    <span className="text-xs text-slate-500 block mt-1">
+                                      Hire Period: <strong>{po.hireStartDate}</strong> to <strong>{po.hireEndDate}</strong> (Event Date: {po.eventDate})
+                                    </span>
+                                  </div>
+
+                                  <div className="text-right">
+                                    <span className="text-xs text-slate-500 block">Total Rental Revenue</span>
+                                    <span className="font-mono font-extrabold text-emerald-700 text-sm">£{totalSpent} (+ £{totalDeposit} Deposit)</span>
+                                  </div>
+                                </div>
+
+                                {/* ITEM DETAILS */}
+                                <div className="space-y-1.5">
+                                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">Garments Hired in this Order:</span>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                    {po.items.map(li => (
+                                      <div key={li.qrCodeId} className="p-2.5 bg-white border border-slate-200 rounded-xl flex items-center justify-between">
+                                        <div>
+                                          <div className="flex items-center gap-1.5">
+                                            <span className="font-mono font-extrabold text-slate-800">{li.qrCodeId}</span>
+                                            <span className="font-semibold text-slate-900">{li.itemName}</span>
+                                          </div>
+                                          <span className="text-[10px] text-slate-500 block">
+                                            {li.sizeGroup} ({li.size}) • Hire Rate £{li.hireRate}
+                                          </span>
+                                        </div>
+                                        <span className="px-2 py-0.5 text-[10px] font-extrabold bg-emerald-100 text-emerald-900 rounded border border-emerald-200">
+                                          ✓ Returned
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                {po.notes && (
+                                  <div className="text-xs bg-white p-2.5 rounded-xl border border-slate-200 text-slate-700">
+                                    <strong>Staff Inspection Notes:</strong> {po.notes}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
                     })()}
                   </div>
                 </div>
