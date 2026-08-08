@@ -303,7 +303,7 @@ export default function KiltHireApp() {
   // MULTI-ITEM PO RETURN CHECKLIST MODAL STATE
   const [activeReturnPo, setActiveReturnPo] = useState<PurchaseOrder | null>(null);
   const [returnChecklist, setReturnChecklist] = useState<Record<string, {
-    condition: 'GOOD_CLEAN' | 'NEEDS_CLEANING' | 'NEEDS_REPAIR' | 'MISSING';
+    condition: 'UNSELECTED' | 'GOOD_CLEAN' | 'NEEDS_CLEANING' | 'NEEDS_REPAIR' | 'MISSING';
     scanned?: boolean;
     notes: string;
   }>>({});
@@ -1558,7 +1558,7 @@ export default function KiltHireApp() {
   const openPoReturnChecklist = (po: PurchaseOrder, triggerQrCode?: string) => {
     setActiveReturnPo(po);
     setAssistantTab('process_return');
-    const initialChecklist: Record<string, { condition: 'GOOD_CLEAN' | 'NEEDS_CLEANING' | 'NEEDS_REPAIR' | 'MISSING'; scanned: boolean; notes: string }> = {};
+    const initialChecklist: Record<string, { condition: 'UNSELECTED' | 'GOOD_CLEAN' | 'NEEDS_CLEANING' | 'NEEDS_REPAIR' | 'MISSING'; scanned: boolean; notes: string }> = {};
 
     po.items.forEach(li => {
       if (li.returned) {
@@ -1568,18 +1568,16 @@ export default function KiltHireApp() {
           notes: 'Previously returned'
         };
       } else if (triggerQrCode && li.qrCodeId === triggerQrCode) {
-        // The first scanned item is marked as SCANNED & VERIFIED
         initialChecklist[li.qrCodeId] = {
           condition: 'GOOD_CLEAN',
           scanned: true,
           notes: 'Scanned in store'
         };
       } else {
-        // Mandatory Security Rule: Un-scanned items MUST default to MISSING until physically scanned!
         initialChecklist[li.qrCodeId] = {
-          condition: 'MISSING',
+          condition: 'UNSELECTED',
           scanned: false,
-          notes: 'Awaiting physical QR scan'
+          notes: 'Awaiting assistant inspection'
         };
       }
     });
@@ -1896,6 +1894,16 @@ export default function KiltHireApp() {
   const handleConfirmMultiItemReturnSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeReturnPo || !currentUser) return;
+
+    const unselectedCount = activeReturnPo.items.filter(li => {
+      const cond = returnChecklist[li.qrCodeId]?.condition || 'UNSELECTED';
+      return cond === 'UNSELECTED';
+    }).length;
+
+    if (unselectedCount > 0) {
+      showToast(`⚠️ Please inspect & set a condition for all ${unselectedCount} remaining garment(s) before submitting!`, 'warning');
+      return;
+    }
 
     let totalRefundedDeposit = 0;
     let totalHeldDepositForRepair = 0;
@@ -4974,17 +4982,17 @@ export default function KiltHireApp() {
 
                       <div className="divide-y divide-slate-200">
                         {activeReturnPo.items.map(li => {
-                          const currentSetting = returnChecklist[li.qrCodeId] || { condition: 'MISSING', scanned: false, notes: '' };
+                          const currentSetting = returnChecklist[li.qrCodeId] || { condition: 'UNSELECTED', scanned: false, notes: '' };
                           const isScanned = currentSetting.scanned;
-                          const isMissing = currentSetting.condition === 'MISSING' || !isScanned;
-                          const isRepair = currentSetting.condition === 'NEEDS_REPAIR';
+                          const cond = currentSetting.condition;
 
                           return (
                             <div key={li.qrCodeId} className={`p-4 sm:p-5 transition space-y-3 ${
-                              !isScanned ? 'bg-amber-50/60 border-l-4 border-amber-400' :
-                              isRepair ? 'bg-rose-50/80 border-l-4 border-rose-500' :
-                              currentSetting.condition === 'NEEDS_CLEANING' ? 'bg-cyan-50/80 border-l-4 border-cyan-500' :
-                              'bg-white border-l-4 border-emerald-500'
+                              cond === 'UNSELECTED' ? 'bg-white border-l-4 border-slate-300' :
+                              cond === 'MISSING' ? 'bg-red-50/70 border-l-4 border-red-500' :
+                              cond === 'NEEDS_REPAIR' ? 'bg-rose-50/80 border-l-4 border-rose-500' :
+                              cond === 'NEEDS_CLEANING' ? 'bg-cyan-50/80 border-l-4 border-cyan-500' :
+                              'bg-emerald-50/80 border-l-4 border-emerald-500'
                             }`}>
                               <div className="flex flex-wrap items-center justify-between gap-3">
                                 <div>
@@ -5002,19 +5010,19 @@ export default function KiltHireApp() {
 
                                 {/* STATUS BADGE */}
                                 <div>
-                                  {!currentSetting.scanned && currentSetting.condition !== 'MISSING' ? (
-                                    <span className="px-3 py-1 bg-amber-100 text-amber-900 font-extrabold text-xs rounded-xl border border-amber-300 flex items-center gap-1">
-                                      <Search className="w-3.5 h-3.5 text-amber-600 animate-pulse" /> Awaiting Inspection (Deposit Held £{li.depositAmount})
+                                  {cond === 'UNSELECTED' ? (
+                                    <span className="px-3 py-1 bg-slate-100 text-slate-800 font-extrabold text-xs rounded-xl border border-slate-300 flex items-center gap-1">
+                                      <Search className="w-3.5 h-3.5 text-amber-600 animate-pulse" /> ⏳ Awaiting Assistant Selection
                                     </span>
-                                  ) : currentSetting.condition === 'GOOD_CLEAN' ? (
+                                  ) : cond === 'GOOD_CLEAN' ? (
                                     <span className="px-3 py-1 bg-emerald-100 text-emerald-900 font-extrabold text-xs rounded-xl border border-emerald-300 flex items-center gap-1">
                                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Returned Clean (Refund £{li.depositAmount})
                                     </span>
-                                  ) : currentSetting.condition === 'NEEDS_CLEANING' ? (
+                                  ) : cond === 'NEEDS_CLEANING' ? (
                                     <span className="px-3 py-1 bg-cyan-100 text-cyan-900 font-extrabold text-xs rounded-xl border border-cyan-300 flex items-center gap-1">
                                       🧼 Needs Dry Cleaning (Refund £{li.depositAmount})
                                     </span>
-                                  ) : currentSetting.condition === 'NEEDS_REPAIR' ? (
+                                  ) : cond === 'NEEDS_REPAIR' ? (
                                     <span className="px-3 py-1 bg-rose-100 text-rose-900 font-extrabold text-xs rounded-xl border border-rose-300 flex items-center gap-1">
                                       🔧 Needs Repair (Deposit Held £{li.depositAmount})
                                     </span>
@@ -5043,7 +5051,7 @@ export default function KiltHireApp() {
                                       showToast(`✓ Marked ${li.qrCodeId} as RETURNED CLEAN. £${li.depositAmount} deposit will be refunded.`, 'success');
                                     }}
                                     className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition shadow-sm border ${
-                                      currentSetting.condition === 'GOOD_CLEAN' && currentSetting.scanned
+                                      cond === 'GOOD_CLEAN'
                                         ? 'bg-emerald-600 text-white border-emerald-700 ring-2 ring-emerald-300'
                                         : 'bg-white text-slate-700 border-slate-300 hover:bg-emerald-50 hover:text-emerald-900'
                                     }`}
@@ -5061,7 +5069,7 @@ export default function KiltHireApp() {
                                       showToast(`🧼 Marked ${li.qrCodeId} for LAUNDRY CLEANING. £${li.depositAmount} deposit will be refunded.`, 'info');
                                     }}
                                     className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition shadow-sm border ${
-                                      currentSetting.condition === 'NEEDS_CLEANING' && currentSetting.scanned
+                                      cond === 'NEEDS_CLEANING'
                                         ? 'bg-cyan-600 text-white border-cyan-700 ring-2 ring-cyan-300'
                                         : 'bg-white text-slate-700 border-slate-300 hover:bg-cyan-50 hover:text-cyan-900'
                                     }`}
@@ -5079,7 +5087,7 @@ export default function KiltHireApp() {
                                       showToast(`🔧 Marked ${li.qrCodeId} as DAMAGED. £${li.depositAmount} deposit held for repair.`, 'warning');
                                     }}
                                     className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition shadow-sm border ${
-                                      currentSetting.condition === 'NEEDS_REPAIR' && currentSetting.scanned
+                                      cond === 'NEEDS_REPAIR'
                                         ? 'bg-rose-600 text-white border-rose-700 ring-2 ring-rose-300'
                                         : 'bg-white text-slate-700 border-slate-300 hover:bg-rose-50 hover:text-rose-900'
                                     }`}
@@ -5097,7 +5105,7 @@ export default function KiltHireApp() {
                                       showToast(`❌ Marked ${li.qrCodeId} as MISSING — £${li.depositAmount} deposit RETAINED!`, 'warning');
                                     }}
                                     className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition shadow-sm border ${
-                                      currentSetting.condition === 'MISSING'
+                                      cond === 'MISSING'
                                         ? 'bg-red-600 text-white border-red-700 ring-2 ring-red-300 shadow'
                                         : 'bg-white text-slate-700 border-slate-300 hover:bg-red-50 hover:text-red-900'
                                     }`}
@@ -5108,17 +5116,22 @@ export default function KiltHireApp() {
                               </div>
 
                               {/* EXPLANATION FOOTNOTE */}
-                              {currentSetting.condition === 'MISSING' && (
+                              {cond === 'UNSELECTED' && (
+                                <div className="text-[11px] font-semibold text-slate-600 bg-slate-100 p-2.5 rounded-xl border border-slate-200">
+                                  💡 <strong>Awaiting Action:</strong> Please click one of the 4 manual buttons above (or scan QR) to set this garment's return status.
+                                </div>
+                              )}
+                              {cond === 'MISSING' && (
                                 <div className="text-[11px] font-bold text-red-900 bg-red-100/90 p-2.5 rounded-xl border border-red-300 flex items-center gap-1.5">
                                   <span>🔒 Item Missing: Deposit of <strong>£{li.depositAmount}</strong> will be retained until this garment is returned or accounted for.</span>
                                 </div>
                               )}
-                              {currentSetting.condition === 'NEEDS_CLEANING' && currentSetting.scanned && (
+                              {cond === 'NEEDS_CLEANING' && (
                                 <div className="text-[11px] font-bold text-cyan-950 bg-cyan-100/80 p-2.5 rounded-xl border border-cyan-300">
                                   🧼 Needs Dry Cleaning: Sent to laundry dispatch. Full deposit of <strong>£{li.depositAmount}</strong> is refunded to customer.
                                 </div>
                               )}
-                              {currentSetting.condition === 'NEEDS_REPAIR' && currentSetting.scanned && (
+                              {cond === 'NEEDS_REPAIR' && (
                                 <div className="text-[11px] font-bold text-rose-900 bg-rose-100/80 p-2.5 rounded-xl border border-rose-300">
                                   🔧 Damaged Garment: Sent to repair workshop & deposit of <strong>£{li.depositAmount}</strong> held for seamstress repair costs.
                                 </div>
@@ -5134,12 +5147,14 @@ export default function KiltHireApp() {
                       let cleanRefundSum = 0;
                       let heldRepairSum = 0;
                       let heldMissingSum = 0;
+                      let unselectedCount = 0;
 
                       activeReturnPo.items.forEach(li => {
-                        const cond = returnChecklist[li.qrCodeId]?.condition || 'GOOD_CLEAN';
+                        const cond = returnChecklist[li.qrCodeId]?.condition || 'UNSELECTED';
                         if (cond === 'GOOD_CLEAN' || cond === 'NEEDS_CLEANING') cleanRefundSum += li.depositAmount;
                         else if (cond === 'NEEDS_REPAIR') heldRepairSum += li.depositAmount;
-                        else heldMissingSum += li.depositAmount;
+                        else if (cond === 'MISSING') heldMissingSum += li.depositAmount;
+                        else unselectedCount++;
                       });
 
                       const totalHeld = activeReturnPo.totalDepositHeld;
@@ -5168,7 +5183,13 @@ export default function KiltHireApp() {
                             </div>
                           </div>
 
-                          {totalRetained > 0 && (
+                          {unselectedCount > 0 && (
+                            <p className="text-[11px] font-bold text-amber-300 bg-amber-950/80 p-2.5 rounded-xl border border-amber-700">
+                              ⏳ <strong>Inspection Pending:</strong> {unselectedCount} garment(s) are awaiting selection above before deposit refund can be processed.
+                            </p>
+                          )}
+
+                          {unselectedCount === 0 && totalRetained > 0 && (
                             <p className="text-[11px] text-amber-200 bg-amber-950/60 p-2.5 rounded-xl border border-amber-800">
                               <strong>Partial Return Action:</strong> £{cleanRefundSum} deposit will be refunded to {activeReturnPo.customerName} via PayPal today. £{totalRetained} will be retained for missing/damaged items until resolved.
                             </p>
