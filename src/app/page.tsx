@@ -653,7 +653,7 @@ export default function KiltHireApp() {
       staffName: currentUser ? currentUser.name : 'System',
       action,
       details,
-      relatedQrCode
+      ...(relatedQrCode ? { relatedQrCode } : {})
     };
     setLogs(prev => [newLog, ...prev]);
     // Persist log directly to Firestore audit_logs collection

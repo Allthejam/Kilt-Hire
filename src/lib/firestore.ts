@@ -26,6 +26,24 @@ function requireDb() {
   return db;
 }
 
+// Helper to recursively remove undefined fields so Firestore setDoc never throws invalid data errors
+function sanitizeForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) return data;
+  if (Array.isArray(data)) {
+    return data.map(item => sanitizeForFirestore(item)) as unknown as T;
+  }
+  if (typeof data === 'object') {
+    const clean: Record<string, any> = {};
+    for (const [key, val] of Object.entries(data)) {
+      if (val !== undefined) {
+        clean[key] = sanitizeForFirestore(val);
+      }
+    }
+    return clean as T;
+  }
+  return data;
+}
+
 // --- STAFF PROFILES ----------------------------------------------------------
 
 export async function getStaffProfiles(): Promise<StaffUser[]> {
@@ -40,7 +58,7 @@ export async function getStaffProfileById(uid: string): Promise<StaffUser | null
 }
 
 export async function upsertStaffProfile(uid: string, data: StaffUser): Promise<void> {
-  await setDoc(doc(requireDb(), 'users', uid), data, { merge: true });
+  await setDoc(doc(requireDb(), 'users', uid), sanitizeForFirestore(data), { merge: true });
 }
 
 export async function deleteStaffProfile(uid: string): Promise<void> {
@@ -55,7 +73,7 @@ export async function getInvites(): Promise<StaffInvite[]> {
 }
 
 export async function upsertInvite(invite: StaffInvite): Promise<void> {
-  await setDoc(doc(requireDb(), 'invites', invite.id), invite, { merge: true });
+  await setDoc(doc(requireDb(), 'invites', invite.id), sanitizeForFirestore(invite), { merge: true });
 }
 
 export async function deleteInvite(id: string): Promise<void> {
@@ -70,7 +88,7 @@ export async function getItems(): Promise<KiltItem[]> {
 }
 
 export async function upsertItem(item: KiltItem): Promise<void> {
-  await setDoc(doc(requireDb(), 'items', item.id), item, { merge: true });
+  await setDoc(doc(requireDb(), 'items', item.id), sanitizeForFirestore(item), { merge: true });
 }
 
 export async function deleteItem(id: string): Promise<void> {
@@ -85,7 +103,7 @@ export async function getBatches(): Promise<QRBatch[]> {
 }
 
 export async function upsertBatch(batch: QRBatch): Promise<void> {
-  await setDoc(doc(requireDb(), 'batches', batch.id), batch, { merge: true });
+  await setDoc(doc(requireDb(), 'batches', batch.id), sanitizeForFirestore(batch), { merge: true });
 }
 
 // --- PURCHASE ORDERS ----------------------------------------------------------
@@ -96,7 +114,7 @@ export async function getPurchaseOrders(): Promise<PurchaseOrder[]> {
 }
 
 export async function upsertPurchaseOrder(po: PurchaseOrder): Promise<void> {
-  await setDoc(doc(requireDb(), 'purchase_orders', po.id), po, { merge: true });
+  await setDoc(doc(requireDb(), 'purchase_orders', po.id), sanitizeForFirestore(po), { merge: true });
 }
 
 // --- AUDIT LOGS ---------------------------------------------------------------
@@ -108,7 +126,7 @@ export async function getAuditLogs(): Promise<AuditLog[]> {
 }
 
 export async function addAuditLogFS(log: AuditLog): Promise<void> {
-  await setDoc(doc(requireDb(), 'audit_logs', log.id), log);
+  await setDoc(doc(requireDb(), 'audit_logs', log.id), sanitizeForFirestore(log));
 }
 
 export async function clearAuditLogsFS(): Promise<void> {
