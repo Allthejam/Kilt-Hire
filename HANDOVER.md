@@ -161,10 +161,10 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+9e5d341  feat: convert Process Return Checklist into a full-page view with 1-tap manual item condition toggles and deposit ledger
 2dc9716  feat: lock left sidebar permanently on screen with fixed viewport layout so My Account, Install App, and navigation are always visible
 e953140  feat: dynamically hide empty movement sections and replace Column 3 with 2-Day Pick & Pack Assembly Queue
 960bbdc  feat: redesign Calendar page with interactive monthly grid, color-coded legend, right-side notes & events card, and bottom daily order movement tracker
-2f15643  fix: isolate Customer Fitting Station so it only renders on start_fitting tab and never under the Auto QR Scanner page
 7346147  feat: implement store customer fitting workflow, 6-point measurement stock matching, 2-day after-hours pick queue, and Brevo transactional email dispatch
 c004095  fix: responsive header and workspace layout to prevent mobile horizontal scrolling
 78ba89e  feat: restore Start New Fitting & Order button at the primary position of the subheader status filter bar
