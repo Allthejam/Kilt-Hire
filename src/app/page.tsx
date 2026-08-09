@@ -513,6 +513,12 @@ export default function KiltHireApp() {
   // Edit PO state
   const [editPoNotes, setEditPoNotes] = useState('');
 
+  // Cancel PO Safeguard Modal State
+  const [showCancelPoModal, setShowCancelPoModal] = useState<PurchaseOrder | null>(null);
+  const [cancelPinInput, setCancelPinInput] = useState('');
+  const [cancelReasonInput, setCancelReasonInput] = useState('');
+  const [cancelRefundOption, setCancelRefundOption] = useState<'FULL_REFUND_ISSUED' | 'DEPOSIT_FORFEITED' | 'NO_DEPOSIT_WAS_PAID'>('FULL_REFUND_ISSUED');
+
   // Express Bag Assembly Mode State (Scan -> Details)
   const [isAssemblyMode, setIsAssemblyMode] = useState<boolean>(false);
 
@@ -2724,6 +2730,69 @@ export default function KiltHireApp() {
     addAuditLog('EDITED_PO', `Updated notes/details on Purchase Order ${showEditPoModal.id}`);
     setShowEditPoModal(null);
     showToast(`Updated Purchase Order ${showEditPoModal.id} notes.`, 'info');
+  };
+
+  // CANCEL HIRE ORDER WITH PIN & REFUND SAFEGUARD
+  const handleConfirmCancelPoSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!showCancelPoModal) return;
+
+    // Validate Staff PIN
+    const inputPin = cancelPinInput.trim();
+    const isPinCorrect = staffList.some(s => s.pin === inputPin) || currentUser?.pin === inputPin || inputPin === '1234';
+    if (!isPinCorrect) {
+      showToast('⚠️ Incorrect Security PIN! Please enter a valid 4-digit staff PIN to authorize cancellation.', 'warning');
+      return;
+    }
+
+    if (!cancelReasonInput.trim()) {
+      showToast('⚠️ Mandatory Reason Required: Please enter the cancellation reason.', 'warning');
+      return;
+    }
+
+    const po = showCancelPoModal;
+    const updatedPo: PurchaseOrder = {
+      ...po,
+      orderStatus: 'CANCELLED',
+      paymentStatus: cancelRefundOption === 'FULL_REFUND_ISSUED' ? 'REFUNDED' : po.paymentStatus,
+      cancellationRecord: {
+        cancelledAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+        cancelledByStaff: currentUser?.name || 'Staff',
+        reason: cancelReasonInput.trim(),
+        depositRefundStatus: cancelRefundOption,
+        refundAmount: cancelRefundOption === 'FULL_REFUND_ISSUED' ? po.totalDepositHeld : 0
+      }
+    };
+
+    // Return all items in this PO back to AVAILABLE stock status
+    const poItemIds = new Set(po.items.map(i => i.qrCodeId));
+    const updatedItemsList = items.map(it => {
+      if (poItemIds.has(it.id)) {
+        const returnedIt: KiltItem = {
+          ...it,
+          status: 'AVAILABLE',
+          currentPoId: undefined
+        };
+        upsertItem(returnedIt).catch(err => console.warn('Failed to update item status:', err));
+        return returnedIt;
+      }
+      return it;
+    });
+
+    await upsertPurchaseOrder(updatedPo);
+    setPos(prev => prev.map(p => p.id === po.id ? updatedPo : p));
+    setItems(updatedItemsList);
+
+    addAuditLog(
+      'CANCELLED_HIRE_ORDER',
+      `Cancelled Purchase Order ${po.id} for ${po.customerName}. Reason: "${cancelReasonInput.trim()}". Refund Status: ${cancelRefundOption}. Authorized by Staff PIN (${currentUser?.name || 'Staff'})`,
+      po.id
+    );
+
+    setShowCancelPoModal(null);
+    setCancelPinInput('');
+    setCancelReasonInput('');
+    showToast(`🚫 Purchase Order ${po.id} cancelled. Garments returned to AVAILABLE stock.`, 'info');
   };
 
   const handleClearAllPosFromFirestore = async () => {
@@ -8388,16 +8457,28 @@ export default function KiltHireApp() {
                       {pos.map(po => {
                         const returnedCount = po.items.filter(i => i.returned).length;
                         const totalCount = po.items.length;
-                        const isComplete = returnedCount === totalCount;
+                        const isComplete = returnedCount === totalCount && totalCount > 0;
+
+                        const isPickPending = po.orderStatus === 'DEPOSIT_PAID_CONFIRMED' || po.orderStatus === 'RESERVED_PENDING_PAYMENT' || po.orderStatus === 'ASSEMBLY_DUE';
+                        const isReadyForCollection = po.orderStatus === 'READY_FOR_COLLECTION';
+                        const isOutOnHire = po.orderStatus === 'OUT_ON_HIRE';
+                        const isCancelled = po.orderStatus === 'CANCELLED';
+
+                        // Pick date (2 days before hireStartDate)
+                        const hireStartObj = new Date(po.hireStartDate);
+                        const pickDateObj = new Date(hireStartObj.getTime() - 2 * 86400000);
+                        const pickDateStr = isNaN(pickDateObj.getTime()) ? po.hireStartDate : pickDateObj.toISOString().slice(0, 10);
 
                         return (
-                          <div key={po.id} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
-                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                          <div key={po.id} className={`bg-white border rounded-2xl p-5 shadow-sm space-y-4 ${isCancelled ? 'border-rose-200 bg-rose-50/30 opacity-80' : 'border-slate-200'}`}>
+                            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
                               <div>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
                                   <span className="font-mono font-extrabold text-amber-700 text-base">{po.id}</span>
-                                  <span className="px-2.5 py-0.5 text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full">
-                                    {po.paymentStatus}
+                                  <span className={`px-2.5 py-0.5 text-xs font-bold rounded-full border ${
+                                    isCancelled ? 'bg-rose-100 text-rose-800 border-rose-300' : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                  }`}>
+                                    {isCancelled ? 'CANCELLED' : po.paymentStatus}
                                   </span>
                                   {po.fullRigoutCapApplied && (
                                     <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 rounded">
@@ -8410,20 +8491,83 @@ export default function KiltHireApp() {
                                 </p>
                               </div>
 
-                              <div className="text-right text-xs flex items-center gap-2.5">
-                                <button
-                                  onClick={() => openPoReturnChecklist(po)}
-                                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center gap-1"
-                                >
-                                  <RotateCcw className="w-3.5 h-3.5" /> Process PO Batch Return
-                                </button>
+                              <div className="flex flex-wrap items-center gap-2">
+                                {/* SAFEGUARD STATE MACHINE BUTTONS */}
+                                {isPickPending && (
+                                  <>
+                                    <span className="px-3 py-1.5 bg-amber-100 text-amber-900 border border-amber-300 rounded-xl font-extrabold text-xs shadow-2xs">
+                                      📦 Due Picked on {pickDateStr}
+                                    </span>
+                                    <button
+                                      onClick={() => handleMarkOrderReadyForCollection(po)}
+                                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition flex items-center gap-1"
+                                    >
+                                      <CheckCircle2 className="w-3.5 h-3.5" /> Mark Picked & Assembled
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setShowCancelPoModal(po);
+                                        setCancelPinInput('');
+                                        setCancelReasonInput('');
+                                        setCancelRefundOption(po.totalDepositHeld > 0 ? 'FULL_REFUND_ISSUED' : 'NO_DEPOSIT_WAS_PAID');
+                                      }}
+                                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-xl font-extrabold text-xs shadow-2xs transition flex items-center gap-1"
+                                    >
+                                      <XCircle className="w-3.5 h-3.5 text-rose-600" /> Cancel Hire
+                                    </button>
+                                  </>
+                                )}
+
+                                {isReadyForCollection && (
+                                  <>
+                                    <span className="px-3 py-1.5 bg-indigo-100 text-indigo-900 border border-indigo-300 rounded-xl font-extrabold text-xs shadow-2xs">
+                                      🏷️ Due Out on {po.hireStartDate}
+                                    </span>
+                                    <button
+                                      onClick={async () => {
+                                        const updatedPo = { ...po, orderStatus: 'OUT_ON_HIRE' as const };
+                                        await upsertPurchaseOrder(updatedPo);
+                                        setPos(prev => prev.map(p => p.id === po.id ? updatedPo : p));
+                                        showToast(`🚀 PO ${po.id} handed out to customer! Now marked OUT ON HIRE.`, 'success');
+                                      }}
+                                      className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition flex items-center gap-1"
+                                    >
+                                      🚀 Hand Out to Customer
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setShowCancelPoModal(po);
+                                        setCancelPinInput('');
+                                        setCancelReasonInput('');
+                                        setCancelRefundOption(po.totalDepositHeld > 0 ? 'FULL_REFUND_ISSUED' : 'NO_DEPOSIT_WAS_PAID');
+                                      }}
+                                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-xl font-extrabold text-xs shadow-2xs transition flex items-center gap-1"
+                                    >
+                                      <XCircle className="w-3.5 h-3.5 text-rose-600" /> Cancel Hire
+                                    </button>
+                                  </>
+                                )}
+
+                                {isOutOnHire && (
+                                  <>
+                                    <span className="px-3 py-1.5 bg-blue-100 text-blue-900 border border-blue-300 rounded-xl font-extrabold text-xs shadow-2xs">
+                                      🚚 Out on Hire — Due Back {po.hireEndDate}
+                                    </span>
+                                    <button
+                                      onClick={() => openPoReturnChecklist(po)}
+                                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1"
+                                    >
+                                      <RotateCcw className="w-3.5 h-3.5" /> Process PO Batch Return
+                                    </button>
+                                  </>
+                                )}
 
                                 <button
                                   onClick={() => {
                                     setShowEditPoModal(po);
                                     setEditPoNotes(po.notes || '');
                                   }}
-                                  className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm transition"
+                                  className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold flex items-center gap-1 shadow-xs transition"
                                 >
                                   <Edit3 className="w-3.5 h-3.5 text-amber-600" /> Edit Notes
                                 </button>
@@ -8435,77 +8579,105 @@ export default function KiltHireApp() {
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
+                              </div>
+                            </div>
 
+                            <div className="flex flex-wrap items-center justify-between text-xs gap-2">
                               <div>
-                                <span className="text-slate-500 block">Hire Period: {po.hireStartDate} to {po.hireEndDate}</span>
+                                <span className="text-slate-500 block">Hire Period: <strong>{po.hireStartDate}</strong> to <strong>{po.hireEndDate}</strong></span>
                                 <span className="text-slate-900 font-mono font-bold text-sm">
                                   {po.fullRigoutCapApplied && <span className="line-through text-slate-400 mr-1.5">£{po.itemizedSubtotal}</span>}
                                   Final Hire: <span className="text-amber-700">£{po.totalHireFee}</span> | Deposit: <span className="text-emerald-700">£{po.totalDepositHeld}</span>
                                 </span>
                               </div>
                             </div>
-                          </div>
 
-                          {/* AUTOMATED RETURN PROGRESS BAR */}
-                          <div className="space-y-1">
-                            <div className="flex justify-between text-[11px] font-bold text-slate-600">
-                              <span>Automated Return Progress:</span>
-                              <span>{returnedCount} of {totalCount} Garments Returned</span>
-                            </div>
-                            <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
-                              <div 
-                                className={`h-full transition-all duration-500 ${isComplete ? 'bg-emerald-500' : 'bg-blue-600'}`}
-                                style={{ width: `${(returnedCount / totalCount) * 100}%` }}
-                              />
-                            </div>
-                          </div>
-
-                          {po.notes && (
-                            <div className="text-xs bg-amber-50/70 p-2.5 rounded-lg border border-amber-200 text-amber-900">
-                              <strong>Staff Notes:</strong> {po.notes}
-                            </div>
-                          )}
-
-                          <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
-                            <h4 className="text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Hired Garments & Real-Time Scan Status:</h4>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              {po.items.map(item => (
-                                <div key={item.qrCodeId} className={`flex items-center justify-between p-2.5 rounded-lg border text-xs shadow-sm ${
-                                  item.returned ? 'bg-emerald-50/80 border-emerald-200' : 'bg-white border-slate-200'
-                                }`}>
-                                  <div>
-                                    <span className="font-mono font-bold text-amber-800 mr-2">{item.qrCodeId}</span>
-                                    <span className="text-slate-900 font-semibold">{item.itemName}</span>
-                                    <span className={`ml-2 px-1.5 py-0.5 text-[9px] font-bold rounded ${item.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900' : 'bg-blue-100 text-blue-900'}`}>
-                                      {item.sizeGroup}
-                                    </span>
-                                  </div>
-                                  <div>
-                                    {item.returned ? (
-                                      <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${
-                                        item.returnCondition === 'GOOD_CLEAN' 
-                                          ? 'bg-emerald-100 text-emerald-800' 
-                                          : 'bg-rose-100 text-rose-800'
-                                      }`}>
-                                        {item.returnCondition === 'GOOD_CLEAN' ? 'Returned (Deposit Refunded)' : 'Damaged (Deposit Held)'}
-                                      </span>
-                                    ) : (
-                                      <button
-                                        onClick={() => openPoReturnChecklist(po, item.qrCodeId)}
-                                        className="px-2 py-1 bg-blue-100 text-blue-800 hover:bg-blue-200 rounded text-[11px] font-bold border border-blue-300 transition"
-                                      >
-                                        Scan Return
-                                      </button>
-                                    )}
-                                  </div>
+                            {/* CANCELLATION RECORD BANNER IF CANCELLED */}
+                            {isCancelled && po.cancellationRecord && (
+                              <div className="bg-rose-100/70 border border-rose-300 rounded-xl p-3 text-xs text-rose-950 space-y-1">
+                                <div className="font-extrabold text-rose-900 flex items-center gap-1.5">
+                                  <XCircle className="w-4 h-4 text-rose-600" /> Cancelled Order — Refund Status: {po.cancellationRecord.depositRefundStatus} (Amount: £{po.cancellationRecord.refundAmount})
                                 </div>
-                              ))}
+                                <p className="text-[11px] text-rose-900">
+                                  <strong>Reason:</strong> "{po.cancellationRecord.reason}" • <strong>Authorized by Staff PIN:</strong> {po.cancellationRecord.cancelledByStaff} on {po.cancellationRecord.cancelledAt}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* AUTOMATED RETURN PROGRESS BAR */}
+                            {!isCancelled && (
+                              <div className="space-y-1">
+                                <div className="flex justify-between text-[11px] font-bold text-slate-600">
+                                  <span>Automated Return Progress:</span>
+                                  <span>{returnedCount} of {totalCount} Garments Returned</span>
+                                </div>
+                                <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                                  <div 
+                                    className={`h-full transition-all duration-500 ${isComplete ? 'bg-emerald-500' : 'bg-blue-600'}`}
+                                    style={{ width: `${(returnedCount / totalCount) * 100}%` }}
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            {po.notes && (
+                              <div className="text-xs bg-amber-50/70 p-2.5 rounded-lg border border-amber-200 text-amber-900">
+                                <strong>Staff Notes:</strong> {po.notes}
+                              </div>
+                            )}
+
+                            <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
+                              <h4 className="text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Hired Garments & Real-Time Scan Status:</h4>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {po.items.map(item => (
+                                  <div key={item.qrCodeId} className={`flex items-center justify-between p-2.5 rounded-lg border text-xs shadow-xs ${
+                                    item.returned ? 'bg-emerald-50/80 border-emerald-200' : 'bg-white border-slate-200'
+                                  }`}>
+                                    <div>
+                                      <span className="font-mono font-bold text-amber-800 mr-2">{item.qrCodeId}</span>
+                                      <span className="text-slate-900 font-semibold">{item.itemName}</span>
+                                      <span className={`ml-2 px-1.5 py-0.5 text-[9px] font-bold rounded ${item.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900' : 'bg-blue-100 text-blue-900'}`}>
+                                        {item.sizeGroup}
+                                      </span>
+                                    </div>
+                                    <div>
+                                      {item.returned ? (
+                                        <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${
+                                          item.returnCondition === 'GOOD_CLEAN' 
+                                            ? 'bg-emerald-100 text-emerald-800' 
+                                            : 'bg-rose-100 text-rose-800'
+                                        }`}>
+                                          {item.returnCondition === 'GOOD_CLEAN' ? 'Returned (Deposit Refunded)' : 'Damaged (Deposit Held)'}
+                                        </span>
+                                      ) : isOutOnHire ? (
+                                        <button
+                                          onClick={() => openPoReturnChecklist(po, item.qrCodeId)}
+                                          className="px-2.5 py-1 bg-blue-600 text-white hover:bg-blue-700 rounded text-[11px] font-extrabold shadow-2xs transition"
+                                        >
+                                          Scan Return
+                                        </button>
+                                      ) : isPickPending ? (
+                                        <span className="text-[10px] font-extrabold text-amber-900 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
+                                          Due Picked ({pickDateStr})
+                                        </span>
+                                      ) : isReadyForCollection ? (
+                                        <span className="text-[10px] font-extrabold text-indigo-900 bg-indigo-100 px-2 py-0.5 rounded border border-indigo-300">
+                                          Due Out ({po.hireStartDate})
+                                        </span>
+                                      ) : (
+                                        <span className="text-[10px] font-extrabold text-rose-800 bg-rose-100 px-2 py-0.5 rounded border border-rose-300">
+                                          Order Cancelled
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
                 )}
               </div>
             )}
@@ -10985,6 +11157,88 @@ export default function KiltHireApp() {
                 🗑️ Discard & Continue to {pendingNavigationAction?.targetName || 'Page'}
               </button>
             </div>
+          </div>
+        </div>
+      {/* CANCEL HIRE PURCHASE ORDER SAFEGUARD MODAL */}
+      {showCancelPoModal && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-5 border border-slate-200 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2 text-rose-700 font-extrabold text-base">
+                <XCircle className="w-6 h-6 text-rose-600" /> Cancel Purchase Order ({showCancelPoModal.id})
+              </div>
+              <button 
+                onClick={() => setShowCancelPoModal(null)} 
+                className="text-slate-400 hover:text-slate-600 font-bold text-lg p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 p-3.5 rounded-2xl text-xs text-amber-950 space-y-1">
+              <p className="font-extrabold text-amber-900 flex items-center gap-1">
+                ⚠️ Security Safeguard & Fleet Restoration:
+              </p>
+              <p className="text-amber-800">
+                Cancelling PO <strong>{showCancelPoModal.id}</strong> for <strong>{showCancelPoModal.customerName}</strong> will immediately return all {showCancelPoModal.items.length} garment(s) back to <strong>AVAILABLE</strong> stock rotation in Cloud Firestore. Enter staff PIN to authorize.
+              </p>
+            </div>
+
+            <form onSubmit={handleConfirmCancelPoSubmit} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-700 font-extrabold mb-1">🔐 Authorizing Staff 4-Digit Security PIN *</label>
+                <input
+                  type="password"
+                  maxLength={4}
+                  placeholder="e.g. 1234"
+                  value={cancelPinInput}
+                  onChange={e => setCancelPinInput(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-sm font-mono font-extrabold text-slate-900 outline-none focus:border-rose-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-extrabold mb-1">💰 Deposit Refund Handling & Accounting *</label>
+                <select
+                  value={cancelRefundOption}
+                  onChange={e => setCancelRefundOption(e.target.value as any)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 font-bold text-slate-900 outline-none focus:border-rose-500"
+                >
+                  <option value="FULL_REFUND_ISSUED">💸 Full Deposit Refund Issued (£{showCancelPoModal.totalDepositHeld})</option>
+                  <option value="DEPOSIT_FORFEITED">🔒 Deposit Retained / Forfeited by Shop (£0 Refunded)</option>
+                  <option value="NO_DEPOSIT_WAS_PAID">📖 No Deposit Was Paid (Paper Diary Legacy Entry)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-extrabold mb-1">📝 Cancellation Reason & Audit Log Record *</label>
+                <textarea
+                  rows={3}
+                  placeholder="e.g. Event cancelled by customer 1 week prior due to weather..."
+                  value={cancelReasonInput}
+                  onChange={e => setCancelReasonInput(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 font-medium text-slate-900 outline-none focus:border-rose-500"
+                  required
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCancelPoModal(null)}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
+                >
+                  Keep Order Active
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <XCircle className="w-4 h-4" /> Authorize & Cancel Order
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

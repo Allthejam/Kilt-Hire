@@ -138,14 +138,22 @@ export interface POLineItem {
   notes?: string;
 }
 
+export interface CancellationRecord {
+  cancelledAt: string;
+  cancelledByStaff: string;
+  reason: string;
+  depositRefundStatus: 'FULL_REFUND_ISSUED' | 'DEPOSIT_FORFEITED' | 'NO_DEPOSIT_WAS_PAID';
+  refundAmount: number;
+}
+
 export interface PurchaseOrder {
   id: string; // e.g. "PO-2026-9011"
   customerName: string;
   customerEmail: string;
   customerPhone: string;
-  eventDate: string;
-  hireStartDate: string;
-  hireEndDate: string;
+  eventDate: string; // YYYY-MM-DD
+  hireStartDate: string; // YYYY-MM-DD (Pick-up)
+  hireEndDate: string; // YYYY-MM-DD (Return)
   items: POLineItem[];
   itemizedSubtotal: number;
   fullRigoutCapApplied: boolean;
@@ -153,11 +161,12 @@ export interface PurchaseOrder {
   totalHireFee: number;
   totalDepositHeld: number;
   paypalTransactionId?: string;
-  paymentStatus: 'UNPAID' | 'DEPOSIT_PENDING' | 'PAID_WITH_DEPOSIT' | 'FULL_BALANCE_PAID' | 'DEPOSIT_PARTIALLY_REFUNDED' | 'FULLY_REFUNDED';
+  paymentStatus: 'UNPAID' | 'PARTIAL_DEPOSIT' | 'PAID_WITH_DEPOSIT' | 'REFUNDED' | 'CANCELLED';
   orderStatus: POOrderStatus;
   measurements?: CustomerMeasurements;
-  depositPaymentMethod?: 'PAYPAL_ONLINE' | 'IN_STORE_CASH' | 'IN_STORE_CARD' | 'PAPER_DIARY_LEGACY';
+  depositPaymentMethod?: 'PAYPAL_ONLINE' | 'CARD_IN_STORE' | 'CASH_IN_STORE' | 'PAPER_DIARY_LEGACY';
   depositPaidAt?: string;
+  cancellationRecord?: CancellationRecord;
   balancePaidAt?: string;
   assembledAt?: string;
   assembledByStaff?: string;
