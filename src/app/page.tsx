@@ -669,7 +669,6 @@ export default function KiltHireApp() {
         try {
           const savedItems = localStorage.getItem('kilt_items');
           const savedBatches = localStorage.getItem('kilt_batches');
-          const savedPos = localStorage.getItem('kilt_pos');
           const savedLogs = localStorage.getItem('kilt_logs');
           const savedStaff = localStorage.getItem('kilt_staff');
           const savedInvites = localStorage.getItem('kilt_invites');
@@ -677,7 +676,7 @@ export default function KiltHireApp() {
 
           if (savedItems) setItems(JSON.parse(savedItems));
           if (savedBatches) setBatches(JSON.parse(savedBatches));
-          if (savedPos) setPos(JSON.parse(savedPos));
+          setPos([]);
           if (savedLogs) setLogs(JSON.parse(savedLogs));
           if (savedStaff) setStaffList(JSON.parse(savedStaff));
           if (savedInvites) setInvites(JSON.parse(savedInvites));
@@ -685,7 +684,7 @@ export default function KiltHireApp() {
         } catch (e) {
           setItems(INITIAL_ITEMS);
           setBatches(INITIAL_BATCHES);
-          setPos(INITIAL_POS);
+          setPos([]);
           setLogs(INITIAL_LOGS);
           setStaffList(INITIAL_STAFF);
           setInvites(INITIAL_INVITES);
@@ -2704,6 +2703,7 @@ export default function KiltHireApp() {
     }
     try {
       await clearAllPurchaseOrdersFS();
+      localStorage.removeItem('kilt_pos');
       setPos([]);
       addAuditLog('CLEARED_ALL_PURCHASE_ORDERS', 'Cleared all purchase orders from Cloud Firestore database.');
       showToast('🗑️ All Purchase Orders cleared live from database!', 'info');
