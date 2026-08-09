@@ -2009,12 +2009,12 @@ export default function KiltHireApp() {
       const defaultPrices = getDefaultPriceForCategory(autoCategory, isKid);
 
       setRegForm({
-        name: `${isKid ? 'Kids ' : 'Adult '}${autoCategory} (${cleanCode})`,
+        name: '',
         category: autoCategory,
         sizeGroup: isKid ? 'Kid' : 'Adult',
-        tartanOrColour: 'Royal Stewart Tartan',
-        size: isKid ? 'Kids Size 8Y / Waist 22' : autoCategory === 'Kilts' ? 'Waist 34 / Length 24' : 'Chest 40R',
-        brandMake: 'Highland Scottish Outfitters',
+        tartanOrColour: '',
+        size: '',
+        brandMake: '',
         hireRate: defaultPrices.hireRate,
         depositAmount: defaultPrices.deposit,
         conditionNotes: 'Brand new stock garment.'
@@ -10993,10 +10993,11 @@ export default function KiltHireApp() {
                       </div>
 
                       <div>
-                        <label className="block text-slate-700 font-bold mb-1">Tartan Pattern / Colour</label>
+                        <label className="block text-slate-700 font-bold mb-1">Tartan Pattern / Colour *</label>
                         <input 
                           type="text" 
                           required
+                          placeholder="e.g. Royal Stewart, Black Watch, Spirit of Scotland"
                           value={regForm.tartanOrColour}
                           onChange={e => setRegForm({...regForm, tartanOrColour: e.target.value})}
                           className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 outline-none focus:border-amber-500 shadow-sm"
@@ -11009,7 +11010,7 @@ export default function KiltHireApp() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-700 font-bold mb-1">Garment Size Specs</label>
+                  <label className="block text-slate-700 font-bold mb-1">Garment Size Specs *</label>
                   <input 
                     type="text" 
                     required
@@ -11024,6 +11025,7 @@ export default function KiltHireApp() {
                   <label className="block text-slate-700 font-bold mb-1">Brand / Tailor Make</label>
                   <input 
                     type="text" 
+                    placeholder="e.g. Highland Kiltmakers"
                     value={regForm.brandMake}
                     onChange={e => setRegForm({...regForm, brandMake: e.target.value})}
                     className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 outline-none focus:border-amber-500 shadow-sm"
