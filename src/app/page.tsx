@@ -420,6 +420,9 @@ export default function KiltHireApp() {
   const [assistantRowsPerPage, setAssistantRowsPerPage] = useState<number>(10);
   const [inventoryTablePage, setInventoryTablePage] = useState<number>(1);
   const [inventoryRowsPerPage, setInventoryRowsPerPage] = useState<number>(10);
+  const [inventorySearchQuery, setInventorySearchQuery] = useState<string>('');
+  const [inventorySortColumn, setInventorySortColumn] = useState<'id' | 'name' | 'category' | 'sizeGroup' | 'tartanOrColour' | 'status'>('id');
+  const [inventorySortDirection, setInventorySortDirection] = useState<'asc' | 'desc'>('asc');
 
   // Invite & Staff Management Form State
   const [newInviteEmail, setNewInviteEmail] = useState('');
@@ -8412,25 +8415,51 @@ export default function KiltHireApp() {
                     </div>
 
                     {inventorySubTab === 'ACTIVE' && (
-                      <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
-                        <button
-                          onClick={() => setInventorySizeFilter('ALL')}
-                          className={`px-3 py-1.5 rounded-lg transition ${inventorySizeFilter === 'ALL' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
-                        >
-                          All Sizes ({items.filter(i=>i.status!=='RETIRED').length})
-                        </button>
-                        <button
-                          onClick={() => setInventorySizeFilter('Adult')}
-                          className={`px-3 py-1.5 rounded-lg flex items-center gap-1 transition ${inventorySizeFilter === 'Adult' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600'}`}
-                        >
-                          <User className="w-3.5 h-3.5" /> Adults ({items.filter(i=>i.sizeGroup==='Adult' && i.status!=='RETIRED').length})
-                        </button>
-                        <button
-                          onClick={() => setInventorySizeFilter('Kid')}
-                          className={`px-3 py-1.5 rounded-lg flex items-center gap-1 transition ${inventorySizeFilter === 'Kid' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-600'}`}
-                        >
-                          <Baby className="w-3.5 h-3.5" /> Kids ({items.filter(i=>i.sizeGroup==='Kid' && i.status!=='RETIRED').length})
-                        </button>
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        {/* ADULT VS KIDS SIZING DEMOGRAPHIC FILTER */}
+                        <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
+                          <button
+                            onClick={() => { setInventorySizeFilter('ALL'); setInventoryTablePage(1); }}
+                            className={`px-3 py-1.5 rounded-lg transition ${inventorySizeFilter === 'ALL' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
+                          >
+                            All Sizes ({items.filter(i=>i.status!=='RETIRED').length})
+                          </button>
+                          <button
+                            onClick={() => { setInventorySizeFilter('Adult'); setInventoryTablePage(1); }}
+                            className={`px-3 py-1.5 rounded-lg flex items-center gap-1 transition ${inventorySizeFilter === 'Adult' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600'}`}
+                          >
+                            <User className="w-3.5 h-3.5" /> Adults ({items.filter(i=>i.sizeGroup==='Adult' && i.status!=='RETIRED').length})
+                          </button>
+                          <button
+                            onClick={() => { setInventorySizeFilter('Kid'); setInventoryTablePage(1); }}
+                            className={`px-3 py-1.5 rounded-lg flex items-center gap-1 transition ${inventorySizeFilter === 'Kid' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-600'}`}
+                          >
+                            <Baby className="w-3.5 h-3.5" /> Kids ({items.filter(i=>i.sizeGroup==='Kid' && i.status!=='RETIRED').length})
+                          </button>
+                        </div>
+
+                        {/* INSTANT LIVE SEARCH INPUT BAR */}
+                        <div className="relative flex-1 min-w-[240px] max-w-md">
+                          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            value={inventorySearchQuery}
+                            onChange={(e) => {
+                              setInventorySearchQuery(e.target.value);
+                              setInventoryTablePage(1);
+                            }}
+                            placeholder="Quick search by QR, Title, Category, Demographic, Tartan, or Status..."
+                            className="w-full pl-9 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                          />
+                          {inventorySearchQuery && (
+                            <button
+                              onClick={() => { setInventorySearchQuery(''); setInventoryTablePage(1); }}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 rounded-full hover:bg-slate-100"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -8438,7 +8467,39 @@ export default function KiltHireApp() {
                   {inventorySubTab === 'ACTIVE' ? (
                     <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm space-y-0">
                       {(() => {
-                        const activeStockList = items.filter(item => item.status !== 'RETIRED' && (inventorySizeFilter === 'ALL' || item.sizeGroup === inventorySizeFilter));
+                        const handleSort = (col: 'id' | 'name' | 'category' | 'sizeGroup' | 'tartanOrColour' | 'status') => {
+                          if (inventorySortColumn === col) {
+                            setInventorySortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+                          } else {
+                            setInventorySortColumn(col);
+                            setInventorySortDirection('asc');
+                          }
+                          setInventoryTablePage(1);
+                        };
+
+                        const activeStockList = items
+                          .filter(item => item.status !== 'RETIRED' && (inventorySizeFilter === 'ALL' || item.sizeGroup === inventorySizeFilter))
+                          .filter(item => {
+                            if (!inventorySearchQuery.trim()) return true;
+                            const q = inventorySearchQuery.toLowerCase().trim();
+                            return (
+                              item.id.toLowerCase().includes(q) ||
+                              item.name.toLowerCase().includes(q) ||
+                              item.category.toLowerCase().includes(q) ||
+                              item.sizeGroup.toLowerCase().includes(q) ||
+                              item.tartanOrColour.toLowerCase().includes(q) ||
+                              item.size.toLowerCase().includes(q) ||
+                              item.status.toLowerCase().includes(q)
+                            );
+                          })
+                          .sort((a, b) => {
+                            const valA = (a[inventorySortColumn] || '').toString().toLowerCase();
+                            const valB = (b[inventorySortColumn] || '').toString().toLowerCase();
+                            if (valA < valB) return inventorySortDirection === 'asc' ? -1 : 1;
+                            if (valA > valB) return inventorySortDirection === 'asc' ? 1 : -1;
+                            return 0;
+                          });
+
                         const totalItems = activeStockList.length;
                         const totalPages = Math.ceil(totalItems / inventoryRowsPerPage) || 1;
                         const currentPage = Math.min(inventoryTablePage, totalPages);
@@ -8450,16 +8511,82 @@ export default function KiltHireApp() {
                           <div>
                             <div className="overflow-x-auto">
                               <table className="w-full text-left text-xs text-slate-700">
-                                <thead className="bg-slate-50 text-slate-900 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px]">
+                                <thead className="bg-slate-50 text-slate-900 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px] select-none">
                                   <tr>
-                                    <th className="py-3.5 px-4">QR Code</th>
-                                    <th className="py-3.5 px-4">Item Name</th>
-                                    <th className="py-3.5 px-4">Category</th>
-                                    <th className="py-3.5 px-4">Demographic</th>
-                                    <th className="py-3.5 px-4">Tartan / Colour</th>
+                                    <th 
+                                      onClick={() => handleSort('id')}
+                                      className="py-3.5 px-4 cursor-pointer hover:bg-amber-100/50 transition group"
+                                      title="Click to sort by QR Code ID"
+                                    >
+                                      <div className="flex items-center gap-1">
+                                        <span>QR Code</span>
+                                        <span className={`text-[10px] ${inventorySortColumn === 'id' ? 'text-amber-800 font-extrabold' : 'text-slate-300 group-hover:text-slate-500'}`}>
+                                          {inventorySortColumn === 'id' ? (inventorySortDirection === 'asc' ? '▲' : '▼') : '↕'}
+                                        </span>
+                                      </div>
+                                    </th>
+                                    <th 
+                                      onClick={() => handleSort('name')}
+                                      className="py-3.5 px-4 cursor-pointer hover:bg-amber-100/50 transition group"
+                                      title="Click to sort by Item Name"
+                                    >
+                                      <div className="flex items-center gap-1">
+                                        <span>Item Name</span>
+                                        <span className={`text-[10px] ${inventorySortColumn === 'name' ? 'text-amber-800 font-extrabold' : 'text-slate-300 group-hover:text-slate-500'}`}>
+                                          {inventorySortColumn === 'name' ? (inventorySortDirection === 'asc' ? '▲' : '▼') : '↕'}
+                                        </span>
+                                      </div>
+                                    </th>
+                                    <th 
+                                      onClick={() => handleSort('category')}
+                                      className="py-3.5 px-4 cursor-pointer hover:bg-amber-100/50 transition group"
+                                      title="Click to sort by Category"
+                                    >
+                                      <div className="flex items-center gap-1">
+                                        <span>Category</span>
+                                        <span className={`text-[10px] ${inventorySortColumn === 'category' ? 'text-amber-800 font-extrabold' : 'text-slate-300 group-hover:text-slate-500'}`}>
+                                          {inventorySortColumn === 'category' ? (inventorySortDirection === 'asc' ? '▲' : '▼') : '↕'}
+                                        </span>
+                                      </div>
+                                    </th>
+                                    <th 
+                                      onClick={() => handleSort('sizeGroup')}
+                                      className="py-3.5 px-4 cursor-pointer hover:bg-amber-100/50 transition group"
+                                      title="Click to sort by Demographic (Adult / Kid)"
+                                    >
+                                      <div className="flex items-center gap-1">
+                                        <span>Demographic</span>
+                                        <span className={`text-[10px] ${inventorySortColumn === 'sizeGroup' ? 'text-amber-800 font-extrabold' : 'text-slate-300 group-hover:text-slate-500'}`}>
+                                          {inventorySortColumn === 'sizeGroup' ? (inventorySortDirection === 'asc' ? '▲' : '▼') : '↕'}
+                                        </span>
+                                      </div>
+                                    </th>
+                                    <th 
+                                      onClick={() => handleSort('tartanOrColour')}
+                                      className="py-3.5 px-4 cursor-pointer hover:bg-amber-100/50 transition group"
+                                      title="Click to sort by Tartan / Colour"
+                                    >
+                                      <div className="flex items-center gap-1">
+                                        <span>Tartan / Colour</span>
+                                        <span className={`text-[10px] ${inventorySortColumn === 'tartanOrColour' ? 'text-amber-800 font-extrabold' : 'text-slate-300 group-hover:text-slate-500'}`}>
+                                          {inventorySortColumn === 'tartanOrColour' ? (inventorySortDirection === 'asc' ? '▲' : '▼') : '↕'}
+                                        </span>
+                                      </div>
+                                    </th>
                                     <th className="py-3.5 px-4">Size</th>
                                     <th className="py-3.5 px-4">Rate / Deposit</th>
-                                    <th className="py-3.5 px-4">Status</th>
+                                    <th 
+                                      onClick={() => handleSort('status')}
+                                      className="py-3.5 px-4 cursor-pointer hover:bg-amber-100/50 transition group"
+                                      title="Click to sort by Status"
+                                    >
+                                      <div className="flex items-center gap-1">
+                                        <span>Status</span>
+                                        <span className={`text-[10px] ${inventorySortColumn === 'status' ? 'text-amber-800 font-extrabold' : 'text-slate-300 group-hover:text-slate-500'}`}>
+                                          {inventorySortColumn === 'status' ? (inventorySortDirection === 'asc' ? '▲' : '▼') : '↕'}
+                                        </span>
+                                      </div>
+                                    </th>
                                     <th className="py-3.5 px-4 text-right">Actions</th>
                                   </tr>
                                 </thead>
