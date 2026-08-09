@@ -22,6 +22,7 @@ import {
   deleteInvite,
   getItems,
   upsertItem,
+  deleteItem,
   getBatches,
   upsertBatch,
   getPurchaseOrders,
@@ -1997,6 +1998,24 @@ export default function KiltHireApp() {
     addAuditLog('EDITED_ITEM_DETAILS', `Updated details & description for ${showEditItemModal.name} (${showEditItemModal.id})`, showEditItemModal.id);
     setShowEditItemModal(null);
     showToast(`✓ Updated item details for ${showEditItemModal.id} in database.`, 'success');
+  };
+
+  const handleDeleteStockItem = async (itemId: string) => {
+    const item = items.find(i => i.id === itemId);
+    if (!item) return;
+
+    if (!confirm(`🚨 Are you sure you want to PERMANENTLY DELETE item ${item.name} (${itemId}) from the database? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await deleteItem(itemId);
+      setItems(prev => prev.filter(i => i.id !== itemId));
+      addAuditLog('DELETED_ITEM_PERMANENT', `Permanently deleted item ${item.name} (${itemId}) from Cloud Firestore database.`, itemId);
+      showToast(`🗑️ Item ${itemId} permanently deleted from database.`, 'info');
+    } catch (err: any) {
+      showToast(`Failed to delete item: ${err.message}`, 'warning');
+    }
   };
 
   // REMOVE FROM ROTATION (RETIRE / DESTROY / STOLEN / SOLD) HANDLER
@@ -8096,27 +8115,89 @@ export default function KiltHireApp() {
                                   <span className="text-amber-800 font-bold">£{item.hireRate}</span> / <span className="text-emerald-700 font-semibold">£{item.depositAmount} dep</span>
                                 </td>
                                 <td className="py-3 px-4">
-                                  <span className={`px-2.5 py-0.5 text-[11px] font-bold rounded-full border ${
+                                  <span className={`px-2.5 py-1 text-[10px] font-extrabold rounded-full border flex items-center gap-1 w-fit ${
                                     item.status === 'AVAILABLE' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
                                     item.status === 'ON_HIRE' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                                    item.status === 'NEEDS_CLEANING' ? 'bg-cyan-100 text-cyan-900 border-cyan-300' :
+                                    item.status === 'IN_REPAIR' ? 'bg-amber-100 text-amber-900 border-amber-300' :
                                     'bg-rose-100 text-rose-800 border-rose-300'
                                   }`}>
-                                    {item.status}
+                                    {item.status === 'AVAILABLE' && '✨ AVAILABLE'}
+                                    {item.status === 'ON_HIRE' && '🔒 ON HIRE'}
+                                    {item.status === 'NEEDS_CLEANING' && '🧼 DRY CLEANING'}
+                                    {item.status === 'IN_REPAIR' && '🔧 IN REPAIR'}
+                                    {item.status === 'RETIRED' && '📦 RETIRED'}
                                   </span>
                                 </td>
                                 <td className="py-3 px-4 text-right">
                                   <div className="flex items-center justify-end gap-1.5">
+                                    {/* QUICK STATUS TRANSITION BUTTONS */}
+                                    {item.status === 'NEEDS_CLEANING' && (
+                                      <button
+                                        onClick={() => handleConfirmLaundryCleaned(item.id)}
+                                        className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold shadow-sm transition flex items-center gap-0.5"
+                                        title="Confirm Dry Cleaning Done -> Return to Available Stock"
+                                      >
+                                        <Sparkles className="w-3 h-3" /> Mark Clean
+                                      </button>
+                                    )}
+
+                                    {item.status === 'IN_REPAIR' && (
+                                      <button
+                                        onClick={() => handleConfirmRepairFixed(item.id)}
+                                        className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold shadow-sm transition flex items-center gap-0.5"
+                                        title="Confirm Repair Fixed -> Return to Available Stock"
+                                      >
+                                        <Wrench className="w-3 h-3" /> Mark Repaired
+                                      </button>
+                                    )}
+
+                                    {item.status !== 'NEEDS_CLEANING' && item.status !== 'ON_HIRE' && (
+                                      <button
+                                        onClick={() => handleManualSendToLaundry(item.id)}
+                                        className="p-1.5 bg-cyan-50 hover:bg-cyan-100 text-cyan-800 rounded border border-cyan-200 transition"
+                                        title="Send to Dry Cleaning / Laundry"
+                                      >
+                                        <Sparkles className="w-3.5 h-3.5 text-cyan-600" />
+                                      </button>
+                                    )}
+
+                                    {item.status !== 'IN_REPAIR' && item.status !== 'ON_HIRE' && (
+                                      <button
+                                        onClick={() => {
+                                          setScannedCode(item.id);
+                                          setShowSendRepairModal(true);
+                                        }}
+                                        className="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 rounded border border-amber-200 transition"
+                                        title="Send to Repair Workshop"
+                                      >
+                                        <Wrench className="w-3.5 h-3.5 text-amber-600" />
+                                      </button>
+                                    )}
+
+                                    {/* EDIT SPECS BUTTON */}
                                     <button
                                       onClick={() => setShowEditItemModal(item)}
                                       className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded border border-slate-300 transition"
-                                      title="Edit Specs"
+                                      title="Edit Specs & Status"
                                     >
                                       <Edit3 className="w-3.5 h-3.5 text-amber-600" />
                                     </button>
+
+                                    {/* REMOVE FROM ROTATION (ARCHIVE) */}
                                     <button
                                       onClick={() => setShowRemoveRotationModal(item)}
+                                      className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded border border-slate-300 transition"
+                                      title="Remove from Active Rotation to Archive"
+                                    >
+                                      <Archive className="w-3.5 h-3.5 text-slate-600" />
+                                    </button>
+
+                                    {/* PERMANENT DELETE STOCK ITEM */}
+                                    <button
+                                      onClick={() => handleDeleteStockItem(item.id)}
                                       className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded border border-rose-200 transition"
-                                      title="Remove from Rotation"
+                                      title="Permanently Delete Item from Cloud Database"
                                     >
                                       <Trash2 className="w-3.5 h-3.5 text-rose-600" />
                                     </button>
@@ -9187,6 +9268,21 @@ export default function KiltHireApp() {
                     className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-mono font-bold text-emerald-800 outline-none focus:border-amber-500 shadow-sm"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Current Garment Status</label>
+                <select
+                  value={showEditItemModal.status}
+                  onChange={e => setShowEditItemModal({...showEditItemModal, status: e.target.value as ItemStatus})}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                >
+                  <option value="AVAILABLE">✨ AVAILABLE (In Store & Ready for Hire)</option>
+                  <option value="NEEDS_CLEANING">🧼 NEEDS_CLEANING (Out at Dry Cleaners / Laundry)</option>
+                  <option value="IN_REPAIR">🔧 IN_REPAIR (In Repair Workshop)</option>
+                  <option value="ON_HIRE">🔒 ON_HIRE (Currently Out with Customer)</option>
+                  <option value="RETIRED">📦 RETIRED (Removed to Retired Stock Archive)</option>
+                </select>
               </div>
 
               <div>
