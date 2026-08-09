@@ -161,10 +161,10 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+6f3f800  feat: enhance Calendar Order Tracking pickups with outstanding balance detection, in-store payment triggers, collection locking, and PIN cancellation
 b2ac2d2  fix: resolve typescript types for paymentStatus, depositPaymentMethod and XCircle import
 c7fa779  feat: implement PO state machine safeguards (Due Picked, Due Out, Out on Hire return locking) and PIN-authorized Hire Order Cancellation modal with refund tracking
 4499b23  feat: connect Hire Calendar notes & events 100% to Cloud Firestore database with real-time onSnapshot listeners
-6318c31  fix: remove all localStorage data persistence and log all PO upserts directly to Cloud Firestore collection purchase_orders
 d64dfef  feat: add Paper Diary Legacy Manual Entry mode to bypass PayPal & deposits for migrating offline paper orders into calendar & pick queues
 5ee2c2e  feat: add Event Occasion selector (parties, Hogmanay, ceilidhs, fashion) and expanded customer roles to fitting station
 5e564ec  feat: add Late Return & Security Deposit Retention Section in full-page return workspace with custom fee input, presets, and live ledger update
