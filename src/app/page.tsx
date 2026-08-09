@@ -1508,13 +1508,46 @@ export default function KiltHireApp() {
       setPos(prev => [...createdPos, ...prev]);
       addAuditLog('CREATED_FITTING_ORDER', `Created fitting order for ${fittingForm.customerName} (${fittingForm.outfits.length} outfit(s), Billing: ${fittingForm.billingMode})`);
 
-      setAssistantTab('calendar');
+      // Reset fitting form cleanly so station is 100% ready for next order
+      setFittingForm({
+        customerName: '',
+        customerEmail: '',
+        customerPhone: '',
+        eventType: 'Wedding Party',
+        eventDate: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
+        collectionDate: new Date(Date.now() + 12 * 86400000).toISOString().slice(0, 10),
+        returnDate: new Date(Date.now() + 16 * 86400000).toISOString().slice(0, 10),
+        billingMode: 'SINGLE_PRINCIPLE',
+        depositMethod: 'PAYPAL_ONLINE',
+        notes: '',
+        activeOutfitIndex: 0,
+        outfits: [
+          {
+            id: 'outfit-1',
+            roleLabel: 'Customer / Wearer',
+            wearerName: '',
+            wearerEmail: '',
+            wearerPhone: '',
+            waistInches: 34,
+            chestInches: 42,
+            sleeveLengthInches: 25,
+            kiltLengthInches: 24,
+            shoeSize: '10',
+            heightFtInches: "5'11",
+            selectedItemIds: [],
+            paidSeparately: false
+          }
+        ]
+      });
+
+      // Switch view to Hire POs page & Calendar
+      setInterfaceMode('admin_portal');
       setActiveTab('pos');
 
       if (isSplitBilling) {
-        showToast(`🎉 Created ${createdPos.length} separate fitting POs! Individual PayPal invoice links dispatched to each customer.`, 'success');
+        showToast(`🎉 Created ${createdPos.length} separate fitting POs! Added to POs page & Calendar. Form reset for next customer!`, 'success');
       } else {
-        showToast(`🎉 Master Fitting Order ${createdPos[0].id} created for ${fittingForm.customerName} (${fittingForm.outfits.length} outfits)!`, 'success');
+        showToast(`🎉 Purchase Order ${createdPos[0].id} created for ${fittingForm.customerName}! Added to POs page & Calendar. Form reset for next customer!`, 'success');
       }
     } catch (err: any) {
       showToast(`Failed to save fitting order: ${err.message}`, 'warning');
@@ -4571,7 +4604,7 @@ export default function KiltHireApp() {
                                           {visibleItems.length} Available {fittingCategoryFilter === 'ALL' ? 'Overall' : `in ${fittingCategoryFilter}`}
                                         </span>
                                         <span className="text-xs font-extrabold text-amber-950 bg-amber-400 px-3 py-1 rounded-full border border-amber-300 shadow-sm">
-                                          {currentOutfit.selectedItemIds.length} Picked
+                                          {currentOutfit.selectedItemIds.length} Added to Order
                                         </span>
                                       </div>
                                     </div>
@@ -4584,24 +4617,24 @@ export default function KiltHireApp() {
                                         </p>
                                       </div>
                                     ) : (
-                                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-60 overflow-y-auto p-1">
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-[540px] min-h-[380px] overflow-y-auto p-1.5 border border-slate-200 rounded-2xl bg-slate-50/50">
                                         {visibleItems.map((item) => {
                                           const isSelected = currentOutfit.selectedItemIds.includes(item.id);
 
                                           return (
                                             <div 
                                               key={item.id} 
-                                              className={`p-3 rounded-2xl border flex flex-col justify-between space-y-2 transition ${
+                                              className={`p-3.5 rounded-2xl border flex flex-col justify-between space-y-2.5 transition ${
                                                 isSelected 
                                                   ? 'bg-amber-50 border-amber-400 shadow-md ring-2 ring-amber-400/50' 
-                                                  : 'bg-white border-slate-200 hover:border-slate-300'
+                                                  : 'bg-white border-slate-200 hover:border-slate-300 shadow-xs'
                                               }`}
                                             >
                                               <div>
                                                 <div className="flex items-center justify-between mb-1 gap-1">
                                                   <span className="font-mono font-extrabold text-amber-900 text-[11px] bg-amber-100 px-2 py-0.5 rounded border border-amber-300 shrink-0">{item.id}</span>
                                                   {isSelected ? (
-                                                    <span className="text-[10px] font-extrabold text-amber-800 bg-amber-200 px-2 py-0.5 rounded-full border border-amber-300 truncate">✓ Picked</span>
+                                                    <span className="text-[10px] font-extrabold text-amber-900 bg-amber-200 px-2 py-0.5 rounded-full border border-amber-300 truncate">✓ Added to Order</span>
                                                   ) : (
                                                     <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">Available</span>
                                                   )}
@@ -4612,7 +4645,7 @@ export default function KiltHireApp() {
                                                 <p className="text-[10px] font-bold text-amber-900 mt-0.5">Size: {item.size}</p>
                                               </div>
 
-                                              <div className="flex items-center justify-between pt-1.5 border-t border-slate-100">
+                                              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
                                                 <span className="font-extrabold text-slate-900 text-xs">£{item.hireRate}</span>
                                                 <button
                                                   type="button"
@@ -4623,13 +4656,13 @@ export default function KiltHireApp() {
                                                       updateCurrentOutfit({ selectedItemIds: [...currentOutfit.selectedItemIds, item.id] });
                                                     }
                                                   }}
-                                                  className={`px-3 py-1 rounded-xl font-extrabold text-xs transition ${
+                                                  className={`px-3 py-1.5 rounded-xl font-extrabold text-xs transition ${
                                                     isSelected 
-                                                      ? 'bg-amber-600 text-white shadow-sm' 
-                                                      : 'bg-slate-100 hover:bg-slate-200 text-slate-800'
+                                                      ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-sm' 
+                                                      : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
                                                   }`}
                                                 >
-                                                  {isSelected ? '✓ Picked' : '+ Pick Item'}
+                                                  {isSelected ? '✓ Added to Order' : '+ Add to Order'}
                                                 </button>
                                               </div>
                                             </div>
