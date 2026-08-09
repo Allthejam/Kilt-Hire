@@ -2068,16 +2068,19 @@ export default function KiltHireApp() {
       severity: repairSeverity
     };
 
-    setItems(prev => prev.map(i => {
+    const updatedItems = items.map(i => {
       if (i.id === scannedCode) {
-        return {
+        const updatedItem = {
           ...i,
-          status: 'IN_REPAIR',
+          status: 'IN_REPAIR' as ItemStatus,
           repairHistory: [repairEntry, ...(i.repairHistory || [])]
         };
+        upsertItem(updatedItem).catch(err => console.warn('Failed to sync item to Firestore:', err));
+        return updatedItem;
       }
       return i;
-    }));
+    });
+    setItems(updatedItems);
 
     addAuditLog('SENT_TO_REPAIR', `Sent ${item.sizeGroup} item ${item.name} (${item.id}) to repair queue: ${repairReason}`, item.id);
     setShowSendRepairModal(false);
@@ -2091,7 +2094,7 @@ export default function KiltHireApp() {
     const item = items.find(i => i.id === codeId);
     if (!item) return;
 
-    setItems(prev => prev.map(i => {
+    const updatedItems = items.map(i => {
       if (i.id === codeId) {
         const history = i.repairHistory || [];
         const updatedHistory = history.map((h, idx) => {
@@ -2105,14 +2108,17 @@ export default function KiltHireApp() {
           }
           return h;
         });
-        return {
+        const updatedItem = {
           ...i,
-          status: 'AVAILABLE',
+          status: 'AVAILABLE' as ItemStatus,
           repairHistory: updatedHistory
         };
+        upsertItem(updatedItem).catch(err => console.warn('Failed to sync item to Firestore:', err));
+        return updatedItem;
       }
       return i;
-    }));
+    });
+    setItems(updatedItems);
 
     addAuditLog('REPAIR_COMPLETED', `Confirmed repair completed for ${item.name} (${item.id}). Returned to stock.`, item.id);
     showToast(`✓ Repair confirmed for ${item.id}. Returned to Available Stock!`, 'success');
@@ -2124,7 +2130,7 @@ export default function KiltHireApp() {
     const item = items.find(i => i.id === codeId);
     if (!item) return;
 
-    setItems(prev => prev.map(i => {
+    const updatedItems = items.map(i => {
       if (i.id === codeId) {
         const history = i.laundryHistory || [];
         const updatedHistory = history.map((h, idx) => {
@@ -2138,14 +2144,17 @@ export default function KiltHireApp() {
           }
           return h;
         });
-        return {
+        const updatedItem = {
           ...i,
-          status: 'AVAILABLE',
+          status: 'AVAILABLE' as ItemStatus,
           laundryHistory: updatedHistory
         };
+        upsertItem(updatedItem).catch(err => console.warn('Failed to sync item to Firestore:', err));
+        return updatedItem;
       }
       return i;
-    }));
+    });
+    setItems(updatedItems);
 
     addAuditLog('LAUNDRY_COMPLETED', `Confirmed dry cleaning completed for ${item.name} (${item.id}). Returned to stock.`, item.id);
     showToast(`✨ Laundry/Dry cleaning completed for ${item.id}. Returned to Available Stock!`, 'success');
@@ -2165,16 +2174,19 @@ export default function KiltHireApp() {
       notes: 'Manually sent to dry cleaners from store floor'
     };
 
-    setItems(prev => prev.map(i => {
+    const updatedItems = items.map(i => {
       if (i.id === codeId) {
-        return {
+        const updatedItem = {
           ...i,
-          status: 'NEEDS_CLEANING',
+          status: 'NEEDS_CLEANING' as ItemStatus,
           laundryHistory: [newRecord, ...(i.laundryHistory || [])]
         };
+        upsertItem(updatedItem).catch(err => console.warn('Failed to sync item to Firestore:', err));
+        return updatedItem;
       }
       return i;
-    }));
+    });
+    setItems(updatedItems);
 
     addAuditLog('SENT_TO_LAUNDRY', `Manually sent ${item.name} (${item.id}) to dry cleaners.`, item.id);
     showToast(`🧼 Sent ${item.name} (${item.id}) to Dry Cleaners. Tracked in Laundry tab!`, 'info');
@@ -2229,7 +2241,7 @@ export default function KiltHireApp() {
     if (cleaningItems.length === 0) return;
 
     const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
-    setItems(prev => prev.map(i => {
+    const updatedItems = items.map(i => {
       if (i.status === 'NEEDS_CLEANING') {
         const history = i.laundryHistory || [];
         const updatedHistory = history.map((h, idx) => {
@@ -2243,15 +2255,18 @@ export default function KiltHireApp() {
           }
           return h;
         });
-        return {
+        const updated = {
           ...i,
-          status: 'AVAILABLE',
+          status: 'AVAILABLE' as ItemStatus,
           laundryHistory: updatedHistory
         };
+        upsertItem(updated).catch(err => console.warn('Failed to sync item to Firestore:', err));
+        return updated;
       }
       return i;
-    }));
+    });
 
+    setItems(updatedItems);
     addAuditLog('BULK_LAUNDRY_COMPLETED', `Confirmed dry cleaning completed for ${cleaningItems.length} garment(s). Returned to stock.`);
     showToast(`✨ Bulk confirmed ${cleaningItems.length} garment(s) clean and back in Available Stock!`, 'success');
   };
@@ -2284,7 +2299,12 @@ export default function KiltHireApp() {
 
       if (cond === 'GOOD_CLEAN') {
         totalRefundedDeposit += li.depositAmount;
-        // Update item in stock to AVAILABLE
+        // Update item in stock to AVAILABLE & sync to Firestore
+        const existingItem = items.find(i => i.id === li.qrCodeId);
+        if (existingItem) {
+          const updatedIt = { ...existingItem, status: 'AVAILABLE' as ItemStatus, currentPoId: undefined };
+          upsertItem(updatedIt).catch(err => console.warn('Failed to sync item to Firestore:', err));
+        }
         setItems(prev => prev.map(i => i.id === li.qrCodeId ? { ...i, status: 'AVAILABLE', currentPoId: undefined } : i));
         return {
           ...li,
@@ -2295,13 +2315,23 @@ export default function KiltHireApp() {
         };
       } else if (cond === 'NEEDS_CLEANING') {
         totalRefundedDeposit += li.depositAmount;
-        // Update item in stock to NEEDS_CLEANING
+        // Update item in stock to NEEDS_CLEANING & sync to Firestore
         const laundryEntry = {
           id: `LAUN-${Date.now().toString().slice(-4)}`,
           dateSent: now,
           sentByStaff: currentUser.name,
           notes: `Sent to dry cleaning after return from PO ${activeReturnPo.id}`
         };
+        const existingItem = items.find(i => i.id === li.qrCodeId);
+        if (existingItem) {
+          const updatedIt = {
+            ...existingItem,
+            status: 'NEEDS_CLEANING' as ItemStatus,
+            currentPoId: undefined,
+            laundryHistory: [laundryEntry, ...(existingItem.laundryHistory || [])]
+          };
+          upsertItem(updatedIt).catch(err => console.warn('Failed to sync item to Firestore:', err));
+        }
         setItems(prev => prev.map(i => i.id === li.qrCodeId ? { 
           ...i, 
           status: 'NEEDS_CLEANING', 
@@ -2317,7 +2347,7 @@ export default function KiltHireApp() {
         };
       } else if (cond === 'NEEDS_REPAIR') {
         totalHeldDepositForRepair += li.depositAmount;
-        // Update item in stock to IN_REPAIR
+        // Update item in stock to IN_REPAIR & sync to Firestore
         const repairEntry = {
           id: `REP-${Date.now().toString().slice(-4)}`,
           dateSent: now,
@@ -2325,6 +2355,16 @@ export default function KiltHireApp() {
           reason: `Returned DAMAGED from PO ${activeReturnPo.id}`,
           severity: 'Medium' as const
         };
+        const existingItem = items.find(i => i.id === li.qrCodeId);
+        if (existingItem) {
+          const updatedIt = {
+            ...existingItem,
+            status: 'IN_REPAIR' as ItemStatus,
+            currentPoId: undefined,
+            repairHistory: [repairEntry, ...(existingItem.repairHistory || [])]
+          };
+          upsertItem(updatedIt).catch(err => console.warn('Failed to sync item to Firestore:', err));
+        }
         setItems(prev => prev.map(i => i.id === li.qrCodeId ? { 
           ...i, 
           status: 'IN_REPAIR', 
