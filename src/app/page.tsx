@@ -578,6 +578,30 @@ export default function KiltHireApp() {
     }
   }, []);
 
+  // Hydrate items from localStorage on initial load
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedItems = localStorage.getItem('kilt_inventory_items');
+      if (savedItems) {
+        try {
+          const parsed = JSON.parse(savedItems);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setItems(parsed);
+          }
+        } catch (e) {
+          console.warn('Failed to parse kilt_inventory_items from localStorage:', e);
+        }
+      }
+    }
+  }, []);
+
+  // Automatically persist items state to localStorage whenever items change
+  useEffect(() => {
+    if (typeof window !== 'undefined' && items.length > 0) {
+      localStorage.setItem('kilt_inventory_items', JSON.stringify(items));
+    }
+  }, [items]);
+
   const handleInstallApp = async () => {
     if (deferredPrompt) {
       deferredPrompt.prompt();
@@ -635,8 +659,19 @@ export default function KiltHireApp() {
           getPricing(),
         ]);
 
-        if (fsItems.length > 0) setItems(fsItems);
-        else setItems(INITIAL_ITEMS);
+        const mergeItemsList = (current: KiltItem[], remote: KiltItem[]): KiltItem[] => {
+          const map = new Map<string, KiltItem>();
+          current.forEach(item => {
+            if (item && item.id) map.set(item.id.trim().toUpperCase(), item);
+          });
+          remote.forEach(item => {
+            if (item && item.id) map.set(item.id.trim().toUpperCase(), item);
+          });
+          return Array.from(map.values());
+        };
+
+        if (fsItems.length > 0) setItems(prev => mergeItemsList(prev.length > 0 ? prev : INITIAL_ITEMS, fsItems));
+        else setItems(prev => prev.length > 0 ? prev : INITIAL_ITEMS);
 
         if (fsBatches.length > 0) setBatches(fsBatches);
         else setBatches(INITIAL_BATCHES);
@@ -664,7 +699,9 @@ export default function KiltHireApp() {
 
         // Subscribe to real-time Cloud Firestore updates (LIVE INSTANT SYNC across all tablets)
         unsubItems = subscribeItems((liveItems) => {
-          setItems(liveItems);
+          if (liveItems && liveItems.length > 0) {
+            setItems(prev => mergeItemsList(prev, liveItems));
+          }
         });
 
         unsubPOs = subscribePurchaseOrders((livePOs) => {
@@ -1892,14 +1929,22 @@ export default function KiltHireApp() {
   // ZERO-FRICTION AUTOMATED MULTI-ITEM PO SCANNER DISCOVERY HANDLER
   // =========================================================================
   const handleScanCode = (code: string) => {
-    const cleanCode = code.trim().toUpperCase();
-    if (!cleanCode) return;
+    const rawClean = code.trim().toUpperCase();
+    if (!rawClean) return;
+    // Strip any URL prefixes if camera scanned full URL
+    const cleanCode = rawClean.replace(/^HTTPS?:\/\/[^\/]+\//i, '').replace(/^KILT-HIRE-/i, '');
+    
     setScanError('');
     setScannedCode(cleanCode);
     setSimulatedInput('');
     
-    // Check if code is already registered in database (active or retired)
-    const existing = items.find(i => i.id === cleanCode);
+    // Check if code is already registered in database (case-insensitive & robust match)
+    const existing = items.find(i => 
+      i.id.trim().toUpperCase() === cleanCode || 
+      i.id.trim().toUpperCase() === rawClean ||
+      cleanCode.endsWith(i.id.trim().toUpperCase()) ||
+      i.id.trim().toUpperCase().endsWith(cleanCode)
+    );
 
     // IF RETURN CHECKLIST MODAL IS OPEN: VERIFY THIS ITEM WITH PHYSICAL QR SCAN!
     if (activeReturnPo && activeReturnPo.items.some(li => li.qrCodeId === cleanCode)) {
