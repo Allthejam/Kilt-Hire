@@ -161,6 +161,7 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+66b56e8  fix: responsive max-height and dual-direction scrolling for mobile scan modals and integrated live camera scanner directly inside Outgoing Order PO Builder
 0fba6e3  feat: implement guaranteed unique sequential QR code batch generation with collision prevention across all past batches and stock database
 8d85614  feat: add real-time search input bar and clickable column title sorting (Item Name, Category, Demographic, Tartan/Colour, Status) to Stock Inventory table
 f1de6bc  feat: implement 2-scan garment lifecycle logic, duplicate registration prevention, and Garment Scan Action Popup Modal for instant state transitions
