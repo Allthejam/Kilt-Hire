@@ -11461,39 +11461,39 @@ export default function KiltHireApp() {
                 <div className="space-y-4 text-xs text-slate-700">
                   <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
                     <h4 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
-                      <Zap className="w-4 h-4 text-emerald-600" /> Automated Floor Scanner Operations
+                      <Zap className="w-4 h-4 text-emerald-600" /> Automated Floor Scanner Operations & 2-Scan Garment Lifecycle
                     </h4>
                     <p className="leading-relaxed">
-                      The Shop Assistant terminal is equipped with a zero-friction QR camera scanner. Staff can scan any garment or storage box to trigger automated actions instantly.
+                      The Shop Assistant terminal features zero-friction camera scanning. Staff can scan any garment QR tag to trigger automated actions instantly without manual data entry.
                     </p>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                      <span className="font-extrabold text-slate-900 block text-xs">1. Outgoing Hire Bag Assembly</span>
+                      <span className="font-extrabold text-slate-900 block text-xs">1. Scan 1: Unregistered Tag Registration</span>
                       <p className="text-slate-600 leading-relaxed">
-                        Scan the first garment QR code (e.g. <code>KILT-1001</code>). The PO Builder will open automatically. Keep scanning additional garments (Jacket, Sporran, Shoes) to build the complete outfit bag.
+                        Scanning an unregistered QR tag opens the <strong>New Item Registration Modal</strong>. Category and Sizing Group (Adults vs Kids) are automatically locked by Admin Batch specification. Hire rates and deposit fees derive automatically from the Master Pricing Matrix.
                       </p>
                     </div>
 
                     <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                      <span className="font-extrabold text-slate-900 block text-xs">2. Customer Bag Returns</span>
+                      <span className="font-extrabold text-slate-900 block text-xs">2. Scan 2: Recognized Garment Action Modal</span>
                       <p className="text-slate-600 leading-relaxed">
-                        Scanning any garment currently <strong>ON HIRE</strong> automatically opens that customer's PO Return Checklist. Scan each returned item to verify authentic QR labels before deposit refunding.
+                        Scanning a registered garment pops up the <strong>5-Option Action Modal</strong> (<em>Start Order PO, Return to Stock, Place in Dry Cleaning, Place in Repair, Retire / Ex-Hire</em>). Duplicate item creation is 100% blocked.
                       </p>
                     </div>
 
                     <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                      <span className="font-extrabold text-slate-900 block text-xs">3. Registering New Stock</span>
+                      <span className="font-extrabold text-slate-900 block text-xs">3. Embedded Order PO Scanner</span>
                       <p className="text-slate-600 leading-relaxed">
-                        Scanning an unregistered QR code label immediately pops up the <strong>New Stock Registration Form</strong>. Select Adult vs Kids sizing group and default category pricing fills automatically.
+                        In the Outgoing Order PO Builder, the live camera scanner runs continuously at the top. Staff can scan 1, 2, 5, 10, 20+ garments directly into the order list without popups blocking the screen.
                       </p>
                     </div>
 
                     <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                      <span className="font-extrabold text-slate-900 block text-xs">4. Quick Demo Pickers</span>
+                      <span className="font-extrabold text-slate-900 block text-xs">4. ✨ AI Outfit Match Recommendations</span>
                       <p className="text-slate-600 leading-relaxed">
-                        If testing without a camera, click any of the instant simulated scan buttons on the scanner panel (e.g. <code>KILT-1001</code>, <code>PO-9011</code>, <code>BIN-SGIAN-DUBH</code>).
+                        Expand the <strong>AI Recommendations Tab</strong> in the Order Builder to view matching accessories (Jacket, Sporran, Brogues, Shirt, Socks) available in stock for 1-tap addition.
                       </p>
                     </div>
                   </div>
@@ -11540,25 +11540,25 @@ export default function KiltHireApp() {
                 <div className="space-y-4 text-xs text-slate-700">
                   <div className="p-4 bg-purple-50 border border-purple-200 rounded-2xl space-y-2">
                     <h4 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
-                      <Printer className="w-4 h-4 text-purple-600" /> QR Batch Label Generation & Printing Safeguards
+                      <Printer className="w-4 h-4 text-purple-600" /> Guaranteed Unique QR Batch Generation & Label Safeguards
                     </h4>
                     <p className="leading-relaxed">
-                      Highland Kilt Hire uses high-durability thermal transfer QR labels (iron-on labels for kilts/jackets, waterproof stickers for shoes/sporrans).
+                      Highland Kilt Hire uses ISO 18004 high-durability thermal transfer QR labels with zero-collision safeguards.
                     </p>
                   </div>
 
                   <div className="space-y-3">
                     <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                      <span className="font-extrabold text-slate-900 block text-xs">🏷️ Creating New Label Batches</span>
+                      <span className="font-extrabold text-slate-900 block text-xs">🛡️ 100% Guaranteed Unique Sequential Codes</span>
                       <p className="text-slate-600 leading-relaxed">
-                        Master Admin Allan can generate batches of up to 100 QR codes (e.g. <code>KILT-1001</code> to <code>KILT-1100</code>) specifying Adult vs Kids sizing groups.
+                        When generating batches (10, 50, 100 QRs), the system scans all existing codes across all printed sheets and stock database to guarantee sequential numbering (e.g. <code>KILT-1001</code> to <code>KILT-1050</code>) with zero duplicate risk.
                       </p>
                     </div>
 
                     <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl space-y-2">
-                      <span className="font-extrabold text-slate-900 block text-xs">🔒 1-Time Printing Safeguard</span>
+                      <span className="font-extrabold text-slate-900 block text-xs">🔒 Admin Specification Locking</span>
                       <p className="text-amber-900 leading-relaxed">
-                        Once a batch sheet is printed, the full sheet is automatically <strong>LOCKED</strong> to prevent accidental duplicate full prints.
+                        Each batch defines a fixed Category and Demographic Group (Adults vs Kids). When shop staff scan new tags, category and demographic options are locked to match the printed batch specs.
                       </p>
                     </div>
 
