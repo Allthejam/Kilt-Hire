@@ -1474,6 +1474,25 @@ export default function KiltHireApp() {
         createdPos.push(po);
       }
 
+      // Update item statuses to ON_HIRE & persist to Firestore
+      const bookedQrCodeIds = new Set<string>();
+      createdPos.forEach(p => p.items.forEach(it => bookedQrCodeIds.add(it.qrCodeId)));
+
+      const updatedItemsList = items.map(it => {
+        if (bookedQrCodeIds.has(it.id)) {
+          const matchingPo = createdPos.find(p => p.items.some(li => li.qrCodeId === it.id));
+          const updatedIt: KiltItem = {
+            ...it,
+            status: 'ON_HIRE',
+            currentPoId: matchingPo?.id || it.currentPoId
+          };
+          upsertItem(updatedIt).catch(err => console.warn('Failed to update item status in Firestore:', err));
+          return updatedIt;
+        }
+        return it;
+      });
+
+      setItems(updatedItemsList);
       setPos(prev => [...createdPos, ...prev]);
       addAuditLog('CREATED_FITTING_ORDER', `Created fitting order for ${fittingForm.customerName} (${fittingForm.outfits.length} outfit(s), Billing: ${fittingForm.billingMode})`);
 
@@ -4358,25 +4377,69 @@ export default function KiltHireApp() {
                               </div>
 
                               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-60 overflow-y-auto p-1">
-                                {availableItems.map((item) => {
+                                {items.filter(i => i.status !== 'RETIRED').map((item) => {
                                   const isSelected = currentOutfit.selectedItemIds.includes(item.id);
+                                  const pickedByOtherOutfit = fittingForm.outfits.find((o, idx) => idx !== activeIndex && o.selectedItemIds.includes(item.id));
+
+                                  // Check date range overlap against active POs (PO.start <= Form.end && PO.end >= Form.start)
+                                  const bookedConflict = pos.find(p => {
+                                    if (p.orderStatus === 'RETURNED_COMPLETED' || p.orderStatus === 'CANCELLED') return false;
+                                    const hasItem = p.items.some(it => it.qrCodeId === item.id);
+                                    if (!hasItem) return false;
+                                    const colDate = fittingForm.collectionDate;
+                                    const retDate = fittingForm.returnDate;
+                                    if (!colDate || !retDate) return false;
+                                    return p.hireStartDate <= retDate && p.hireEndDate >= colDate;
+                                  });
+
+                                  const isUnderMaintenance = item.status === 'NEEDS_CLEANING' || item.status === 'IN_REPAIR';
+                                  const isBooked = Boolean(bookedConflict);
+                                  const isPickedElsewhere = Boolean(pickedByOtherOutfit);
+                                  const isUnavailable = (isBooked || isPickedElsewhere || isUnderMaintenance) && !isSelected;
 
                                   return (
-                                    <div key={item.id} className={`p-3 rounded-2xl border flex flex-col justify-between space-y-2 transition ${isSelected ? 'bg-amber-50 border-amber-400 shadow-md ring-2 ring-amber-400/50' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
+                                    <div 
+                                      key={item.id} 
+                                      className={`p-3 rounded-2xl border flex flex-col justify-between space-y-2 transition ${
+                                        isSelected 
+                                          ? 'bg-amber-50 border-amber-400 shadow-md ring-2 ring-amber-400/50' 
+                                          : isUnavailable 
+                                            ? 'bg-slate-100/70 border-slate-200 opacity-75' 
+                                            : 'bg-white border-slate-200 hover:border-slate-300'
+                                      }`}
+                                    >
                                       <div>
-                                        <div className="flex items-center justify-between mb-1">
-                                          <span className="font-mono font-extrabold text-amber-900 text-[11px] bg-amber-100 px-2 py-0.5 rounded border border-amber-300">{item.id}</span>
-                                          <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">In Stock</span>
+                                        <div className="flex items-center justify-between mb-1 gap-1">
+                                          <span className="font-mono font-extrabold text-amber-900 text-[11px] bg-amber-100 px-2 py-0.5 rounded border border-amber-300 shrink-0">{item.id}</span>
+                                          {isSelected ? (
+                                            <span className="text-[10px] font-extrabold text-amber-800 bg-amber-200 px-2 py-0.5 rounded-full border border-amber-300 truncate">✓ Picked</span>
+                                          ) : isBooked ? (
+                                            <span className="text-[10px] font-extrabold text-red-800 bg-red-100 px-2 py-0.5 rounded-full border border-red-200 truncate">⛔ On Hire ({bookedConflict?.customerName})</span>
+                                          ) : isPickedElsewhere ? (
+                                            <span className="text-[10px] font-extrabold text-purple-800 bg-purple-100 px-2 py-0.5 rounded-full border border-purple-200 truncate">👤 {pickedByOtherOutfit?.roleLabel}</span>
+                                          ) : isUnderMaintenance ? (
+                                            <span className="text-[10px] font-extrabold text-orange-800 bg-orange-100 px-2 py-0.5 rounded-full border border-orange-200 truncate">🧼 {item.status}</span>
+                                          ) : (
+                                            <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">In Stock</span>
+                                          )}
                                         </div>
+
                                         <h5 className="font-extrabold text-slate-900 text-xs leading-snug">{item.name}</h5>
                                         <p className="text-[10px] text-slate-500 mt-0.5">{item.category} • {item.tartanOrColour}</p>
                                         <p className="text-[10px] font-bold text-amber-900 mt-0.5">Size: {item.size}</p>
+
+                                        {isBooked && (
+                                          <p className="text-[10px] font-bold text-red-700 mt-1 leading-tight bg-red-50 p-1.5 rounded-lg border border-red-200">
+                                            📅 Booked on {bookedConflict?.id} ({bookedConflict?.hireStartDate} ➔ {bookedConflict?.hireEndDate})
+                                          </p>
+                                        )}
                                       </div>
 
                                       <div className="flex items-center justify-between pt-1.5 border-t border-slate-100">
                                         <span className="font-extrabold text-slate-900 text-xs">£{item.hireRate}</span>
                                         <button
                                           type="button"
+                                          disabled={isUnavailable}
                                           onClick={() => {
                                             if (isSelected) {
                                               updateCurrentOutfit({ selectedItemIds: currentOutfit.selectedItemIds.filter(id => id !== item.id) });
@@ -4384,9 +4447,15 @@ export default function KiltHireApp() {
                                               updateCurrentOutfit({ selectedItemIds: [...currentOutfit.selectedItemIds, item.id] });
                                             }
                                           }}
-                                          className={`px-3 py-1 rounded-xl font-extrabold text-xs transition ${isSelected ? 'bg-amber-600 text-white shadow-sm' : 'bg-slate-100 hover:bg-slate-200 text-slate-800'}`}
+                                          className={`px-3 py-1 rounded-xl font-extrabold text-xs transition ${
+                                            isSelected 
+                                              ? 'bg-amber-600 text-white shadow-sm' 
+                                              : isUnavailable 
+                                                ? 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300' 
+                                                : 'bg-slate-100 hover:bg-slate-200 text-slate-800'
+                                          }`}
                                         >
-                                          {isSelected ? '✓ Picked' : '+ Pick Item'}
+                                          {isSelected ? '✓ Picked' : isBooked ? '🔒 On Hire' : isPickedElsewhere ? '🔒 Party Picked' : isUnderMaintenance ? '🔒 Maintenance' : '+ Pick Item'}
                                         </button>
                                       </div>
                                     </div>
