@@ -161,6 +161,7 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+0fba6e3  feat: implement guaranteed unique sequential QR code batch generation with collision prevention across all past batches and stock database
 8d85614  feat: add real-time search input bar and clickable column title sorting (Item Name, Category, Demographic, Tartan/Colour, Status) to Stock Inventory table
 f1de6bc  feat: implement 2-scan garment lifecycle logic, duplicate registration prevention, and Garment Scan Action Popup Modal for instant state transitions
 cd14112  fix: replace pseudo-random QR generator with ISO 18004 compliant qrcode library, 4-module quiet zone, crisp SVG rendering, and dynamic viewBox so native phone camera apps and built-in scanners scan instantly
