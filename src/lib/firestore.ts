@@ -8,6 +8,8 @@ import {
   query,
   orderBy,
   limit,
+  onSnapshot,
+  Unsubscribe,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import {
@@ -178,4 +180,45 @@ export async function seedCollectionIfEmpty<T extends { id: string }>(
     return true;
   }
   return false;
+}
+
+// --- REAL-TIME LISTENERS (LIVE MULTI-DEVICE SYNC) ----------------------------
+
+export function subscribeItems(onUpdate: (items: KiltItem[]) => void): Unsubscribe {
+  return onSnapshot(collection(requireDb(), 'items'), (snap) => {
+    if (!snap.empty) {
+      onUpdate(snap.docs.map(d => d.data() as KiltItem));
+    }
+  });
+}
+
+export function subscribePurchaseOrders(onUpdate: (pos: PurchaseOrder[]) => void): Unsubscribe {
+  return onSnapshot(collection(requireDb(), 'purchase_orders'), (snap) => {
+    onUpdate(snap.docs.map(d => d.data() as PurchaseOrder));
+  });
+}
+
+export function subscribeBatches(onUpdate: (batches: QRBatch[]) => void): Unsubscribe {
+  return onSnapshot(collection(requireDb(), 'batches'), (snap) => {
+    if (!snap.empty) {
+      onUpdate(snap.docs.map(d => d.data() as QRBatch));
+    }
+  });
+}
+
+export function subscribeAuditLogs(onUpdate: (logs: AuditLog[]) => void): Unsubscribe {
+  const q = query(collection(requireDb(), 'audit_logs'), orderBy('timestamp', 'desc'), limit(500));
+  return onSnapshot(q, (snap) => {
+    onUpdate(snap.docs.map(d => d.data() as AuditLog));
+  });
+}
+
+export function subscribePricing(onUpdate: (pricing: PricingSettingsDoc | null) => void): Unsubscribe {
+  return onSnapshot(doc(requireDb(), 'settings', 'pricing'), (snap) => {
+    if (snap.exists()) {
+      onUpdate(snap.data() as PricingSettingsDoc);
+    } else {
+      onUpdate(null);
+    }
+  });
 }

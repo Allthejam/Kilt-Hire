@@ -35,6 +35,11 @@ import {
   getPricing,
   savePricing,
   seedCollectionIfEmpty,
+  subscribeItems,
+  subscribePurchaseOrders,
+  subscribeBatches,
+  subscribeAuditLogs,
+  subscribePricing,
 } from '../lib/firestore';
 import { 
   KiltItem, 
@@ -583,18 +588,20 @@ export default function KiltHireApp() {
     const savedKidCap = localStorage.getItem('kilt_kid_max_rigout_cap');
     if (savedCap) setMaxRigoutCapPrice(Number(savedCap));
     if (savedKidCap) setKidMaxRigoutCapPrice(Number(savedKidCap));
-    const savedTartans = localStorage.getItem('kilt_tartans');
-    if (savedTartans) setTartanList(JSON.parse(savedTartans));
+    let unsubItems: (() => void) | null = null;
+    let unsubPOs: (() => void) | null = null;
+    let unsubBatches: (() => void) | null = null;
+    let unsubLogs: (() => void) | null = null;
+    let unsubPricing: (() => void) | null = null;
 
     async function loadFromFirestore() {
       try {
         // Seed Firestore if empty (first run only)
         await seedCollectionIfEmpty('items', INITIAL_ITEMS, upsertItem);
         await seedCollectionIfEmpty('batches', INITIAL_BATCHES, upsertBatch);
-        await seedCollectionIfEmpty('purchase_orders', INITIAL_POS, upsertPurchaseOrder);
         await seedCollectionIfEmpty('invites', INITIAL_INVITES, upsertInvite);
 
-        // Load all collections in parallel
+        // Load initial collections in parallel
         const [fsItems, fsBatches, fsPOs, fsLogs, fsStaff, fsInvites, fsPricing] = await Promise.all([
           getItems(),
           getBatches(),
@@ -612,7 +619,7 @@ export default function KiltHireApp() {
         else setBatches(INITIAL_BATCHES);
 
         if (fsPOs.length > 0) setPos(fsPOs);
-        else setPos(INITIAL_POS);
+        else setPos([]);
 
         if (fsLogs.length > 0) setLogs(fsLogs);
         else setLogs(INITIAL_LOGS);
@@ -632,9 +639,33 @@ export default function KiltHireApp() {
           savePricing(DEFAULT_PRICING_MATRIX, 120, 65).catch(err => console.warn('Failed to seed pricing:', err));
         }
 
+        // Subscribe to real-time Cloud Firestore updates (LIVE INSTANT SYNC across all tablets)
+        unsubItems = subscribeItems((liveItems) => {
+          if (liveItems.length > 0) setItems(liveItems);
+        });
+
+        unsubPOs = subscribePurchaseOrders((livePOs) => {
+          setPos(livePOs);
+        });
+
+        unsubBatches = subscribeBatches((liveBatches) => {
+          if (liveBatches.length > 0) setBatches(liveBatches);
+        });
+
+        unsubLogs = subscribeAuditLogs((liveLogs) => {
+          if (liveLogs.length > 0) setLogs(liveLogs);
+        });
+
+        unsubPricing = subscribePricing((livePricing) => {
+          if (livePricing) {
+            if (livePricing.matrix) setPricingMatrix(livePricing.matrix);
+            if (livePricing.maxRigoutCapPrice) setMaxRigoutCapPrice(livePricing.maxRigoutCapPrice);
+            if (livePricing.kidMaxRigoutCapPrice) setKidMaxRigoutCapPrice(livePricing.kidMaxRigoutCapPrice);
+          }
+        });
+
       } catch (err) {
         console.warn('Firestore load failed, using localStorage cache:', err);
-        // Fall back to localStorage
         try {
           const savedItems = localStorage.getItem('kilt_items');
           const savedBatches = localStorage.getItem('kilt_batches');
@@ -643,14 +674,15 @@ export default function KiltHireApp() {
           const savedStaff = localStorage.getItem('kilt_staff');
           const savedInvites = localStorage.getItem('kilt_invites');
           const savedPricing = localStorage.getItem('kilt_pricing_matrix');
-          setItems(savedItems ? JSON.parse(savedItems) : INITIAL_ITEMS);
-          setBatches(savedBatches ? JSON.parse(savedBatches) : INITIAL_BATCHES);
-          setPos(savedPos ? JSON.parse(savedPos) : INITIAL_POS);
-          setLogs(savedLogs ? JSON.parse(savedLogs) : INITIAL_LOGS);
-          setStaffList(savedStaff ? JSON.parse(savedStaff) : INITIAL_STAFF);
-          setInvites(savedInvites ? JSON.parse(savedInvites) : INITIAL_INVITES);
+
+          if (savedItems) setItems(JSON.parse(savedItems));
+          if (savedBatches) setBatches(JSON.parse(savedBatches));
+          if (savedPos) setPos(JSON.parse(savedPos));
+          if (savedLogs) setLogs(JSON.parse(savedLogs));
+          if (savedStaff) setStaffList(JSON.parse(savedStaff));
+          if (savedInvites) setInvites(JSON.parse(savedInvites));
           if (savedPricing) setPricingMatrix(JSON.parse(savedPricing));
-        } catch {
+        } catch (e) {
           setItems(INITIAL_ITEMS);
           setBatches(INITIAL_BATCHES);
           setPos(INITIAL_POS);
@@ -661,29 +693,6 @@ export default function KiltHireApp() {
           setTartanList(DEFAULT_TARTANS);
         }
       } finally {
-        // Sync mock PO notes to accurate August 8th 2026 dates
-        setPos(prev => prev.map(p => {
-          if (p.id === 'PO-2026-9011' && p.notes?.includes('1st Aug')) {
-            return {
-              ...p,
-              hireStartDate: '2026-08-01',
-              eventDate: '2026-08-05',
-              hireEndDate: '2026-08-07',
-              notes: 'Wedding order. Return deadline was yesterday 7th Aug. 1 Day Overdue!'
-            };
-          }
-          if (p.id === 'PO-2026-8802' && p.notes?.includes('27th July')) {
-            return {
-              ...p,
-              hireStartDate: '2026-07-28',
-              eventDate: '2026-08-01',
-              hireEndDate: '2026-08-02',
-              notes: 'Kids outfit. Return deadline was 2nd Aug - 6 Days Overdue! Customer contacted by phone.'
-            };
-          }
-          return p;
-        }));
-
         setIsLoaded(true);
       }
     }
