@@ -226,6 +226,18 @@ export function subscribePricing(onUpdate: (pricing: PricingSettingsDoc | null) 
   });
 }
 
+export function subscribeStaffProfiles(onUpdate: (staff: StaffUser[]) => void): Unsubscribe {
+  return onSnapshot(collection(requireDb(), 'staff_members'), (snap) => {
+    onUpdate(snap.docs.map(d => d.data() as StaffUser));
+  });
+}
+
+export function subscribeInvites(onUpdate: (invites: StaffInvite[]) => void): Unsubscribe {
+  return onSnapshot(collection(requireDb(), 'security_invites'), (snap) => {
+    onUpdate(snap.docs.map(d => d.data() as StaffInvite));
+  });
+}
+
 // --- CALENDAR NOTES & EVENTS --------------------------------------------------
 
 export async function getCalendarNotes(): Promise<CalendarNote[]> {

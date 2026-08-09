@@ -43,6 +43,8 @@ import {
   upsertCalendarNote,
   deleteCalendarNoteFS,
   subscribeCalendarNotes,
+  subscribeStaffProfiles,
+  subscribeInvites,
 } from '../lib/firestore';
 import { 
   KiltItem, 
@@ -652,7 +654,7 @@ export default function KiltHireApp() {
 
         // Subscribe to real-time Cloud Firestore updates (LIVE INSTANT SYNC across all tablets)
         unsubItems = subscribeItems((liveItems) => {
-          if (liveItems.length > 0) setItems(liveItems);
+          setItems(liveItems);
         });
 
         unsubPOs = subscribePurchaseOrders((livePOs) => {
@@ -660,11 +662,11 @@ export default function KiltHireApp() {
         });
 
         unsubBatches = subscribeBatches((liveBatches) => {
-          if (liveBatches.length > 0) setBatches(liveBatches);
+          setBatches(liveBatches);
         });
 
         unsubLogs = subscribeAuditLogs((liveLogs) => {
-          if (liveLogs.length > 0) setLogs(liveLogs);
+          setLogs(liveLogs);
         });
 
         unsubPricing = subscribePricing((livePricing) => {
@@ -679,33 +681,24 @@ export default function KiltHireApp() {
           setCalendarNotes(liveNotes);
         });
 
-      } catch (err) {
-        console.warn('Firestore load failed, using localStorage cache:', err);
-        try {
-          const savedItems = localStorage.getItem('kilt_items');
-          const savedBatches = localStorage.getItem('kilt_batches');
-          const savedLogs = localStorage.getItem('kilt_logs');
-          const savedStaff = localStorage.getItem('kilt_staff');
-          const savedInvites = localStorage.getItem('kilt_invites');
-          const savedPricing = localStorage.getItem('kilt_pricing_matrix');
+        subscribeStaffProfiles((liveStaff) => {
+          if (liveStaff.length > 0) setStaffList(liveStaff);
+        });
 
-          if (savedItems) setItems(JSON.parse(savedItems));
-          if (savedBatches) setBatches(JSON.parse(savedBatches));
-          setPos([]);
-          if (savedLogs) setLogs(JSON.parse(savedLogs));
-          if (savedStaff) setStaffList(JSON.parse(savedStaff));
-          if (savedInvites) setInvites(JSON.parse(savedInvites));
-          if (savedPricing) setPricingMatrix(JSON.parse(savedPricing));
-        } catch (e) {
-          setItems(INITIAL_ITEMS);
-          setBatches(INITIAL_BATCHES);
-          setPos([]);
-          setLogs(INITIAL_LOGS);
-          setStaffList(INITIAL_STAFF);
-          setInvites(INITIAL_INVITES);
-          setPricingMatrix(DEFAULT_PRICING_MATRIX);
-          setTartanList(DEFAULT_TARTANS);
-        }
+        subscribeInvites((liveInvites) => {
+          setInvites(liveInvites);
+        });
+
+      } catch (err) {
+        console.warn('Firestore load failed, using fallback:', err);
+        setItems(INITIAL_ITEMS);
+        setBatches(INITIAL_BATCHES);
+        setPos([]);
+        setLogs(INITIAL_LOGS);
+        setStaffList(INITIAL_STAFF);
+        setInvites(INITIAL_INVITES);
+        setPricingMatrix(DEFAULT_PRICING_MATRIX);
+        setTartanList(DEFAULT_TARTANS);
       } finally {
         setIsLoaded(true);
       }
@@ -1033,7 +1026,6 @@ export default function KiltHireApp() {
       await upsertStaffProfile(uid, newStaffUser);
       const updatedList = [newStaffUser, ...staffList.filter(s => s.id !== uid && s.email.toLowerCase() !== cleanEmail)];
       setStaffList(updatedList);
-      localStorage.setItem('kilt_staff', JSON.stringify(updatedList));
 
       addAuditLog('DIRECT_ADD_STAFF', `Added new staff member ${cleanName} (${cleanEmail}) as ${directStaffForm.role}`);
       setShowDirectAddStaffModal(false);
@@ -1060,7 +1052,6 @@ export default function KiltHireApp() {
     await upsertStaffProfile(updatedUser.id, updatedUser);
     const updatedList = staffList.map(s => s.id === updatedUser.id ? updatedUser : s);
     setStaffList(updatedList);
-    localStorage.setItem('kilt_staff', JSON.stringify(updatedList));
 
     addAuditLog('EDITED_STAFF_MEMBER', `Updated staff member ${updatedUser.name} (${updatedUser.role})`);
     setShowEditStaffModal(null);
@@ -1077,7 +1068,6 @@ export default function KiltHireApp() {
       const updatedList = staffList.filter(s => s.id !== staffUser.id);
       setStaffList(updatedList);
       await deleteStaffProfile(staffUser.id);
-      localStorage.setItem('kilt_staff', JSON.stringify(updatedList));
       addAuditLog('REMOVED_STAFF_MEMBER', `Removed staff member ${staffUser.name} (${staffUser.email})`);
       showToast(`🗑️ Staff member ${staffUser.name} removed from system.`, 'info');
     }
@@ -1096,7 +1086,6 @@ export default function KiltHireApp() {
         console.warn('Firestore purge invites note:', err);
       }
       setInvites([]);
-      localStorage.setItem('kilt_invites', '[]');
       addAuditLog('PURGED_ALL_INVITES', 'Purged all pending staff invites from system.');
       showToast('🧹 All pending invites purged successfully!', 'success');
     }
@@ -1119,7 +1108,6 @@ export default function KiltHireApp() {
         console.warn('Firestore clear audit logs note:', err);
       }
       setLogs([cleanLog]);
-      localStorage.setItem('kilt_logs', JSON.stringify([cleanLog]));
       showToast('🧹 Audit logs reset to clean state in database!', 'success');
     }
   };
@@ -2835,7 +2823,6 @@ export default function KiltHireApp() {
     }
     try {
       await clearAllPurchaseOrdersFS();
-      localStorage.removeItem('kilt_pos');
       setPos([]);
       addAuditLog('CLEARED_ALL_PURCHASE_ORDERS', 'Cleared all purchase orders from Cloud Firestore database.');
       showToast('🗑️ All Purchase Orders cleared live from database!', 'info');
