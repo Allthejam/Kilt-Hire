@@ -253,6 +253,7 @@ export default function KiltHireApp() {
   const [expandedHistoricPoId, setExpandedHistoricPoId] = useState<string | null>(null);
   const [assistantSizeFilter, setAssistantSizeFilter] = useState<'ALL' | 'Adult' | 'Kid'>('ALL');
   const [assistantCategoryFilter, setAssistantCategoryFilter] = useState<string>('ALL');
+  const [fittingCategoryFilter, setFittingCategoryFilter] = useState<string>('ALL');
   const [assistantTartanFilter, setAssistantTartanFilter] = useState<string>('ALL');
 
   // Inventory tab demographic filter & Sub-Tabs in Admin
@@ -4368,8 +4369,24 @@ export default function KiltHireApp() {
                             {/* FIT-MATCHED STORE INVENTORY PICKER FOR CURRENT OUTFIT */}
                             <div className="space-y-2 pt-2 border-t border-slate-100">
                               {(() => {
+                                // Extract all available categories from Master Pricing Matrix + stock
+                                const availableCategoryOptions = Array.from(
+                                  new Set([
+                                    ...pricingMatrix.map(pm => pm.category),
+                                    ...items.map(it => it.category)
+                                  ])
+                                ).filter(Boolean);
+
                                 const visibleItems = items.filter(item => {
                                   if (item.status === 'RETIRED') return false;
+
+                                  // Master Category Pricing Matrix Filter Dropdown
+                                  if (fittingCategoryFilter !== 'ALL' && item.category !== fittingCategoryFilter) {
+                                    // Always show item if picked for THIS outfit so user sees their pick
+                                    if (!currentOutfit.selectedItemIds.includes(item.id)) {
+                                      return false;
+                                    }
+                                  }
 
                                   // Always keep items selected for THIS outfit so staff can view/unpick if needed
                                   const isSelectedForThisOutfit = currentOutfit.selectedItemIds.includes(item.id);
@@ -4400,15 +4417,47 @@ export default function KiltHireApp() {
 
                                 return (
                                   <>
-                                    <div className="flex flex-wrap items-center justify-between gap-2">
-                                      <span className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5">
-                                        <Package className="w-4 h-4 text-emerald-600" /> Step 3: Pick Available Garments for {currentOutfit.roleLabel}
-                                      </span>
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-[11px] font-extrabold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                                          {visibleItems.length} Available for Selected Dates
+                                    <div className="flex flex-wrap items-center justify-between gap-2.5 bg-slate-900 text-white p-3 rounded-2xl shadow-md">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="font-extrabold text-xs text-amber-400 flex items-center gap-1.5 shrink-0">
+                                          <Package className="w-4 h-4 text-emerald-400" /> Step 3: Garments for {currentOutfit.roleLabel}
                                         </span>
-                                        <span className="text-xs font-extrabold text-amber-900 bg-amber-100 px-3 py-0.5 rounded-full border border-amber-300">
+
+                                        {/* GARMENT CATEGORY SELECT DROPDOWN FROM MASTER PRICING MATRIX */}
+                                        <div className="flex items-center gap-1.5 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700">
+                                          <label className="text-[11px] font-extrabold text-amber-300 whitespace-nowrap">Filter Category:</label>
+                                          <select
+                                            value={fittingCategoryFilter}
+                                            onChange={(e) => setFittingCategoryFilter(e.target.value)}
+                                            className="bg-slate-950 text-white font-extrabold text-xs px-3 py-1 rounded-lg border border-amber-400/50 outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer"
+                                          >
+                                            <option value="ALL">✨ ALL Categories ({availableCategoryOptions.length} Matrix Types)</option>
+                                            {availableCategoryOptions.map(catName => {
+                                              const availableInCat = items.filter(i => {
+                                                if (i.category !== catName || i.status === 'RETIRED' || i.status === 'NEEDS_CLEANING' || i.status === 'IN_REPAIR') return false;
+                                                const hasConflict = pos.some(p => {
+                                                  if (p.orderStatus === 'RETURNED_COMPLETED' || p.orderStatus === 'CANCELLED') return false;
+                                                  if (!p.items.some(it => it.qrCodeId === i.id)) return false;
+                                                  return p.hireStartDate <= fittingForm.returnDate && p.hireEndDate >= fittingForm.collectionDate;
+                                                });
+                                                return !hasConflict;
+                                              }).length;
+
+                                              return (
+                                                <option key={catName} value={catName}>
+                                                  {catName} ({availableInCat} Available)
+                                                </option>
+                                              );
+                                            })}
+                                          </select>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-center gap-2 shrink-0">
+                                        <span className="text-[11px] font-extrabold text-emerald-300 bg-emerald-950/90 px-3 py-1 rounded-full border border-emerald-500/50">
+                                          {visibleItems.length} Available {fittingCategoryFilter === 'ALL' ? 'Overall' : `in ${fittingCategoryFilter}`}
+                                        </span>
+                                        <span className="text-xs font-extrabold text-amber-950 bg-amber-400 px-3 py-1 rounded-full border border-amber-300 shadow-sm">
                                           {currentOutfit.selectedItemIds.length} Picked
                                         </span>
                                       </div>
@@ -4416,9 +4465,9 @@ export default function KiltHireApp() {
 
                                     {visibleItems.length === 0 ? (
                                       <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-4 text-center space-y-1">
-                                        <p className="font-extrabold text-amber-900 text-xs">⚠️ No Available Garments for Selected Hire Period</p>
+                                        <p className="font-extrabold text-amber-900 text-xs">⚠️ No Available Garments in {fittingCategoryFilter === 'ALL' ? 'Stock' : fittingCategoryFilter} for Selected Hire Period</p>
                                         <p className="text-[11px] text-amber-800">
-                                          All stock in this category is currently on hire or reserved between <strong>{fittingForm.collectionDate}</strong> and <strong>{fittingForm.returnDate}</strong>. Try adjusting the collection/return dates or register new stock in Batch Printing.
+                                          All stock in <strong>{fittingCategoryFilter === 'ALL' ? 'all categories' : fittingCategoryFilter}</strong> is currently on hire or reserved between <strong>{fittingForm.collectionDate}</strong> and <strong>{fittingForm.returnDate}</strong>. Select a different category or adjust the hire dates.
                                         </p>
                                       </div>
                                     ) : (
