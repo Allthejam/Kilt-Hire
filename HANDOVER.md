@@ -161,9 +161,9 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+03d0c06  fix: add synchronous itemsRef tracking, immediate Garment Action Popup Modal trigger upon saving registration, and forced video playback stream keep-alive for mobile camera scanning
 c3e1116  fix: clear prefilled text values in new item registration form and use example placeholders with Highland Kiltmakers as example brand
 344e3d5  fix: add localStorage items persistence, smart merge for Firestore snapshot sync, and robust case-insensitive QR code lookup so scanned registered items (like KILT-2592 in repair) always open the 5-option action modal without triggering re-registration
-1e09231  fix: link Start New Order PO directly to full Fitting & Order Station with integrated live camera scanner and callback ref for 0 black screens
 66b56e8  fix: responsive max-height and dual-direction scrolling for mobile scan modals and integrated live camera scanner directly inside Outgoing Order PO Builder
 f1de6bc  feat: implement 2-scan garment lifecycle logic, duplicate registration prevention, and Garment Scan Action Popup Modal for instant state transitions
 cd14112  fix: replace pseudo-random QR generator with ISO 18004 compliant qrcode library, 4-module quiet zone, crisp SVG rendering, and dynamic viewBox so native phone camera apps and built-in scanners scan instantly
