@@ -161,10 +161,10 @@ export interface PurchaseOrder {
   totalHireFee: number;
   totalDepositHeld: number;
   paypalTransactionId?: string;
-  paymentStatus: 'UNPAID' | 'PARTIAL_DEPOSIT' | 'PAID_WITH_DEPOSIT' | 'REFUNDED' | 'CANCELLED';
+  paymentStatus: 'UNPAID' | 'PARTIAL_DEPOSIT' | 'PAID_WITH_DEPOSIT' | 'FULL_BALANCE_PAID' | 'REFUNDED' | 'FULLY_REFUNDED' | 'DEPOSIT_PARTIALLY_REFUNDED' | 'CANCELLED';
   orderStatus: POOrderStatus;
   measurements?: CustomerMeasurements;
-  depositPaymentMethod?: 'PAYPAL_ONLINE' | 'CARD_IN_STORE' | 'CASH_IN_STORE' | 'PAPER_DIARY_LEGACY';
+  depositPaymentMethod?: 'PAYPAL_ONLINE' | 'CARD_IN_STORE' | 'CASH_IN_STORE' | 'IN_STORE_CASH' | 'IN_STORE_CARD' | 'PAPER_DIARY_LEGACY';
   depositPaidAt?: string;
   cancellationRecord?: CancellationRecord;
   balancePaidAt?: string;

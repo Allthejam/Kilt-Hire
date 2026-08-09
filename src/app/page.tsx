@@ -103,6 +103,7 @@ import {
   ShieldCheck, 
   Clock, 
   X,
+  XCircle,
   Lock,
   Mail,
   Key,
@@ -11159,6 +11160,8 @@ export default function KiltHireApp() {
             </div>
           </div>
         </div>
+      )}
+
       {/* CANCEL HIRE PURCHASE ORDER SAFEGUARD MODAL */}
       {showCancelPoModal && (
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
