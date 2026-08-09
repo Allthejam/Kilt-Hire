@@ -117,6 +117,15 @@ export async function upsertPurchaseOrder(po: PurchaseOrder): Promise<void> {
   await setDoc(doc(requireDb(), 'purchase_orders', po.id), sanitizeForFirestore(po), { merge: true });
 }
 
+export async function deletePurchaseOrderFS(id: string): Promise<void> {
+  await deleteDoc(doc(requireDb(), 'purchase_orders', id));
+}
+
+export async function clearAllPurchaseOrdersFS(): Promise<void> {
+  const snap = await getDocs(collection(requireDb(), 'purchase_orders'));
+  await Promise.all(snap.docs.map(d => deleteDoc(doc(requireDb(), 'purchase_orders', d.id))));
+}
+
 // --- AUDIT LOGS ---------------------------------------------------------------
 
 export async function getAuditLogs(): Promise<AuditLog[]> {

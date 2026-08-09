@@ -26,6 +26,8 @@ import {
   upsertBatch,
   getPurchaseOrders,
   upsertPurchaseOrder,
+  deletePurchaseOrderFS,
+  clearAllPurchaseOrdersFS,
   getAuditLogs,
   addAuditLogFS,
   clearAuditLogsFS,
@@ -2365,20 +2367,19 @@ export default function KiltHireApp() {
       newPaymentStatus = 'DEPOSIT_PARTIALLY_REFUNDED';
     }
 
-    setPos(prev => prev.map(p => {
-      if (p.id === activeReturnPo.id) {
-        return {
-          ...p,
-          items: updatedPoItems,
-          paymentStatus: newPaymentStatus,
-          orderStatus: allReturned ? 'RETURNED_COMPLETED' : p.orderStatus,
-          notes: retainedLateFee > 0 
-            ? `${p.notes || ''} [LATE RETURN FEE: Retained £${retainedLateFee} from deposit. Note: ${lateFeeReason || 'Late return penalty'}]`
-            : p.notes
-        };
-      }
-      return p;
-    }));
+    const updatedPo: PurchaseOrder = {
+      ...activeReturnPo,
+      items: updatedPoItems,
+      paymentStatus: newPaymentStatus,
+      orderStatus: allReturned ? 'RETURNED_COMPLETED' : activeReturnPo.orderStatus,
+      notes: retainedLateFee > 0 
+        ? `${activeReturnPo.notes || ''} [LATE RETURN FEE: Retained £${retainedLateFee} from deposit. Note: ${lateFeeReason || 'Late return penalty'}]`
+        : activeReturnPo.notes
+    };
+
+    upsertPurchaseOrder(updatedPo).catch(err => console.warn('Failed to update PO in Firestore:', err));
+
+    setPos(prev => prev.map(p => p.id === activeReturnPo.id ? updatedPo : p));
 
     const summaryDetails = `Processed PO ${activeReturnPo.id} Return for ${activeReturnPo.customerName}: Net PayPal Refund £${netRefundToCustomer}. Retained £${retainedLateFee} late return fee, £${totalHeldDepositForRepair} for repairs, £${totalHeldDepositForMissing} for missing items.`;
     addAuditLog('PROCESSED_MULTI_ITEM_PO_RETURN', summaryDetails);
@@ -2522,7 +2523,7 @@ export default function KiltHireApp() {
   };
 
   // Create Purchase Order (Hire Out) with Dynamic Full Rigout Price Cap Calculation!
-  const handleCreatePoSubmit = (e: React.FormEvent) => {
+  const handleCreatePoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
     if (newPoForm.selectedItemIds.length === 0) {
@@ -2590,6 +2591,7 @@ export default function KiltHireApp() {
       return item;
     }));
 
+    await upsertPurchaseOrder(newPo);
     setPos(prev => [newPo, ...prev]);
     addAuditLog(
       'CREATED_PO_PAYPAL', 
@@ -2611,23 +2613,49 @@ export default function KiltHireApp() {
   };
 
   // EDIT PO Details (Shop Assistant / Staff Action)
-  const handleEditPoSubmit = (e: React.FormEvent) => {
+  const handleEditPoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!showEditPoModal) return;
 
-    setPos(prev => prev.map(p => {
-      if (p.id === showEditPoModal.id) {
-        return {
-          ...p,
-          notes: editPoNotes
-        };
-      }
-      return p;
-    }));
+    const updatedPo = {
+      ...showEditPoModal,
+      notes: editPoNotes
+    };
+
+    await upsertPurchaseOrder(updatedPo);
+    setPos(prev => prev.map(p => p.id === showEditPoModal.id ? updatedPo : p));
 
     addAuditLog('EDITED_PO', `Updated notes/details on Purchase Order ${showEditPoModal.id}`);
     setShowEditPoModal(null);
     showToast(`Updated Purchase Order ${showEditPoModal.id} notes.`, 'info');
+  };
+
+  const handleClearAllPosFromFirestore = async () => {
+    if (!confirm('🚨 Are you sure you want to CLEAR ALL Purchase Orders from the live Cloud Firestore database? This action cannot be undone.')) {
+      return;
+    }
+    try {
+      await clearAllPurchaseOrdersFS();
+      setPos([]);
+      addAuditLog('CLEARED_ALL_PURCHASE_ORDERS', 'Cleared all purchase orders from Cloud Firestore database.');
+      showToast('🗑️ All Purchase Orders cleared live from database!', 'info');
+    } catch (err: any) {
+      showToast(`Failed to clear purchase orders: ${err.message}`, 'warning');
+    }
+  };
+
+  const handleDeleteSinglePoFromFirestore = async (poId: string) => {
+    if (!confirm(`Are you sure you want to delete Purchase Order ${poId} from the database?`)) {
+      return;
+    }
+    try {
+      await deletePurchaseOrderFS(poId);
+      setPos(prev => prev.filter(p => p.id !== poId));
+      addAuditLog('DELETED_PURCHASE_ORDER', `Deleted Purchase Order ${poId} from Cloud Firestore database.`, poId);
+      showToast(`🗑️ Purchase Order ${poId} deleted from database.`, 'info');
+    } catch (err: any) {
+      showToast(`Failed to delete PO: ${err.message}`, 'warning');
+    }
   };
 
   const scItem = items.find(i => i.id === scannedCode);
@@ -8144,61 +8172,98 @@ export default function KiltHireApp() {
                         <CreditCard className="w-5 h-5 text-amber-600" /> Hire Purchase Orders & PayPal Deposit Ledger
                       </h2>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        Track active customer hires, PayPal deposits held, returned clean items, and Full Rigout price caps.
+                        Track active customer hires, PayPal deposits held, returned clean items, and Full Rigout price caps. Saved live to Firestore database.
                       </p>
                     </div>
 
-                    <button
-                      onClick={() => setShowCreatePoModal(true)}
-                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm flex items-center gap-2 transition"
-                    >
-                      <PlusCircle className="w-4 h-4" /> Create New Hire PO
-                    </button>
+                    <div className="flex items-center gap-2.5">
+                      {pos.length > 0 && (
+                        <button
+                          onClick={handleClearAllPosFromFirestore}
+                          className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200 shadow-sm flex items-center gap-1.5 transition"
+                          title="Clear all POs from Cloud Firestore database"
+                        >
+                          <Trash2 className="w-4 h-4 text-rose-600" /> Clear All POs ({pos.length})
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => setShowCreatePoModal(true)}
+                        className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm flex items-center gap-2 transition"
+                      >
+                        <PlusCircle className="w-4 h-4" /> Create New Hire PO
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="space-y-4">
-                    {pos.map(po => {
-                      const returnedCount = po.items.filter(i => i.returned).length;
-                      const totalCount = po.items.length;
-                      const isComplete = returnedCount === totalCount;
+                  {pos.length === 0 ? (
+                    <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center space-y-3 shadow-sm">
+                      <div className="w-14 h-14 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto border border-amber-200">
+                        <CreditCard className="w-7 h-7" />
+                      </div>
+                      <h3 className="text-base font-extrabold text-slate-900">No Purchase Orders in Database</h3>
+                      <p className="text-xs text-slate-500 max-w-md mx-auto">
+                        Your Purchase Orders ledger is connected live to Cloud Firestore. Create a new order via the Fitting Station or click Create New Hire PO above.
+                      </p>
+                      <button
+                        onClick={() => setShowCreatePoModal(true)}
+                        className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm inline-flex items-center gap-1.5 transition mt-2"
+                      >
+                        <PlusCircle className="w-4 h-4" /> Create First Live PO
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {pos.map(po => {
+                        const returnedCount = po.items.filter(i => i.returned).length;
+                        const totalCount = po.items.length;
+                        const isComplete = returnedCount === totalCount;
 
-                      return (
-                        <div key={po.id} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
-                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-mono font-extrabold text-amber-700 text-base">{po.id}</span>
-                                <span className="px-2.5 py-0.5 text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full">
-                                  {po.paymentStatus}
-                                </span>
-                                {po.fullRigoutCapApplied && (
-                                  <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 rounded">
-                                    ✨ Full Rigout Price Cap Applied (-£{po.fullRigoutDiscount})
+                        return (
+                          <div key={po.id} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono font-extrabold text-amber-700 text-base">{po.id}</span>
+                                  <span className="px-2.5 py-0.5 text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full">
+                                    {po.paymentStatus}
                                   </span>
-                                )}
+                                  {po.fullRigoutCapApplied && (
+                                    <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 rounded">
+                                      ✨ Full Rigout Price Cap Applied (-£{po.fullRigoutDiscount})
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-slate-700 mt-1">
+                                  <strong>Customer:</strong> {po.customerName} ({po.customerPhone} • {po.customerEmail})
+                                </p>
                               </div>
-                              <p className="text-xs text-slate-700 mt-1">
-                                <strong>Customer:</strong> {po.customerName} ({po.customerPhone} • {po.customerEmail})
-                              </p>
-                            </div>
 
-                            <div className="text-right text-xs flex items-center gap-3">
-                              <button
-                                onClick={() => openPoReturnChecklist(po)}
-                                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center gap-1"
-                              >
-                                <RotateCcw className="w-3.5 h-3.5" /> Process PO Batch Return
-                              </button>
+                              <div className="text-right text-xs flex items-center gap-2.5">
+                                <button
+                                  onClick={() => openPoReturnChecklist(po)}
+                                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center gap-1"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5" /> Process PO Batch Return
+                                </button>
 
-                              <button
-                                onClick={() => {
-                                  setShowEditPoModal(po);
-                                  setEditPoNotes(po.notes || '');
-                                }}
-                                className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm transition"
-                              >
-                                <Edit3 className="w-3.5 h-3.5 text-amber-600" /> Edit PO Notes
-                              </button>
+                                <button
+                                  onClick={() => {
+                                    setShowEditPoModal(po);
+                                    setEditPoNotes(po.notes || '');
+                                  }}
+                                  className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm transition"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5 text-amber-600" /> Edit Notes
+                                </button>
+
+                                <button
+                                  onClick={() => handleDeleteSinglePoFromFirestore(po.id)}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition border border-slate-200"
+                                  title="Delete Purchase Order from Database"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
 
                               <div>
                                 <span className="text-slate-500 block">Hire Period: {po.hireStartDate} to {po.hireEndDate}</span>
@@ -8270,8 +8335,9 @@ export default function KiltHireApp() {
                       );
                     })}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+            )}
 
               {/* TAB 5: DRY CLEANING LAUNDRY */}
               {activeTab === 'laundry' && (
