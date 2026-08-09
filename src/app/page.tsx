@@ -411,6 +411,7 @@ export default function KiltHireApp() {
   const [calendarNotes, setCalendarNotes] = useState<CalendarNote[]>([]);
   const [newCalNoteText, setNewCalNoteText] = useState('');
   const [newCalNoteType, setNewCalNoteType] = useState<'NOTE' | 'EVENT' | 'CLOSURE'>('NOTE');
+  const [showCancelledInCalendar, setShowCancelledInCalendar] = useState<boolean>(false);
 
   // Invite & Staff Management Form State
   const [newInviteEmail, setNewInviteEmail] = useState('');
@@ -6111,15 +6112,19 @@ export default function KiltHireApp() {
                                 const isSelected = cell.dateStr === calSelectedDate;
                                 const isToday = cell.dateStr === new Date().toISOString().slice(0, 10);
 
-                                // Find POs matching this date
-                                const outCount = pos.filter(p => p.hireStartDate === cell.dateStr).length;
-                                const inCount = pos.filter(p => p.hireEndDate === cell.dateStr).length;
+                                // Find POs matching this date (excluding CANCELLED orders)
+                                const outCount = pos.filter(p => p.hireStartDate === cell.dateStr && p.orderStatus !== 'CANCELLED').length;
+                                const inCount = pos.filter(p => p.hireEndDate === cell.dateStr && p.orderStatus !== 'CANCELLED').length;
                                 const noteCount = calendarNotes.filter(n => n.date === cell.dateStr).length;
 
                                 const selT = new Date(cell.dateStr).getTime();
                                 const pickPackCount = pos.filter(p => {
                                   const t = new Date(p.hireStartDate).getTime();
-                                  return t >= selT && t <= selT + 2 * 86400000 && p.orderStatus !== 'READY_FOR_COLLECTION' && p.orderStatus !== 'OUT_ON_HIRE' && p.orderStatus !== 'RETURNED_COMPLETED';
+                                  return t >= selT && t <= selT + 2 * 86400000 && 
+                                         p.orderStatus !== 'READY_FOR_COLLECTION' && 
+                                         p.orderStatus !== 'OUT_ON_HIRE' && 
+                                         p.orderStatus !== 'RETURNED_COMPLETED' && 
+                                         p.orderStatus !== 'CANCELLED';
                                 }).length;
 
                                 return (
@@ -6276,12 +6281,18 @@ export default function KiltHireApp() {
                     const selTime = new Date(calSelectedDate).getTime();
                     const twoDaysLaterTime = selTime + 2 * 86400000;
 
-                    const outgoingToday = pos.filter(p => p.hireStartDate === calSelectedDate);
-                    const returnsToday = pos.filter(p => p.hireEndDate === calSelectedDate);
+                    const outgoingToday = pos.filter(p => p.hireStartDate === calSelectedDate && p.orderStatus !== 'CANCELLED');
+                    const returnsToday = pos.filter(p => p.hireEndDate === calSelectedDate && p.orderStatus !== 'CANCELLED');
                     const pickPackQueue = pos.filter(p => {
                       const t = new Date(p.hireStartDate).getTime();
-                      return t >= selTime && t <= twoDaysLaterTime && p.orderStatus !== 'READY_FOR_COLLECTION' && p.orderStatus !== 'OUT_ON_HIRE' && p.orderStatus !== 'RETURNED_COMPLETED';
+                      return t >= selTime && t <= twoDaysLaterTime && 
+                             p.orderStatus !== 'READY_FOR_COLLECTION' && 
+                             p.orderStatus !== 'OUT_ON_HIRE' && 
+                             p.orderStatus !== 'RETURNED_COMPLETED' && 
+                             p.orderStatus !== 'CANCELLED';
                     });
+
+                    const cancelledToday = pos.filter(p => (p.hireStartDate === calSelectedDate || p.hireEndDate === calSelectedDate) && p.orderStatus === 'CANCELLED');
 
                     const activeSectionsCount = (outgoingToday.length > 0 ? 1 : 0) + (returnsToday.length > 0 ? 1 : 0) + (pickPackQueue.length > 0 ? 1 : 0);
 
@@ -6295,7 +6306,7 @@ export default function KiltHireApp() {
                             <p className="text-xs text-slate-500">Only showing active movements and 2-day pick & pack assembly queue for this date.</p>
                           </div>
 
-                          <div className="flex items-center gap-2 text-xs font-bold">
+                          <div className="flex items-center gap-2 text-xs font-bold flex-wrap">
                             {outgoingToday.length > 0 && (
                               <span className="bg-amber-100 text-amber-900 border border-amber-300 px-3 py-1.5 rounded-xl">
                                 🟡 {outgoingToday.length} Outgoing Pickups
@@ -6311,8 +6322,68 @@ export default function KiltHireApp() {
                                 📦 {pickPackQueue.length} Pick & Pack Assembly Queue
                               </span>
                             )}
+
+                            {cancelledToday.length > 0 && (
+                              <button
+                                onClick={() => setShowCancelledInCalendar(prev => !prev)}
+                                className={`px-3.5 py-1.5 text-xs font-extrabold rounded-xl border transition flex items-center gap-1.5 cursor-pointer shadow-2xs ${
+                                  showCancelledInCalendar 
+                                    ? 'bg-rose-600 text-white border-rose-700 shadow-xs' 
+                                    : 'bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100'
+                                }`}
+                              >
+                                <XCircle className="w-3.5 h-3.5" />
+                                {showCancelledInCalendar ? 'Hide Cancelled Orders' : `See Cancellations (${cancelledToday.length})`}
+                              </button>
+                            )}
                           </div>
                         </div>
+
+                        {/* SEE CANCELLATIONS DRAWER SECTION */}
+                        {showCancelledInCalendar && cancelledToday.length > 0 && (
+                          <div className="bg-rose-50/80 border border-rose-200 rounded-2xl p-4 space-y-3">
+                            <div className="flex items-center justify-between border-b border-rose-200 pb-2">
+                              <h5 className="font-extrabold text-rose-950 text-xs flex items-center gap-1.5 uppercase tracking-wider">
+                                <XCircle className="w-4 h-4 text-rose-600" /> Cancelled Orders History on {calSelectedDate} ({cancelledToday.length})
+                              </h5>
+                              <span className="text-[10px] font-extrabold text-rose-800 bg-white px-2 py-0.5 rounded border border-rose-300">
+                                Hidden by Default
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {cancelledToday.map(po => (
+                                <div key={po.id} className="bg-white border border-rose-200 p-3.5 rounded-xl space-y-2 shadow-2xs">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-mono font-extrabold text-xs text-rose-900 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">{po.id}</span>
+                                    <span className="text-[10px] font-extrabold bg-rose-100 text-rose-900 px-2 py-0.5 rounded-full border border-rose-300">
+                                      ❌ Order Cancelled
+                                    </span>
+                                  </div>
+
+                                  <div>
+                                    <strong className="text-slate-900 text-xs block">{po.customerName}</strong>
+                                    <span className="text-[11px] text-slate-500 block">{po.customerEmail} • {po.customerPhone}</span>
+                                  </div>
+
+                                  {po.cancellationRecord && (
+                                    <div className="bg-rose-50 p-2.5 rounded-lg border border-rose-200 text-[11px] text-rose-950 space-y-1 font-medium">
+                                      <p><strong>Reason:</strong> "{po.cancellationRecord.reason}"</p>
+                                      <p><strong>Refund Option:</strong> {po.cancellationRecord.depositRefundStatus} (£{po.cancellationRecord.refundAmount})</p>
+                                      <p className="text-[10px] text-rose-800">
+                                        Authorized by <strong>{po.cancellationRecord.cancelledByStaff}</strong> on {po.cancellationRecord.cancelledAt}
+                                      </p>
+                                    </div>
+                                  )}
+
+                                  <div className="text-[10px] font-bold text-slate-500 bg-slate-50 p-2 rounded-lg border">
+                                    Restored Stock Items ({po.items.length}): {po.items.map(i => i.itemName).join(', ')}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
 
                         {activeSectionsCount === 0 ? (
                           <div className="text-center py-10 bg-slate-50 border border-dashed border-slate-300 rounded-2xl space-y-2">
