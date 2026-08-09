@@ -113,6 +113,7 @@ import {
   LogOut,
   Send,
   Copy,
+  ShoppingCart,
   Check,
   Menu,
   ChevronRight,
@@ -315,6 +316,7 @@ export default function KiltHireApp() {
 
   // Modals state
   const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [scanActionItem, setScanActionItem] = useState<KiltItem | null>(null);
   const [showSendRepairModal, setShowSendRepairModal] = useState(false);
   
   // PWA Installability State
@@ -1884,7 +1886,8 @@ export default function KiltHireApp() {
     setScannedCode(cleanCode);
     setSimulatedInput('');
     
-    const existing = items.find(i => i.id === cleanCode && i.status !== 'RETIRED');
+    // Check if code is already registered in database (active or retired)
+    const existing = items.find(i => i.id === cleanCode);
 
     // IF RETURN CHECKLIST MODAL IS OPEN: VERIFY THIS ITEM WITH PHYSICAL QR SCAN!
     if (activeReturnPo && activeReturnPo.items.some(li => li.qrCodeId === cleanCode)) {
@@ -1896,8 +1899,22 @@ export default function KiltHireApp() {
       return;
     }
 
+    // IF OUTGOING ORDER PO MODAL IS OPEN AND ITEM IS AVAILABLE: ACCUMULATE DIRECTLY INTO PO
+    if (showCreatePoModal && existing && existing.status === 'AVAILABLE') {
+      if (!newPoForm.selectedItemIds.includes(cleanCode)) {
+        setNewPoForm(prev => ({
+          ...prev,
+          selectedItemIds: [...prev.selectedItemIds, cleanCode]
+        }));
+        showToast(`➕ Added ${existing.sizeGroup} ${existing.name} (${cleanCode}) to active Outgoing PO!`, 'success');
+      } else {
+        showToast(`ℹ️ Item (${cleanCode}) is already in this Outgoing PO list.`, 'info');
+      }
+      return;
+    }
+
     if (!existing) {
-      // 🚀 AUTOMATED TRIGGER 1: UNREGISTERED ITEM DETECTED!
+      // 🚀 SCAN 1: UNREGISTERED ITEM DETECTED -> OPEN NEW ITEM REGISTRATION FORM!
       const batchMatch = batches.find(b => b.qrCodes.includes(cleanCode));
       const autoCategory: ItemCategory = batchMatch ? batchMatch.category : 
         cleanCode.startsWith('KILT') ? 'Kilts' :
@@ -1927,48 +1944,11 @@ export default function KiltHireApp() {
 
       // AUTO POPUP REGISTER FORM IMMEDIATELY!
       setShowRegisterModal(true);
-      showToast(`✨ New ${isKid ? 'Kids' : 'Adult'} QR (${cleanCode}) detected! Save description to add to inventory.`, 'info');
-
-    } else if (existing.status === 'ON_HIRE') {
-      // 🚀 AUTOMATED TRIGGER 2: ON-HIRE ITEM DETECTED! AUTO-OPEN MULTI-ITEM PO CHECKLIST!
-      const linkedPo = pos.find(p => p.id === existing.currentPoId);
-      if (linkedPo) {
-        openPoReturnChecklist(linkedPo, cleanCode);
-        showToast(`📦 Garment (${cleanCode}) belongs to PO ${linkedPo.id} (${linkedPo.customerName}). Opened full multi-item checklist!`, 'info');
-      } else {
-        showToast(`⚠️ Item (${cleanCode}) is marked on hire but no active PO was found.`, 'warning');
-      }
-
-    } else if (existing.status === 'IN_REPAIR') {
-      showToast(`🔧 ${existing.sizeGroup} Item (${cleanCode}) is in Repair. Move to available stock before hiring out.`, 'warning');
-
-    } else if (existing.status === 'AVAILABLE') {
-      // 🚀 AUTOMATED TRIGGER 2: OUTGOING ITEM SCAN CREATES / ACCUMULATES INTO PURCHASE ORDER!
-      if (showCreatePoModal) {
-        if (!newPoForm.selectedItemIds.includes(cleanCode)) {
-          setNewPoForm(prev => ({
-            ...prev,
-            selectedItemIds: [...prev.selectedItemIds, cleanCode]
-          }));
-          showToast(`➕ Added ${existing.sizeGroup} ${existing.name} (${cleanCode}) to active Outgoing PO!`, 'success');
-        } else {
-          showToast(`ℹ️ Item (${cleanCode}) is already in this Outgoing PO list.`, 'info');
-        }
-      } else {
-        // First scan of an outgoing item: open PO Builder automatically with this item!
-        setShowCreatePoModal(true);
-        setNewPoForm(prev => ({
-          ...prev,
-          selectedItemIds: [cleanCode],
-          hireStartDate: new Date().toISOString().slice(0, 10),
-          hireEndDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-        }));
-        showToast(`📦 Started Outgoing Purchase Order Builder with 1st item (${cleanCode})! Aim scanner to add more garments to this PO.`, 'success');
-      }
+      showToast(`✨ New ${isKid ? 'Kids' : 'Adult'} QR (${cleanCode}) detected! Save description to add to stock.`, 'info');
     } else {
-      // Not found in inventory at all — show unrecognised error
-      setScanError(cleanCode);
-      showToast(`⚠️ QR code "${cleanCode}" not recognised — not in your inventory.`, 'warning');
+      // 🚀 SCAN 2 & SUBSEQUENT SCANS: ITEM ALREADY IN STOCK -> OPEN ACTION POPUP MODAL!
+      setScanActionItem(existing);
+      showToast(`🔍 ${existing.name} (${existing.id}) detected! Select garment action below.`, 'info');
     }
   };
 
@@ -2025,6 +2005,15 @@ export default function KiltHireApp() {
   const handleRegisterItem = (e: React.FormEvent) => {
     e.preventDefault();
     if (!scannedCode || !currentUser) return;
+
+    // Safeguard: Check if item is already in database
+    const alreadyExists = items.find(i => i.id === scannedCode);
+    if (alreadyExists) {
+      showToast(`⚠️ ${scannedCode} is ALREADY in your stock database! Duplicate prevented.`, 'warning');
+      setShowRegisterModal(false);
+      setScanActionItem(alreadyExists);
+      return;
+    }
 
     const newItem: KiltItem = {
       id: scannedCode,
@@ -10405,6 +10394,169 @@ export default function KiltHireApp() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* GARMENT SCAN ACTION POPUP MODAL (SCAN 2 & SUBSEQUENT SCANS) */}
+      {scanActionItem && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <span className="text-[10px] font-extrabold text-amber-700 uppercase tracking-wider block">🏷️ Garment Scan Recognized</span>
+                <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+                  <QrCode className="w-5 h-5 text-amber-600" /> {scanActionItem.id}
+                </h3>
+              </div>
+              <button 
+                onClick={() => setScanActionItem(null)} 
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* GARMENT SPECS CARD */}
+            <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="font-extrabold text-slate-900 text-sm">{scanActionItem.name}</h4>
+                <span className={`px-2.5 py-1 text-[10px] font-extrabold rounded-full border flex items-center gap-1 ${
+                  scanActionItem.status === 'AVAILABLE' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
+                  scanActionItem.status === 'ON_HIRE' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                  scanActionItem.status === 'NEEDS_CLEANING' ? 'bg-cyan-100 text-cyan-900 border-cyan-300' :
+                  scanActionItem.status === 'IN_REPAIR' ? 'bg-amber-100 text-amber-900 border-amber-300' :
+                  'bg-rose-100 text-rose-800 border-rose-300'
+                }`}>
+                  {scanActionItem.status === 'AVAILABLE' && '✨ AVAILABLE IN STOCK'}
+                  {scanActionItem.status === 'ON_HIRE' && `🔒 OUT ON HIRE (PO ${scanActionItem.currentPoId || 'Active'})`}
+                  {scanActionItem.status === 'NEEDS_CLEANING' && '🧼 AT DRY CLEANERS'}
+                  {scanActionItem.status === 'IN_REPAIR' && '🔧 IN REPAIR WORKSHOP'}
+                  {scanActionItem.status === 'RETIRED' && '📦 RETIRED / SOLD'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 font-medium">
+                {scanActionItem.category} ({scanActionItem.sizeGroup}) • {scanActionItem.tartanOrColour} • {scanActionItem.size}
+              </p>
+              <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-200">
+                <span className="font-bold text-amber-900">£{scanActionItem.hireRate} hire fee</span>
+                <span className="text-emerald-700 font-bold">£{scanActionItem.depositAmount} deposit held</span>
+              </div>
+            </div>
+
+            {/* ACTION OPTIONS GRID */}
+            <div className="space-y-2">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">Select Action for this Garment:</span>
+
+              {/* ACTION 1: START / ADD TO ORDER PO */}
+              <button
+                onClick={() => {
+                  const itemId = scanActionItem.id;
+                  setScanActionItem(null);
+                  if (showCreatePoModal) {
+                    if (!newPoForm.selectedItemIds.includes(itemId)) {
+                      setNewPoForm(prev => ({
+                        ...prev,
+                        selectedItemIds: [...prev.selectedItemIds, itemId]
+                      }));
+                      showToast(`➕ Added ${scanActionItem.name} (${itemId}) to active Outgoing PO!`, 'success');
+                    } else {
+                      showToast(`ℹ️ ${itemId} is already in this Outgoing PO.`, 'info');
+                    }
+                  } else {
+                    setShowCreatePoModal(true);
+                    setNewPoForm(prev => ({
+                      ...prev,
+                      selectedItemIds: [itemId],
+                      hireStartDate: new Date().toISOString().slice(0, 10),
+                      hireEndDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+                    }));
+                    showToast(`🛒 Started Outgoing Purchase Order with ${itemId}!`, 'success');
+                  }
+                }}
+                className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-2xl shadow-sm transition flex items-center justify-between cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <ShoppingCart className="w-4 h-4 text-emerald-200" />
+                  <span>Start New Order PO (Hire Out)</span>
+                </div>
+                <span className="text-[10px] bg-emerald-700 text-emerald-100 px-2 py-0.5 rounded-full font-bold">🛒 Hire Out</span>
+              </button>
+
+              {/* ACTION 2: PLACE BACK IN AVAILABLE STOCK (IF CURRENTLY OUT/REPAIR/CLEANING/RETIRED) */}
+              {scanActionItem.status !== 'AVAILABLE' && (
+                <button
+                  onClick={() => {
+                    const updatedItem: KiltItem = {
+                      ...scanActionItem,
+                      status: 'AVAILABLE',
+                      currentPoId: undefined
+                    };
+                    setItems(prev => prev.map(i => i.id === scanActionItem.id ? updatedItem : i));
+                    upsertItem(updatedItem).catch(err => console.warn('Failed to update item status in Firestore:', err));
+                    addAuditLog('RETURNED_TO_AVAILABLE_STOCK', `Moved garment ${scanActionItem.id} back to AVAILABLE stock via scan action`, scanActionItem.id);
+                    showToast(`✨ ${scanActionItem.name} (${scanActionItem.id}) is now AVAILABLE in Stock!`, 'success');
+                    setScanActionItem(null);
+                  }}
+                  className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-2xl shadow-sm transition flex items-center justify-between cursor-pointer"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Sparkles className="w-4 h-4 text-blue-200" />
+                    <span>Place Back in Available Stock</span>
+                  </div>
+                  <span className="text-[10px] bg-blue-700 text-blue-100 px-2 py-0.5 rounded-full font-bold">✨ Move to Stock</span>
+                </button>
+              )}
+
+              {/* ACTION 3: PLACE IN DRY CLEANING */}
+              <button
+                onClick={() => {
+                  const itemId = scanActionItem.id;
+                  setScanActionItem(null);
+                  handleManualSendToLaundry(itemId);
+                }}
+                className="w-full py-3 px-4 bg-cyan-50 hover:bg-cyan-100 text-cyan-900 border border-cyan-300 font-bold text-xs rounded-2xl transition flex items-center justify-between cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Sparkles className="w-4 h-4 text-cyan-600" />
+                  <span>Place in Dry Cleaning Queue</span>
+                </div>
+                <span className="text-[10px] bg-cyan-200 text-cyan-900 px-2 py-0.5 rounded-full font-bold">🧼 Laundry</span>
+              </button>
+
+              {/* ACTION 4: PLACE IN REPAIR WORKSHOP */}
+              <button
+                onClick={() => {
+                  const itemId = scanActionItem.id;
+                  setScanActionItem(null);
+                  setScannedCode(itemId);
+                  setShowSendRepairModal(true);
+                }}
+                className="w-full py-3 px-4 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs rounded-2xl transition flex items-center justify-between cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Wrench className="w-4 h-4 text-amber-600" />
+                  <span>Place in Repair Workshop</span>
+                </div>
+                <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full font-bold">🔧 Repair</span>
+              </button>
+
+              {/* ACTION 5: MARK SOLD AS EX-HIRE / RETIRE ITEM */}
+              <button
+                onClick={() => {
+                  const itemToRetire = scanActionItem;
+                  setScanActionItem(null);
+                  setShowRemoveRotationModal(itemToRetire);
+                }}
+                className="w-full py-3 px-4 bg-rose-50 hover:bg-rose-100 text-rose-900 border border-rose-300 font-bold text-xs rounded-2xl transition flex items-center justify-between cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Archive className="w-4 h-4 text-rose-600" />
+                  <span>Sold as Ex-Hire / Retire Item</span>
+                </div>
+                <span className="text-[10px] bg-rose-200 text-rose-900 px-2 py-0.5 rounded-full font-bold">📦 Retire / Sold</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
