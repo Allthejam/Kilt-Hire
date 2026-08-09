@@ -116,7 +116,9 @@ export async function getPurchaseOrders(): Promise<PurchaseOrder[]> {
 }
 
 export async function upsertPurchaseOrder(po: PurchaseOrder): Promise<void> {
-  await setDoc(doc(requireDb(), 'purchase_orders', po.id), sanitizeForFirestore(po), { merge: true });
+  const sanitized = sanitizeForFirestore(po);
+  console.log(`🔥 [Firestore] Saving PO ${po.id} to collection purchase_orders:`, sanitized);
+  await setDoc(doc(requireDb(), 'purchase_orders', po.id), sanitized, { merge: true });
 }
 
 export async function deletePurchaseOrderFS(id: string): Promise<void> {

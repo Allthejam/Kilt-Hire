@@ -781,22 +781,11 @@ export default function KiltHireApp() {
     return () => unsubscribe();
   }, [isLoaded]);
 
-  // ─── SAVE: localStorage cache + Firestore mirror ──────────────────────────────
+  // ─── SAVE UI PREFERENCES ONLY (DATA LIVES 100% IN FIRESTORE) ───────────────────
   useEffect(() => {
     if (!isLoaded) return;
-    localStorage.setItem('kilt_items', JSON.stringify(items));
-    localStorage.setItem('kilt_batches', JSON.stringify(batches));
-    localStorage.setItem('kilt_pos', JSON.stringify(pos));
-    localStorage.setItem('kilt_logs', JSON.stringify(logs));
-    localStorage.setItem('kilt_staff', JSON.stringify(staffList));
-    localStorage.setItem('kilt_invites', JSON.stringify(invites));
-    localStorage.setItem('kilt_max_rigout_cap', maxRigoutCapPrice.toString());
-    localStorage.setItem('kilt_kid_max_rigout_cap', kidMaxRigoutCapPrice.toString());
-    localStorage.setItem('kilt_pricing_matrix', JSON.stringify(pricingMatrix));
     localStorage.setItem('kilt_interface_mode', interfaceMode);
-    localStorage.setItem('kilt_tartans', JSON.stringify(tartanList));
-    localStorage.setItem('kilt_current_user', JSON.stringify(currentUser));
-  }, [items, batches, pos, logs, staffList, invites, maxRigoutCapPrice, kidMaxRigoutCapPrice, pricingMatrix, interfaceMode, tartanList, currentUser, isLoaded]);
+  }, [interfaceMode, isLoaded]);
 
   // Reset to initial mock data
   const handleResetData = () => {
