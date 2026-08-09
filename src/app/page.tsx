@@ -81,7 +81,7 @@ import {
   INITIAL_LOGS,
   DEFAULT_PRICING_MATRIX
 } from './mock-data';
-import { generateQrMatrix, renderQrSvgPath } from './qr-utils';
+import { generateQrMatrix, renderQrSvgPath, getQrViewBoxSize } from './qr-utils';
 import { 
   Crown,
   QrCode, 
@@ -7719,11 +7719,18 @@ export default function KiltHireApp() {
                             </h2>
                           </div>
 
-                          <div className="p-2 bg-slate-50 border border-slate-200 rounded-lg shadow-sm">
-                            <svg viewBox="0 0 21 21" className="w-14 h-14">
-                              <path d={renderQrSvgPath(generateQrMatrix(scannedCode))} fill="#0f172a" />
-                            </svg>
-                          </div>
+                          {(() => {
+                            const scMatrix = generateQrMatrix(scannedCode);
+                            const scViewBox = getQrViewBoxSize(scMatrix, 4);
+                            return (
+                              <div className="p-1 bg-white border border-slate-200 rounded-lg shadow-sm">
+                                <svg viewBox={`0 0 ${scViewBox} ${scViewBox}`} className="w-16 h-16" style={{ shapeRendering: 'crispEdges' }}>
+                                  <rect width={scViewBox} height={scViewBox} fill="#ffffff" />
+                                  <path d={renderQrSvgPath(scMatrix, 4)} fill="#000000" />
+                                </svg>
+                              </div>
+                            );
+                          })()}
                         </div>
 
                         {!scItem && (
@@ -8276,9 +8283,15 @@ export default function KiltHireApp() {
                                           {selectedBatchForPrint.category} ({selectedBatchForPrint.sizeGroup})
                                         </span>
                                         
-                                        <svg viewBox="0 0 21 21" className="w-14 h-14 my-0.5">
-                                          <path d={renderQrSvgPath(matrix)} fill="#000000" />
-                                        </svg>
+                                        {(() => {
+                                          const labelViewBox = getQrViewBoxSize(matrix, 4);
+                                          return (
+                                            <svg viewBox={`0 0 ${labelViewBox} ${labelViewBox}`} className="w-16 h-16 my-0.5 bg-white p-0.5" style={{ shapeRendering: 'crispEdges' }}>
+                                              <rect width={labelViewBox} height={labelViewBox} fill="#ffffff" />
+                                              <path d={renderQrSvgPath(matrix, 4)} fill="#000000" />
+                                            </svg>
+                                          );
+                                        })()}
 
                                         <span className="font-mono font-extrabold text-xs text-black">
                                           {code}
