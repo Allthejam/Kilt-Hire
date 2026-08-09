@@ -161,9 +161,9 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+fff12d9  feat: lock category and demographic (Adult/Kid) in New Item Registration Form based on Admin Batch QR Code specs to enforce data integrity
 9cc6654  refactor: remove manual hire rate & deposit input fields from New Item Registration Modal, automatically deriving pricing from Master Category Pricing Matrix
 66b56e8  fix: responsive max-height and dual-direction scrolling for mobile scan modals and integrated live camera scanner directly inside Outgoing Order PO Builder
-0fba6e3  feat: implement guaranteed unique sequential QR code batch generation with collision prevention across all past batches and stock database
 f1de6bc  feat: implement 2-scan garment lifecycle logic, duplicate registration prevention, and Garment Scan Action Popup Modal for instant state transitions
 cd14112  fix: replace pseudo-random QR generator with ISO 18004 compliant qrcode library, 4-module quiet zone, crisp SVG rendering, and dynamic viewBox so native phone camera apps and built-in scanners scan instantly
 c7fa779  feat: implement PO state machine safeguards (Due Picked, Due Out, Out on Hire return locking) and PIN-authorized Hire Order Cancellation modal with refund tracking
