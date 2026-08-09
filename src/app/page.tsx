@@ -2535,12 +2535,37 @@ export default function KiltHireApp() {
                    batchForm.category === 'Belts & Buckles' ? 'BLT' :
                    batchForm.category === 'Sgian-dubh (Knife)' ? 'KNF' : 'MISC';
     
+    // Collect all existing codes across entire database (all printed batches + all registered items)
+    const existingCodes = new Set<string>();
+    batches.forEach(b => (b.qrCodes || []).forEach(c => existingCodes.add(c.toUpperCase())));
+    items.forEach(i => existingCodes.add(i.id.toUpperCase()));
+
     const batchId = `BATCH-${Date.now().toString().slice(-6)}`;
     const qrCodes: string[] = [];
+    const codePrefixTag = `${prefix}${sizeTag}-`;
 
+    // Find the highest existing number sequence for this prefix/demographic (e.g. KILT-1001)
+    let highestNum = 1000;
+    existingCodes.forEach(code => {
+      if (code.startsWith(codePrefixTag)) {
+        const numPart = parseInt(code.replace(codePrefixTag, ''), 10);
+        if (!isNaN(numPart) && numPart > highestNum) {
+          highestNum = numPart;
+        }
+      }
+    });
+
+    let currentNum = highestNum + 1;
     for (let i = 1; i <= count; i++) {
-      const randomNum = Math.floor(1000 + Math.random() * 9000);
-      qrCodes.push(`${prefix}${sizeTag}-${randomNum}`);
+      let candidateCode = `${codePrefixTag}${currentNum}`;
+      // Safety collision loop: Skip any number that already exists anywhere in database
+      while (existingCodes.has(candidateCode)) {
+        currentNum++;
+        candidateCode = `${codePrefixTag}${currentNum}`;
+      }
+      existingCodes.add(candidateCode);
+      qrCodes.push(candidateCode);
+      currentNum++;
     }
 
     const newBatch: QRBatch = {
