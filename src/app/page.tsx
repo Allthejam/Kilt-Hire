@@ -3302,7 +3302,7 @@ export default function KiltHireApp() {
                   <span>Active Customer POs</span>
                 </div>
                 <span className="px-2 py-0.5 text-[10px] rounded-full font-bold bg-amber-100 text-amber-900">
-                  {pos.filter(p => !p.items.every(i => i.returned) && p.orderStatus !== 'RETURNED_COMPLETED').length}
+                  {pos.filter(p => p.orderStatus !== 'CANCELLED' && p.orderStatus !== 'RETURNED_COMPLETED' && !p.items.every(i => i.returned)).length}
                 </span>
               </button>
 
@@ -3317,7 +3317,7 @@ export default function KiltHireApp() {
                   <span>Historic PO Archive</span>
                 </div>
                 <span className="px-2 py-0.5 text-[10px] rounded-full font-bold bg-purple-100 text-purple-900">
-                  {pos.filter(p => p.items.every(i => i.returned) || p.orderStatus === 'RETURNED_COMPLETED').length}
+                  {pos.filter(p => p.orderStatus === 'CANCELLED' || p.orderStatus === 'RETURNED_COMPLETED' || p.items.every(i => i.returned)).length}
                 </span>
               </button>
 
@@ -3332,7 +3332,7 @@ export default function KiltHireApp() {
                   <span>Availability Calendar</span>
                 </div>
                 <span className="px-2 py-0.5 text-[10px] rounded-full font-bold bg-amber-100 text-amber-900">
-                  {pos.filter(p => !p.items.every(i => i.returned)).length} Active Hires
+                  {pos.filter(p => p.orderStatus !== 'CANCELLED' && p.orderStatus !== 'RETURNED_COMPLETED' && !p.items.every(i => i.returned)).length} Active Hires
                 </span>
               </button>
             </nav>
@@ -5366,17 +5366,17 @@ export default function KiltHireApp() {
                         onClick={() => setAssistantTab('historic_pos')}
                         className="px-3.5 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5"
                       >
-                        📜 Historic PO Archive ({pos.filter(p => p.items.every(i => i.returned) || p.orderStatus === 'RETURNED_COMPLETED').length})
+                        📜 Historic PO Archive ({pos.filter(p => p.orderStatus === 'CANCELLED' || p.orderStatus === 'RETURNED_COMPLETED' || p.items.every(i => i.returned)).length})
                       </button>
                       <span className="text-xs font-bold text-slate-700 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
-                        {pos.filter(p => !p.items.every(i => i.returned) && p.orderStatus !== 'RETURNED_COMPLETED').length} Active POs
+                        {pos.filter(p => p.orderStatus !== 'CANCELLED' && p.orderStatus !== 'RETURNED_COMPLETED' && !p.items.every(i => i.returned)).length} Active POs
                       </span>
                     </div>
                   </div>
 
                   <div className="space-y-4">
                     {(() => {
-                      const activePosList = pos.filter(p => !p.items.every(i => i.returned) && p.orderStatus !== 'RETURNED_COMPLETED');
+                      const activePosList = pos.filter(p => p.orderStatus !== 'CANCELLED' && p.orderStatus !== 'RETURNED_COMPLETED' && !p.items.every(i => i.returned));
                       if (activePosList.length === 0) {
                         return (
                           <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
@@ -5550,7 +5550,7 @@ export default function KiltHireApp() {
                         onClick={() => setAssistantTab('pos')}
                         className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5"
                       >
-                        📋 View Active POs ({pos.filter(p => !p.items.every(i => i.returned) && p.orderStatus !== 'RETURNED_COMPLETED').length})
+                        📋 View Active POs ({pos.filter(p => p.orderStatus !== 'CANCELLED' && p.orderStatus !== 'RETURNED_COMPLETED' && !p.items.every(i => i.returned)).length})
                       </button>
                     </div>
                   </div>
@@ -5680,7 +5680,7 @@ export default function KiltHireApp() {
                   {/* CONDENSED HISTORIC ORDERS DATA TABLE */}
                   <div className="space-y-4">
                     {(() => {
-                      const completedPos = pos.filter(p => p.items.every(i => i.returned) || p.orderStatus === 'RETURNED_COMPLETED');
+                      const completedPos = pos.filter(p => p.orderStatus === 'CANCELLED' || p.orderStatus === 'RETURNED_COMPLETED' || p.items.every(i => i.returned));
                       
                       const filteredCompleted = completedPos.filter(p => {
                         if (historicPoSearch) {
