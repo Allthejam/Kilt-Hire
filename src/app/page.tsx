@@ -9921,24 +9921,36 @@ export default function KiltHireApp() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-700 font-bold mb-1">Rental Rate (£)</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-slate-700 font-bold">Rental Rate (£)</label>
+                    {currentUser?.role !== 'Master Admin' && (
+                      <span className="text-[9px] font-bold text-amber-800 flex items-center gap-0.5">
+                        <Lock className="w-2.5 h-2.5" /> Pricing Matrix Fixed
+                      </span>
+                    )}
+                  </div>
                   <input 
                     type="number" 
                     required
+                    disabled={currentUser?.role !== 'Master Admin'}
                     value={showEditItemModal.hireRate}
                     onChange={e => setShowEditItemModal({...showEditItemModal, hireRate: Number(e.target.value)})}
-                    className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-mono font-bold outline-none focus:border-amber-500 shadow-sm"
+                    className="w-full bg-slate-100 border border-slate-300 rounded-lg p-2 text-slate-900 font-mono font-bold outline-none disabled:opacity-75 disabled:cursor-not-allowed shadow-sm"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-700 font-bold mb-1">Deposit Amount (£)</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-slate-700 font-bold">Deposit Amount (£)</label>
+                    {currentUser?.role !== 'Master Admin'}
+                  </div>
                   <input 
                     type="number" 
                     required
+                    disabled={currentUser?.role !== 'Master Admin'}
                     value={showEditItemModal.depositAmount}
                     onChange={e => setShowEditItemModal({...showEditItemModal, depositAmount: Number(e.target.value)})}
-                    className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-mono font-bold text-emerald-800 outline-none focus:border-amber-500 shadow-sm"
+                    className="w-full bg-slate-100 border border-slate-300 rounded-lg p-2 text-slate-900 font-mono font-bold text-emerald-800 outline-none disabled:opacity-75 disabled:cursor-not-allowed shadow-sm"
                   />
                 </div>
               </div>
@@ -10885,25 +10897,7 @@ export default function KiltHireApp() {
                 </div>
               </div>
 
-              {/* AUTOMATIC MASTER CATEGORY PRICING DERIVATION BANNER */}
-              {(() => {
-                const currentPricing = getDefaultPriceForCategory(regForm.category, regForm.sizeGroup === 'Kid');
-                return (
-                  <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl flex items-center justify-between text-xs shadow-2xs">
-                    <div>
-                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-800 block">
-                        📊 Master Pricing Matrix Rate (Auto-Applied):
-                      </span>
-                      <span className="font-bold text-slate-900">
-                        Hire Fee: <strong className="text-amber-900">£{currentPricing.hireRate}</strong> • Deposit Held: <strong className="text-emerald-700">£{currentPricing.deposit}</strong>
-                      </span>
-                    </div>
-                    <span className="text-[10px] font-extrabold bg-amber-100 text-amber-950 px-2.5 py-1 rounded-lg border border-amber-300">
-                      Master Matrix Derived
-                    </span>
-                  </div>
-                );
-              })()}
+
 
               <button
                 type="submit"
