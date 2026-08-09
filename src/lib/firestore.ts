@@ -136,14 +136,24 @@ export async function clearAuditLogsFS(): Promise<void> {
 
 // --- PRICING ------------------------------------------------------------------
 
-export async function getPricing(): Promise<CategoryPriceSetting[] | null> {
-  const snap = await getDocs(collection(requireDb(), 'settings'));
-  const pricingDoc = snap.docs.find(d => d.id === 'pricing');
-  return pricingDoc ? (pricingDoc.data().matrix as CategoryPriceSetting[]) : null;
+export interface PricingSettingsDoc {
+  matrix: CategoryPriceSetting[];
+  maxRigoutCapPrice?: number;
+  kidMaxRigoutCapPrice?: number;
 }
 
-export async function savePricing(matrix: CategoryPriceSetting[]): Promise<void> {
-  await setDoc(doc(requireDb(), 'settings', 'pricing'), { matrix }, { merge: true });
+export async function getPricing(): Promise<PricingSettingsDoc | null> {
+  const snap = await getDocs(collection(requireDb(), 'settings'));
+  const pricingDoc = snap.docs.find(d => d.id === 'pricing');
+  return pricingDoc ? (pricingDoc.data() as PricingSettingsDoc) : null;
+}
+
+export async function savePricing(matrix: CategoryPriceSetting[], maxRigoutCapPrice?: number, kidMaxRigoutCapPrice?: number): Promise<void> {
+  await setDoc(
+    doc(requireDb(), 'settings', 'pricing'), 
+    sanitizeForFirestore({ matrix, maxRigoutCapPrice, kidMaxRigoutCapPrice }), 
+    { merge: true }
+  );
 }
 
 // --- SEED HELPER -------------------------------------------------------------

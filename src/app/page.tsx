@@ -619,8 +619,14 @@ export default function KiltHireApp() {
         if (fsInvites.length > 0) setInvites(fsInvites);
         else setInvites(INITIAL_INVITES);
 
-        if (fsPricing) setPricingMatrix(fsPricing);
-        else setPricingMatrix(DEFAULT_PRICING_MATRIX);
+        if (fsPricing) {
+          if (fsPricing.matrix) setPricingMatrix(fsPricing.matrix);
+          if (fsPricing.maxRigoutCapPrice) setMaxRigoutCapPrice(fsPricing.maxRigoutCapPrice);
+          if (fsPricing.kidMaxRigoutCapPrice) setKidMaxRigoutCapPrice(fsPricing.kidMaxRigoutCapPrice);
+        } else {
+          setPricingMatrix(DEFAULT_PRICING_MATRIX);
+          savePricing(DEFAULT_PRICING_MATRIX, 120, 65).catch(err => console.warn('Failed to seed pricing:', err));
+        }
 
       } catch (err) {
         console.warn('Firestore load failed, using localStorage cache:', err);
@@ -1576,12 +1582,26 @@ export default function KiltHireApp() {
 
   // Update Pricing Matrix Entry
   const handleUpdatePriceSetting = (category: ItemCategory, field: keyof CategoryPriceSetting, value: number) => {
-    setPricingMatrix(prev => prev.map(p => {
-      if (p.category === category) {
-        return { ...p, [field]: Number(value) };
-      }
-      return p;
-    }));
+    setPricingMatrix(prev => {
+      const updated = prev.map(p => {
+        if (p.category === category) {
+          return { ...p, [field]: Number(value) };
+        }
+        return p;
+      });
+      savePricing(updated, maxRigoutCapPrice, kidMaxRigoutCapPrice).catch(err => console.warn('Failed to auto-save pricing:', err));
+      return updated;
+    });
+  };
+
+  const handleSavePricingToFirestore = async () => {
+    try {
+      await savePricing(pricingMatrix, maxRigoutCapPrice, kidMaxRigoutCapPrice);
+      addAuditLog('UPDATED_PRICING_MATRIX', `Saved live store pricing matrix & rigout caps (Adult £${maxRigoutCapPrice}, Kid £${kidMaxRigoutCapPrice}) across all devices.`);
+      showToast('🎉 Pricing Matrix & Rigout Caps successfully saved to Cloud Firestore Database across all devices!', 'success');
+    } catch (err: any) {
+      showToast(`Failed to save pricing to database: ${err.message}`, 'warning');
+    }
   };
 
   // Camera scanner handler & ZXing BrowserMultiFormatReader decode loop
@@ -6440,27 +6460,37 @@ export default function KiltHireApp() {
                   ) : (
                     <>
                       {/* TOP SUB-TAB SWITCHER: PRICING vs PRODUCTS */}
-                      <div className="flex bg-slate-200 p-1.5 rounded-2xl border border-slate-300 w-fit">
-                        <button
-                          onClick={() => setPricingSubTab('PRICING')}
-                          className={`px-5 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
-                            pricingSubTab === 'PRICING'
-                              ? 'bg-amber-500 text-slate-950 shadow-sm'
-                              : 'text-slate-700 hover:text-slate-900 hover:bg-white/50'
-                          }`}
-                        >
-                          <PriceTag className="w-4 h-4" /> Category Hire Rates & Deposit Matrix
-                        </button>
+                      <div className="flex flex-wrap items-center justify-between gap-4">
+                        <div className="flex bg-slate-200 p-1.5 rounded-2xl border border-slate-300 w-fit">
+                          <button
+                            onClick={() => setPricingSubTab('PRICING')}
+                            className={`px-5 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
+                              pricingSubTab === 'PRICING'
+                                ? 'bg-amber-500 text-slate-950 shadow-sm'
+                                : 'text-slate-700 hover:text-slate-900 hover:bg-white/50'
+                            }`}
+                          >
+                            <PriceTag className="w-4 h-4" /> Category Hire Rates & Deposit Matrix
+                          </button>
+
+                          <button
+                            onClick={() => setPricingSubTab('PRODUCTS')}
+                            className={`px-5 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
+                              pricingSubTab === 'PRODUCTS'
+                                ? 'bg-amber-500 text-slate-950 shadow-sm'
+                                : 'text-slate-700 hover:text-slate-900 hover:bg-white/50'
+                            }`}
+                          >
+                            <Tag className="w-4 h-4" /> Tartan & Product Catalog ({tartanList.length})
+                          </button>
+                        </div>
 
                         <button
-                          onClick={() => setPricingSubTab('PRODUCTS')}
-                          className={`px-5 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
-                            pricingSubTab === 'PRODUCTS'
-                              ? 'bg-amber-500 text-slate-950 shadow-sm'
-                              : 'text-slate-700 hover:text-slate-900 hover:bg-white/50'
-                          }`}
+                          type="button"
+                          onClick={handleSavePricingToFirestore}
+                          className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-2"
                         >
-                          <Tag className="w-4 h-4" /> Tartan & Product Catalog ({tartanList.length})
+                          <ShieldCheck className="w-4 h-4" /> 💾 Save Live Rates to Database
                         </button>
                       </div>
 
