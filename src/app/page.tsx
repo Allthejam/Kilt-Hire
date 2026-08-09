@@ -2923,6 +2923,10 @@ export default function KiltHireApp() {
                   <button
                     key={item.id}
                     onClick={() => {
+                      if (item.id === 'start_fitting') {
+                        setAssistantTab('start_fitting');
+                        setInterfaceMode('shop_assistant');
+                      }
                       setActiveTab(item.id as any);
                       setMobileSidebarOpen(false);
                     }}
@@ -3857,7 +3861,7 @@ export default function KiltHireApp() {
               )}
 
               {/* FULL PAGE: DEDICATED CUSTOMER FITTING & MEASUREMENT STATION */}
-              {assistantTab === 'start_fitting' && (
+              {(assistantTab === 'start_fitting' || activeTab === 'start_fitting') && (
                 <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6 animate-in fade-in zoom-in-95">
                   
                   {/* STATION HEADER BANNER */}
