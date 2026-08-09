@@ -43,6 +43,15 @@ export interface RepairRecord {
   fixedNotes?: string;
 }
 
+export interface CalendarNote {
+  id: string;
+  date: string;
+  text: string;
+  type: 'NOTE' | 'EVENT' | 'CLOSURE';
+  createdAt: string;
+  createdByStaff?: string;
+}
+
 export interface KiltItem {
   id: string; // The QR code text, e.g. "KILT-1088" or "KILT-KID-501"
   name: string; // e.g. "Royal Stewart Heavyweight 8-Yard Kilt"

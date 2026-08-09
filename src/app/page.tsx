@@ -40,6 +40,9 @@ import {
   subscribeBatches,
   subscribeAuditLogs,
   subscribePricing,
+  upsertCalendarNote,
+  deleteCalendarNoteFS,
+  subscribeCalendarNotes,
 } from '../lib/firestore';
 import { 
   KiltItem, 
@@ -55,6 +58,8 @@ import {
   SizeGroup,
   CategoryPriceSetting,
   LaundryRecord,
+  RepairRecord,
+  CalendarNote,
   StaffRole,
   CustomerMeasurements,
   POOrderStatus
@@ -402,10 +407,7 @@ export default function KiltHireApp() {
     year: new Date().getFullYear(),
     month: new Date().getMonth()
   });
-  const [calendarNotes, setCalendarNotes] = useState<{ id: string; date: string; text: string; type: 'NOTE' | 'EVENT' | 'CLOSURE'; createdAt: string }[]>([
-    { id: 'CN-1', date: new Date().toISOString().slice(0, 10), text: 'Sinclair wedding party pickup (5 kilts at 10am)', type: 'EVENT', createdAt: '2026-08-01' },
-    { id: 'CN-2', date: '2026-08-15', text: 'Store open early 8:30am for Highland Games deliveries', type: 'NOTE', createdAt: '2026-08-02' }
-  ]);
+  const [calendarNotes, setCalendarNotes] = useState<CalendarNote[]>([]);
   const [newCalNoteText, setNewCalNoteText] = useState('');
   const [newCalNoteType, setNewCalNoteType] = useState<'NOTE' | 'EVENT' | 'CLOSURE'>('NOTE');
 
@@ -593,6 +595,7 @@ export default function KiltHireApp() {
     let unsubBatches: (() => void) | null = null;
     let unsubLogs: (() => void) | null = null;
     let unsubPricing: (() => void) | null = null;
+    let unsubNotes: (() => void) | null = null;
 
     async function loadFromFirestore() {
       try {
@@ -662,6 +665,10 @@ export default function KiltHireApp() {
             if (livePricing.maxRigoutCapPrice) setMaxRigoutCapPrice(livePricing.maxRigoutCapPrice);
             if (livePricing.kidMaxRigoutCapPrice) setKidMaxRigoutCapPrice(livePricing.kidMaxRigoutCapPrice);
           }
+        });
+
+        unsubNotes = subscribeCalendarNotes((liveNotes) => {
+          setCalendarNotes(liveNotes);
         });
 
       } catch (err) {
@@ -6098,18 +6105,20 @@ export default function KiltHireApp() {
                             </select>
                             <button
                               type="button"
-                              onClick={() => {
+                              onClick={async () => {
                                 if (!newCalNoteText.trim()) return;
-                                const newN = {
+                                const newN: CalendarNote = {
                                   id: `CN-${Date.now()}`,
                                   date: calSelectedDate,
                                   text: newCalNoteText.trim(),
                                   type: newCalNoteType,
-                                  createdAt: new Date().toISOString().slice(0, 10)
+                                  createdAt: new Date().toISOString().slice(0, 10),
+                                  createdByStaff: currentUser?.name || 'Staff'
                                 };
+                                await upsertCalendarNote(newN);
                                 setCalendarNotes(prev => [newN, ...prev]);
                                 setNewCalNoteText('');
-                                showToast(`Saved calendar note for ${calSelectedDate}!`, 'success');
+                                showToast(`Saved calendar note for ${calSelectedDate} to database!`, 'success');
                               }}
                               className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-lg shadow transition"
                             >
@@ -6139,7 +6148,11 @@ export default function KiltHireApp() {
                                   <p className="text-xs font-bold text-slate-900">{note.text}</p>
                                 </div>
                                 <button
-                                  onClick={() => setCalendarNotes(prev => prev.filter(n => n.id !== note.id))}
+                                  onClick={async () => {
+                                    await deleteCalendarNoteFS(note.id);
+                                    setCalendarNotes(prev => prev.filter(n => n.id !== note.id));
+                                    showToast('🗑️ Calendar note deleted from database.', 'info');
+                                  }}
                                   className="text-slate-400 hover:text-rose-600 p-1 text-xs font-bold transition"
                                 >
                                   ✕

@@ -20,6 +20,7 @@ import {
   StaffUser,
   StaffInvite,
   CategoryPriceSetting,
+  CalendarNote,
 } from '../app/types';
 
 // Guard: throw a helpful error if called server-side
@@ -222,5 +223,26 @@ export function subscribePricing(onUpdate: (pricing: PricingSettingsDoc | null) 
     } else {
       onUpdate(null);
     }
+  });
+}
+
+// --- CALENDAR NOTES & EVENTS --------------------------------------------------
+
+export async function getCalendarNotes(): Promise<CalendarNote[]> {
+  const snap = await getDocs(collection(requireDb(), 'calendar_notes'));
+  return snap.docs.map(d => d.data() as CalendarNote);
+}
+
+export async function upsertCalendarNote(note: CalendarNote): Promise<void> {
+  await setDoc(doc(requireDb(), 'calendar_notes', note.id), sanitizeForFirestore(note), { merge: true });
+}
+
+export async function deleteCalendarNoteFS(id: string): Promise<void> {
+  await deleteDoc(doc(requireDb(), 'calendar_notes', id));
+}
+
+export function subscribeCalendarNotes(onUpdate: (notes: CalendarNote[]) => void): Unsubscribe {
+  return onSnapshot(collection(requireDb(), 'calendar_notes'), (snap) => {
+    onUpdate(snap.docs.map(d => d.data() as CalendarNote));
   });
 }
