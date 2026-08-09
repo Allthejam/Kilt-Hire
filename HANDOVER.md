@@ -161,10 +161,10 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+d642dfe  feat: upgrade app to full Firestore real-time onSnapshot listeners for 100% instant live sync across multiple tablets without page refresh
 2a0602b  feat: add Edit, Delete, Dry Cleaning, and Repair Workshop management controls to Stock Inventory Table
 36b9fae  feat: connect Dry Cleaning Laundry & In Repair Workshop live to Cloud Firestore database for real-time tracking across all devices
 34b96a2  feat: link Create New Hire PO buttons in Hire POs ledger directly to launch Start New Fitting & Order station
-4bf9182  feat: complete live database sync for Hire POs & PayPal, add clear all POs and delete PO controls live in Cloud Firestore
 d64dfef  feat: add Paper Diary Legacy Manual Entry mode to bypass PayPal & deposits for migrating offline paper orders into calendar & pick queues
 5ee2c2e  feat: add Event Occasion selector (parties, Hogmanay, ceilidhs, fashion) and expanded customer roles to fitting station
 5e564ec  feat: add Late Return & Security Deposit Retention Section in full-page return workspace with custom fee input, presets, and live ledger update
