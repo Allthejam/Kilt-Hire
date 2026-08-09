@@ -161,10 +161,10 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+251907e  feat: add Garment Category Select Dropdown populated from Master Pricing Matrix to filter available stock in Step 3 fitting station
 57f2845  feat: hide unavailable/booked garments completely from fitting order pick grid for clean clutter-free stock selection
 04698e6  feat: add real-time date overlap collision scanner to lock items on hire and prevent double-booking garments on overlapping dates
 1b1fd81  feat: restrict calendar date pickers to minimum Today's date for new orders and block past collection dates
-b92ca2b  feat: disable order confirmation button until all mandatory (*) fields (Occasion, Name, Email, Phone, Collection/Event/Return Dates) & garment picks are complete
 d64dfef  feat: add Paper Diary Legacy Manual Entry mode to bypass PayPal & deposits for migrating offline paper orders into calendar & pick queues
 5ee2c2e  feat: add Event Occasion selector (parties, Hogmanay, ceilidhs, fashion) and expanded customer roles to fitting station
 5e564ec  feat: add Late Return & Security Deposit Retention Section in full-page return workspace with custom fee input, presets, and live ledger update
