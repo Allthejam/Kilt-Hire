@@ -1299,7 +1299,13 @@ export default function KiltHireApp() {
       return;
     }
 
-    // Validate Date Sequence: Collection <= Event <= Return
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    // Validate Date Sequence & Past Date Protection (unless Paper Diary Legacy Migration)
+    if (fittingForm.depositMethod !== 'PAPER_DIARY_LEGACY' && fittingForm.collectionDate && fittingForm.collectionDate < todayStr) {
+      showToast(`⚠️ Invalid Collection Date: Collection Date (${fittingForm.collectionDate}) cannot be in the past! Minimum date allowed is Today (${todayStr}).`, 'warning');
+      return;
+    }
     if (fittingForm.collectionDate && fittingForm.eventDate && fittingForm.collectionDate > fittingForm.eventDate) {
       showToast(`⚠️ Inconsistent Dates: Collection Date (${fittingForm.collectionDate}) cannot be after Event Date (${fittingForm.eventDate})!`, 'warning');
       return;
@@ -3984,19 +3990,24 @@ export default function KiltHireApp() {
                         </div>
                       </div>
 
-                      {/* REAL-TIME DATE CHRONOLOGY INCONSISTENCY WARNING BANNER */}
+                      {/* REAL-TIME DATE CHRONOLOGY & PAST DATE INCONSISTENCY WARNING BANNER */}
                       {(() => {
+                        const todayStr = new Date().toISOString().slice(0, 10);
+                        const isPastCollection = fittingForm.depositMethod !== 'PAPER_DIARY_LEGACY' && fittingForm.collectionDate && fittingForm.collectionDate < todayStr;
                         const isColAfterEv = fittingForm.collectionDate && fittingForm.eventDate && fittingForm.collectionDate > fittingForm.eventDate;
                         const isEvAfterRet = fittingForm.eventDate && fittingForm.returnDate && fittingForm.eventDate > fittingForm.returnDate;
                         const isColAfterRet = fittingForm.collectionDate && fittingForm.returnDate && fittingForm.collectionDate >= fittingForm.returnDate;
 
-                        if (isColAfterEv || isEvAfterRet || isColAfterRet) {
+                        if (isPastCollection || isColAfterEv || isEvAfterRet || isColAfterRet) {
                           return (
                             <div className="bg-red-50 border border-red-300 rounded-2xl p-3.5 flex items-start gap-3 text-xs text-red-900 animate-in fade-in">
                               <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
                               <div className="space-y-1">
                                 <span className="font-extrabold block text-red-950">⚠️ Date Chronology Error Detected:</span>
                                 <ul className="list-disc list-inside space-y-0.5 text-[11px] font-semibold text-red-800">
+                                  {isPastCollection && (
+                                    <li>Collection Date ({fittingForm.collectionDate}) is IN THE PAST! Minimum date allowed for new orders is Today ({todayStr}).</li>
+                                  )}
                                   {isColAfterEv && (
                                     <li>Collection Date ({fittingForm.collectionDate}) is AFTER Event Date ({fittingForm.eventDate}). Customer must collect before or on the event date!</li>
                                   )}
@@ -4020,6 +4031,7 @@ export default function KiltHireApp() {
                           <input 
                             type="date" 
                             required
+                            min={fittingForm.depositMethod === 'PAPER_DIARY_LEGACY' ? undefined : new Date().toISOString().slice(0, 10)}
                             max={fittingForm.eventDate || undefined}
                             value={fittingForm.collectionDate}
                             onChange={e => {
@@ -4036,7 +4048,8 @@ export default function KiltHireApp() {
                               setFittingForm({ ...fittingForm, collectionDate: newCol, eventDate: newEv, returnDate: newRet });
                             }}
                             className={`w-full bg-white border rounded-xl p-2.5 text-slate-900 font-bold outline-none shadow-sm text-xs ${
-                              fittingForm.collectionDate && fittingForm.eventDate && fittingForm.collectionDate > fittingForm.eventDate 
+                              (fittingForm.depositMethod !== 'PAPER_DIARY_LEGACY' && fittingForm.collectionDate && fittingForm.collectionDate < new Date().toISOString().slice(0, 10)) ||
+                              (fittingForm.collectionDate && fittingForm.eventDate && fittingForm.collectionDate > fittingForm.eventDate)
                                 ? 'border-red-500 bg-red-50 text-red-900 ring-2 ring-red-300' 
                                 : 'border-slate-300 focus:border-amber-500'
                             }`}
@@ -4047,7 +4060,7 @@ export default function KiltHireApp() {
                           <input 
                             type="date" 
                             required
-                            min={fittingForm.collectionDate || undefined}
+                            min={fittingForm.collectionDate || new Date().toISOString().slice(0, 10)}
                             value={fittingForm.eventDate}
                             onChange={e => {
                               const newEv = e.target.value;
@@ -4070,7 +4083,7 @@ export default function KiltHireApp() {
                           <input 
                             type="date" 
                             required
-                            min={fittingForm.eventDate || fittingForm.collectionDate || undefined}
+                            min={fittingForm.eventDate || fittingForm.collectionDate || new Date().toISOString().slice(0, 10)}
                             value={fittingForm.returnDate}
                             onChange={e => setFittingForm({ ...fittingForm, returnDate: e.target.value })}
                             className={`w-full bg-white border rounded-xl p-2.5 font-bold outline-none shadow-sm text-xs ${
