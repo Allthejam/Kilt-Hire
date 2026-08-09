@@ -1932,10 +1932,11 @@ export default function KiltHireApp() {
     };
 
     setItems(prev => [newItem, ...prev.filter(i => i.id !== scannedCode)]);
+    upsertItem(newItem).catch(err => console.warn('Failed to save item to Firestore:', err));
     addAuditLog('REGISTERED_ITEM', `Registered new ${newItem.sizeGroup} item ${newItem.name} (${newItem.id}) under ${newItem.category} (Hire £${newItem.hireRate} / Dep £${newItem.depositAmount})`, newItem.id);
     
     setShowRegisterModal(false);
-    showToast(`✅ ${newItem.sizeGroup} garment ${newItem.id} saved into Available Stock! Ready for next scan.`, 'success');
+    showToast(`✅ ${newItem.sizeGroup} garment ${newItem.id} saved into Available Stock in database! Ready for next scan.`, 'success');
   };
 
   // EDIT ITEM DETAILS HANDLER
@@ -1950,9 +1951,10 @@ export default function KiltHireApp() {
       return i;
     }));
 
+    upsertItem(showEditItemModal).catch(err => console.warn('Failed to update item in Firestore:', err));
     addAuditLog('EDITED_ITEM_DETAILS', `Updated details & description for ${showEditItemModal.name} (${showEditItemModal.id})`, showEditItemModal.id);
     setShowEditItemModal(null);
-    showToast(`✓ Updated item details for ${showEditItemModal.id}.`, 'success');
+    showToast(`✓ Updated item details for ${showEditItemModal.id} in database.`, 'success');
   };
 
   // REMOVE FROM ROTATION (RETIRE / DESTROY / STOLEN / SOLD) HANDLER
@@ -2392,9 +2394,10 @@ export default function KiltHireApp() {
     };
 
     setBatches(prev => [newBatch, ...prev]);
+    upsertBatch(newBatch).catch(err => console.warn('Failed to save QR batch to Firestore:', err));
     addAuditLog('CREATED_QR_BATCH', `Generated batch of ${count} ${batchForm.sizeGroup} QR codes for ${batchForm.category} (${batchForm.title})`, batchId);
     setShowBatchModal(false);
-    showToast(`🖨️ Batch of ${count} ${batchForm.sizeGroup} QR codes generated! Ready for initial print.`, 'success');
+    showToast(`🖨️ Batch of ${count} ${batchForm.sizeGroup} QR codes generated & saved to database! Ready for initial print.`, 'success');
   };
 
   // ONE-TIME BATCH SHEET INITIAL PRINT HANDLER (MASTER ADMIN ONLY)
@@ -2418,6 +2421,7 @@ export default function KiltHireApp() {
     };
 
     setBatches(prev => prev.map(b => b.id === batch.id ? updatedBatch : b));
+    upsertBatch(updatedBatch).catch(err => console.warn('Failed to update printed batch in Firestore:', err));
     setSelectedBatchForPrint(updatedBatch);
     setReprintPrintMode(false);
     addAuditLog('PRINTED_INITIAL_QR_BATCH', `Master Admin ${currentUser.name} authorized one-time initial printing of QR batch ${batch.id} (${batch.count} tags for ${batch.category})`, batch.id);
@@ -2462,6 +2466,7 @@ export default function KiltHireApp() {
     };
 
     setBatches(prev => prev.map(b => b.id === selectedBatchForPrint.id ? updatedBatch : b));
+    upsertBatch(updatedBatch).catch(err => console.warn('Failed to update reprint history in Firestore:', err));
     setSelectedBatchForPrint(updatedBatch);
 
     addAuditLog('REPRINTED_REPLACEMENT_QR_TAGS', `Master Admin ${currentUser.name} authorized PIN-protected replacement reprint of ${selectedCodesForReprint.length} tag(s): [${selectedCodesForReprint.join(', ')}]. Reason: ${newReprintLog.reason}`, selectedBatchForPrint.id);
@@ -6460,37 +6465,27 @@ export default function KiltHireApp() {
                   ) : (
                     <>
                       {/* TOP SUB-TAB SWITCHER: PRICING vs PRODUCTS */}
-                      <div className="flex flex-wrap items-center justify-between gap-4">
-                        <div className="flex bg-slate-200 p-1.5 rounded-2xl border border-slate-300 w-fit">
-                          <button
-                            onClick={() => setPricingSubTab('PRICING')}
-                            className={`px-5 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
-                              pricingSubTab === 'PRICING'
-                                ? 'bg-amber-500 text-slate-950 shadow-sm'
-                                : 'text-slate-700 hover:text-slate-900 hover:bg-white/50'
-                            }`}
-                          >
-                            <PriceTag className="w-4 h-4" /> Category Hire Rates & Deposit Matrix
-                          </button>
-
-                          <button
-                            onClick={() => setPricingSubTab('PRODUCTS')}
-                            className={`px-5 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
-                              pricingSubTab === 'PRODUCTS'
-                                ? 'bg-amber-500 text-slate-950 shadow-sm'
-                                : 'text-slate-700 hover:text-slate-900 hover:bg-white/50'
-                            }`}
-                          >
-                            <Tag className="w-4 h-4" /> Tartan & Product Catalog ({tartanList.length})
-                          </button>
-                        </div>
+                      <div className="flex bg-slate-200 p-1.5 rounded-2xl border border-slate-300 w-fit">
+                        <button
+                          onClick={() => setPricingSubTab('PRICING')}
+                          className={`px-5 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
+                            pricingSubTab === 'PRICING'
+                              ? 'bg-amber-500 text-slate-950 shadow-sm'
+                              : 'text-slate-700 hover:text-slate-900 hover:bg-white/50'
+                          }`}
+                        >
+                          <PriceTag className="w-4 h-4" /> Category Hire Rates & Deposit Matrix
+                        </button>
 
                         <button
-                          type="button"
-                          onClick={handleSavePricingToFirestore}
-                          className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-2"
+                          onClick={() => setPricingSubTab('PRODUCTS')}
+                          className={`px-5 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
+                            pricingSubTab === 'PRODUCTS'
+                              ? 'bg-amber-500 text-slate-950 shadow-sm'
+                              : 'text-slate-700 hover:text-slate-900 hover:bg-white/50'
+                          }`}
                         >
-                          <ShieldCheck className="w-4 h-4" /> 💾 Save Live Rates to Database
+                          <Tag className="w-4 h-4" /> Tartan & Product Catalog ({tartanList.length})
                         </button>
                       </div>
 
