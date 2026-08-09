@@ -161,9 +161,9 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+08de1f5  feat: add interactive rows-per-page pagination controls (10, 20, 30, 50, 100) and page navigation across Stock Inventory and Available Stock pages
 dcd3f2e  fix: exclude CANCELLED purchase orders from Active Customer POs count/lists and archive them into Historic PO Archive
 5d0d833  refactor: purge all legacy localStorage collection caching; subscribe all collections (POs, items, batches, logs, staff, invites, notes) 100% to live Cloud Firestore database
-9ae25f2  fix: exclude cancelled orders from pick & pack queue, hide by default behind See Cancellations toggle, and verify immediate garment stock restoration to AVAILABLE
 c7fa779  feat: implement PO state machine safeguards (Due Picked, Due Out, Out on Hire return locking) and PIN-authorized Hire Order Cancellation modal with refund tracking
 d64dfef  feat: add Paper Diary Legacy Manual Entry mode to bypass PayPal & deposits for migrating offline paper orders into calendar & pick queues
 5ee2c2e  feat: add Event Occasion selector (parties, Hogmanay, ceilidhs, fashion) and expanded customer roles to fitting station
