@@ -161,6 +161,7 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+5200d33  feat: link Start New Fitting & Order tab in Admin navigation directly to the Shop Assistant Fitting & Measurement Station
 f792835  feat: connect live Firestore database persistence (upsertBatch & upsertItem) for QR code batch creation, initial printing, replacement reprinting, and inventory registration
 16d703d  feat: enable live Firestore database persistence and cross-device sync for Category Pricing Matrix & Full Rigout Caps
 d64dfef  feat: add Paper Diary Legacy Manual Entry mode to bypass PayPal & deposits for migrating offline paper orders into calendar & pick queues
