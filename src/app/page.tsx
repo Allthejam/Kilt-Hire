@@ -414,6 +414,10 @@ export default function KiltHireApp() {
   const [newCalNoteText, setNewCalNoteText] = useState('');
   const [newCalNoteType, setNewCalNoteType] = useState<'NOTE' | 'EVENT' | 'CLOSURE'>('NOTE');
   const [showCancelledInCalendar, setShowCancelledInCalendar] = useState<boolean>(false);
+  const [availableStockPage, setAvailableStockPage] = useState<number>(1);
+  const [assistantRowsPerPage, setAssistantRowsPerPage] = useState<number>(10);
+  const [inventoryTablePage, setInventoryTablePage] = useState<number>(1);
+  const [inventoryRowsPerPage, setInventoryRowsPerPage] = useState<number>(10);
 
   // Invite & Staff Management Form State
   const [newInviteEmail, setNewInviteEmail] = useState('');
@@ -5055,84 +5059,144 @@ export default function KiltHireApp() {
                     })()}
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {getFilteredItems(availableItems, assistantSizeFilter, assistantCategoryFilter, assistantTartanFilter).map(item => (
-                      <div key={item.id} className="p-4 bg-slate-50 border border-slate-200 hover:border-emerald-400 rounded-2xl space-y-3 transition shadow-sm">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-mono font-extrabold text-amber-800 text-xs bg-white px-2 py-0.5 rounded border border-slate-200">
-                              {item.id}
-                            </span>
-                            <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded flex items-center gap-1 ${item.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900 border border-purple-300' : 'bg-blue-100 text-blue-900 border border-blue-300'}`}>
-                              {item.sizeGroup === 'Kid' ? <Baby className="w-3 h-3" /> : <User className="w-3 h-3" />}
-                              {item.sizeGroup}
-                            </span>
-                          </div>
-                          <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full">
-                            ✓ Ready in Store
-                          </span>
+                  {(() => {
+                    const filteredAvailable = getFilteredItems(availableItems, assistantSizeFilter, assistantCategoryFilter, assistantTartanFilter);
+                    const totalItems = filteredAvailable.length;
+                    const totalPages = Math.ceil(totalItems / assistantRowsPerPage) || 1;
+                    const currentPage = Math.min(availableStockPage, totalPages);
+                    const startIndex = (currentPage - 1) * assistantRowsPerPage;
+                    const endIndex = Math.min(startIndex + assistantRowsPerPage, totalItems);
+                    const paginatedAvailable = filteredAvailable.slice(startIndex, endIndex);
+
+                    return (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {paginatedAvailable.map(item => (
+                            <div key={item.id} className="p-4 bg-slate-50 border border-slate-200 hover:border-emerald-400 rounded-2xl space-y-3 transition shadow-sm">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-mono font-extrabold text-amber-800 text-xs bg-white px-2 py-0.5 rounded border border-slate-200">
+                                    {item.id}
+                                  </span>
+                                  <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded flex items-center gap-1 ${item.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900 border border-purple-300' : 'bg-blue-100 text-blue-900 border border-blue-300'}`}>
+                                    {item.sizeGroup === 'Kid' ? <Baby className="w-3 h-3" /> : <User className="w-3 h-3" />}
+                                    {item.sizeGroup}
+                                  </span>
+                                </div>
+                                <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full">
+                                  ✓ Ready in Store
+                                </span>
+                              </div>
+
+                              <div>
+                                <div className="flex items-center justify-between">
+                                  <h4 className="font-bold text-slate-900 text-sm">{item.name}</h4>
+                                  <span className="text-[10px] font-extrabold bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded">
+                                    {item.category}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-slate-600">{item.tartanOrColour} ({item.size})</p>
+                              </div>
+
+                              <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-200">
+                                <span className="font-bold text-amber-800">£{item.hireRate} hire</span>
+                                <span className="text-[11px] text-emerald-700 font-semibold">£{item.depositAmount} dep</span>
+                              </div>
+
+                              <div className="bg-white p-2.5 rounded-xl border border-slate-200 space-y-2">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Quick Garment Actions:</span>
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  <button
+                                    onClick={() => {
+                                      handleScanCode(item.id);
+                                      setShowCreatePoModal(true);
+                                    }}
+                                    className="py-1.5 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg shadow-sm transition text-center cursor-pointer"
+                                  >
+                                    Hire Out
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      handleScanCode(item.id);
+                                      setShowSendRepairModal(true);
+                                    }}
+                                    className="py-1.5 px-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] rounded-lg shadow-sm transition text-center cursor-pointer"
+                                  >
+                                    Send Repair
+                                  </button>
+                                  <button
+                                    onClick={() => setShowEditItemModal(item)}
+                                    className="py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-[11px] rounded-lg border border-slate-200 transition flex items-center justify-center gap-1 cursor-pointer"
+                                  >
+                                    <Edit3 className="w-3 h-3 text-amber-600" /> Edit Specs
+                                  </button>
+                                  <button
+                                    onClick={() => setShowRemoveRotationModal(item)}
+                                    className="py-1.5 px-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[11px] rounded-lg border border-rose-200 transition flex items-center justify-center gap-1 cursor-pointer"
+                                  >
+                                    <Trash2 className="w-3 h-3 text-rose-600" /> Remove Stock
+                                  </button>
+                                  <button
+                                    onClick={() => handleManualSendToLaundry(item.id)}
+                                    className="py-1.5 px-2 bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-[11px] rounded-lg shadow-sm transition text-center col-span-2 flex items-center justify-center gap-1 cursor-pointer"
+                                  >
+                                    <Sparkles className="w-3 h-3 text-cyan-200" /> Send to Dry Cleaners
+                                  </button>
+                                </div>
+                              </div>
+
+                            </div>
+                          ))}
                         </div>
 
-                        <div>
-                          <div className="flex items-center justify-between">
-                            <h4 className="font-bold text-slate-900 text-sm">{item.name}</h4>
-                            <span className="text-[10px] font-extrabold bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded">
-                              {item.category}
-                            </span>
-                          </div>
-                          <p className="text-xs text-slate-600">{item.tartanOrColour} ({item.size})</p>
-                        </div>
-
-                        <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-200">
-                          <span className="font-bold text-amber-800">£{item.hireRate} hire</span>
-                          <span className="text-[11px] text-emerald-700 font-semibold">£{item.depositAmount} dep</span>
-                        </div>
-
-                        <div className="bg-white p-2.5 rounded-xl border border-slate-200 space-y-2">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Quick Garment Actions:</span>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <button
-                              onClick={() => {
-                                handleScanCode(item.id);
-                                setShowCreatePoModal(true);
+                        {/* INTERACTIVE PAGINATION CONTROLS FOOTER */}
+                        <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-600 font-medium shadow-2xs">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-700">Rows per page:</span>
+                            <select
+                              value={assistantRowsPerPage}
+                              onChange={(e) => {
+                                setAssistantRowsPerPage(Number(e.target.value));
+                                setAvailableStockPage(1);
                               }}
-                              className="py-1.5 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg shadow-sm transition text-center"
+                              className="bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 font-extrabold text-slate-900 outline-none focus:border-amber-500 shadow-2xs cursor-pointer"
                             >
-                              Hire Out
-                            </button>
+                              <option value={10}>10</option>
+                              <option value={20}>20</option>
+                              <option value={30}>30</option>
+                              <option value={50}>50</option>
+                              <option value={100}>100</option>
+                            </select>
+                            <span className="text-slate-500 font-semibold">
+                              Showing <strong className="text-slate-900">{totalItems > 0 ? startIndex + 1 : 0}</strong>–<strong className="text-slate-900">{endIndex}</strong> of <strong className="text-slate-900">{totalItems}</strong> available garments
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 font-extrabold">
                             <button
-                              onClick={() => {
-                                handleScanCode(item.id);
-                                setShowSendRepairModal(true);
-                              }}
-                              className="py-1.5 px-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] rounded-lg shadow-sm transition text-center"
+                              onClick={() => setAvailableStockPage(p => Math.max(1, p - 1))}
+                              disabled={currentPage === 1}
+                              className="px-3.5 py-1.5 bg-white border border-slate-300 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition shadow-2xs cursor-pointer"
                             >
-                              Send Repair
+                              ◄ Previous
                             </button>
+                            
+                            <span className="px-3.5 py-1.5 bg-amber-100 text-amber-950 border border-amber-300 rounded-xl">
+                              Page {currentPage} of {totalPages}
+                            </span>
+
                             <button
-                              onClick={() => setShowEditItemModal(item)}
-                              className="py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-[11px] rounded-lg border border-slate-200 transition flex items-center justify-center gap-1"
+                              onClick={() => setAvailableStockPage(p => Math.min(totalPages, p + 1))}
+                              disabled={currentPage >= totalPages}
+                              className="px-3.5 py-1.5 bg-white border border-slate-300 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition shadow-2xs cursor-pointer"
                             >
-                              <Edit3 className="w-3 h-3 text-amber-600" /> Edit Specs
-                            </button>
-                            <button
-                              onClick={() => setShowRemoveRotationModal(item)}
-                              className="py-1.5 px-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[11px] rounded-lg border border-rose-200 transition flex items-center justify-center gap-1"
-                            >
-                              <Trash2 className="w-3 h-3 text-rose-600" /> Remove Stock
-                            </button>
-                            <button
-                              onClick={() => handleManualSendToLaundry(item.id)}
-                              className="py-1.5 px-2 bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-[11px] rounded-lg shadow-sm transition text-center col-span-2 flex items-center justify-center gap-1"
-                            >
-                              <Sparkles className="w-3 h-3 text-cyan-200" /> Send to Dry Cleaners
+                              Next ►
                             </button>
                           </div>
                         </div>
-
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -8370,135 +8434,193 @@ export default function KiltHireApp() {
                   </div>
 
                   {inventorySubTab === 'ACTIVE' ? (
-                    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs text-slate-700">
-                          <thead className="bg-slate-50 text-slate-900 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px]">
-                            <tr>
-                              <th className="py-3.5 px-4">QR Code</th>
-                              <th className="py-3.5 px-4">Item Name</th>
-                              <th className="py-3.5 px-4">Category</th>
-                              <th className="py-3.5 px-4">Demographic</th>
-                              <th className="py-3.5 px-4">Tartan / Colour</th>
-                              <th className="py-3.5 px-4">Size</th>
-                              <th className="py-3.5 px-4">Rate / Deposit</th>
-                              <th className="py-3.5 px-4">Status</th>
-                              <th className="py-3.5 px-4 text-right">Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {items
-                              .filter(item => item.status !== 'RETIRED' && (inventorySizeFilter === 'ALL' || item.sizeGroup === inventorySizeFilter))
-                              .map(item => (
-                              <tr key={item.id} className="hover:bg-slate-50 transition">
-                                <td className="py-3 px-4 font-mono font-bold text-amber-700">{item.id}</td>
-                                <td className="py-3 px-4 font-semibold text-slate-900">{item.name}</td>
-                                <td className="py-3 px-4">{item.category}</td>
-                                <td className="py-3 px-4">
-                                  <span className={`px-2 py-0.5 text-[10px] font-bold rounded flex items-center gap-1 w-fit ${item.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900 border border-purple-300' : 'bg-blue-100 text-blue-900 border border-blue-300'}`}>
-                                    {item.sizeGroup === 'Kid' ? <Baby className="w-3 h-3" /> : <User className="w-3 h-3" />}
-                                    {item.sizeGroup}
-                                  </span>
-                                </td>
-                                <td className="py-3 px-4 text-slate-600">{item.tartanOrColour}</td>
-                                <td className="py-3 px-4 text-slate-600">{item.size}</td>
-                                <td className="py-3 px-4">
-                                  <span className="text-amber-800 font-bold">£{item.hireRate}</span> / <span className="text-emerald-700 font-semibold">£{item.depositAmount} dep</span>
-                                </td>
-                                <td className="py-3 px-4">
-                                  <span className={`px-2.5 py-1 text-[10px] font-extrabold rounded-full border flex items-center gap-1 w-fit ${
-                                    item.status === 'AVAILABLE' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
-                                    item.status === 'ON_HIRE' ? 'bg-blue-100 text-blue-800 border-blue-300' :
-                                    item.status === 'NEEDS_CLEANING' ? 'bg-cyan-100 text-cyan-900 border-cyan-300' :
-                                    item.status === 'IN_REPAIR' ? 'bg-amber-100 text-amber-900 border-amber-300' :
-                                    'bg-rose-100 text-rose-800 border-rose-300'
-                                  }`}>
-                                    {item.status === 'AVAILABLE' && '✨ AVAILABLE'}
-                                    {item.status === 'ON_HIRE' && '🔒 ON HIRE'}
-                                    {item.status === 'NEEDS_CLEANING' && '🧼 DRY CLEANING'}
-                                    {item.status === 'IN_REPAIR' && '🔧 IN REPAIR'}
-                                    {item.status === 'RETIRED' && '📦 RETIRED'}
-                                  </span>
-                                </td>
-                                <td className="py-3 px-4 text-right">
-                                  <div className="flex items-center justify-end gap-1.5">
-                                    {/* QUICK STATUS TRANSITION BUTTONS */}
-                                    {item.status === 'NEEDS_CLEANING' && (
-                                      <button
-                                        onClick={() => handleConfirmLaundryCleaned(item.id)}
-                                        className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold shadow-sm transition flex items-center gap-0.5"
-                                        title="Confirm Dry Cleaning Done -> Return to Available Stock"
-                                      >
-                                        <Sparkles className="w-3 h-3" /> Mark Clean
-                                      </button>
-                                    )}
+                    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm space-y-0">
+                      {(() => {
+                        const activeStockList = items.filter(item => item.status !== 'RETIRED' && (inventorySizeFilter === 'ALL' || item.sizeGroup === inventorySizeFilter));
+                        const totalItems = activeStockList.length;
+                        const totalPages = Math.ceil(totalItems / inventoryRowsPerPage) || 1;
+                        const currentPage = Math.min(inventoryTablePage, totalPages);
+                        const startIndex = (currentPage - 1) * inventoryRowsPerPage;
+                        const endIndex = Math.min(startIndex + inventoryRowsPerPage, totalItems);
+                        const paginatedItems = activeStockList.slice(startIndex, endIndex);
 
-                                    {item.status === 'IN_REPAIR' && (
-                                      <button
-                                        onClick={() => handleConfirmRepairFixed(item.id)}
-                                        className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold shadow-sm transition flex items-center gap-0.5"
-                                        title="Confirm Repair Fixed -> Return to Available Stock"
-                                      >
-                                        <Wrench className="w-3 h-3" /> Mark Repaired
-                                      </button>
-                                    )}
+                        return (
+                          <div>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left text-xs text-slate-700">
+                                <thead className="bg-slate-50 text-slate-900 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px]">
+                                  <tr>
+                                    <th className="py-3.5 px-4">QR Code</th>
+                                    <th className="py-3.5 px-4">Item Name</th>
+                                    <th className="py-3.5 px-4">Category</th>
+                                    <th className="py-3.5 px-4">Demographic</th>
+                                    <th className="py-3.5 px-4">Tartan / Colour</th>
+                                    <th className="py-3.5 px-4">Size</th>
+                                    <th className="py-3.5 px-4">Rate / Deposit</th>
+                                    <th className="py-3.5 px-4">Status</th>
+                                    <th className="py-3.5 px-4 text-right">Actions</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                  {paginatedItems.map(item => (
+                                    <tr key={item.id} className="hover:bg-slate-50 transition">
+                                      <td className="py-3 px-4 font-mono font-bold text-amber-700">{item.id}</td>
+                                      <td className="py-3 px-4 font-semibold text-slate-900">{item.name}</td>
+                                      <td className="py-3 px-4">{item.category}</td>
+                                      <td className="py-3 px-4">
+                                        <span className={`px-2 py-0.5 text-[10px] font-bold rounded flex items-center gap-1 w-fit ${item.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900 border border-purple-300' : 'bg-blue-100 text-blue-900 border border-blue-300'}`}>
+                                          {item.sizeGroup === 'Kid' ? <Baby className="w-3 h-3" /> : <User className="w-3 h-3" />}
+                                          {item.sizeGroup}
+                                        </span>
+                                      </td>
+                                      <td className="py-3 px-4 text-slate-600">{item.tartanOrColour}</td>
+                                      <td className="py-3 px-4 text-slate-600">{item.size}</td>
+                                      <td className="py-3 px-4">
+                                        <span className="text-amber-800 font-bold">£{item.hireRate}</span> / <span className="text-emerald-700 font-semibold">£{item.depositAmount} dep</span>
+                                      </td>
+                                      <td className="py-3 px-4">
+                                        <span className={`px-2.5 py-1 text-[10px] font-extrabold rounded-full border flex items-center gap-1 w-fit ${
+                                          item.status === 'AVAILABLE' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
+                                          item.status === 'ON_HIRE' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                                          item.status === 'NEEDS_CLEANING' ? 'bg-cyan-100 text-cyan-900 border-cyan-300' :
+                                          item.status === 'IN_REPAIR' ? 'bg-amber-100 text-amber-900 border-amber-300' :
+                                          'bg-rose-100 text-rose-800 border-rose-300'
+                                        }`}>
+                                          {item.status === 'AVAILABLE' && '✨ AVAILABLE'}
+                                          {item.status === 'ON_HIRE' && '🔒 ON HIRE'}
+                                          {item.status === 'NEEDS_CLEANING' && '🧼 DRY CLEANING'}
+                                          {item.status === 'IN_REPAIR' && '🔧 IN REPAIR'}
+                                          {item.status === 'RETIRED' && '📦 RETIRED'}
+                                        </span>
+                                      </td>
+                                      <td className="py-3 px-4 text-right">
+                                        <div className="flex items-center justify-end gap-1.5">
+                                          {/* QUICK STATUS TRANSITION BUTTONS */}
+                                          {item.status === 'NEEDS_CLEANING' && (
+                                            <button
+                                              onClick={() => handleConfirmLaundryCleaned(item.id)}
+                                              className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold shadow-sm transition flex items-center gap-0.5 cursor-pointer"
+                                              title="Confirm Dry Cleaning Done -> Return to Available Stock"
+                                            >
+                                              <Sparkles className="w-3 h-3" /> Mark Clean
+                                            </button>
+                                          )}
 
-                                    {item.status !== 'NEEDS_CLEANING' && item.status !== 'ON_HIRE' && (
-                                      <button
-                                        onClick={() => handleManualSendToLaundry(item.id)}
-                                        className="p-1.5 bg-cyan-50 hover:bg-cyan-100 text-cyan-800 rounded border border-cyan-200 transition"
-                                        title="Send to Dry Cleaning / Laundry"
-                                      >
-                                        <Sparkles className="w-3.5 h-3.5 text-cyan-600" />
-                                      </button>
-                                    )}
+                                          {item.status === 'IN_REPAIR' && (
+                                            <button
+                                              onClick={() => handleConfirmRepairFixed(item.id)}
+                                              className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold shadow-sm transition flex items-center gap-0.5 cursor-pointer"
+                                              title="Confirm Repair Fixed -> Return to Available Stock"
+                                            >
+                                              <Wrench className="w-3 h-3" /> Mark Repaired
+                                            </button>
+                                          )}
 
-                                    {item.status !== 'IN_REPAIR' && item.status !== 'ON_HIRE' && (
-                                      <button
-                                        onClick={() => {
-                                          setScannedCode(item.id);
-                                          setShowSendRepairModal(true);
-                                        }}
-                                        className="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 rounded border border-amber-200 transition"
-                                        title="Send to Repair Workshop"
-                                      >
-                                        <Wrench className="w-3.5 h-3.5 text-amber-600" />
-                                      </button>
-                                    )}
+                                          {item.status !== 'NEEDS_CLEANING' && item.status !== 'ON_HIRE' && (
+                                            <button
+                                              onClick={() => handleManualSendToLaundry(item.id)}
+                                              className="p-1.5 bg-cyan-50 hover:bg-cyan-100 text-cyan-800 rounded border border-cyan-200 transition cursor-pointer"
+                                              title="Send to Dry Cleaning / Laundry"
+                                            >
+                                              <Sparkles className="w-3.5 h-3.5 text-cyan-600" />
+                                            </button>
+                                          )}
 
-                                    {/* EDIT SPECS BUTTON */}
-                                    <button
-                                      onClick={() => setShowEditItemModal(item)}
-                                      className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded border border-slate-300 transition"
-                                      title="Edit Specs & Status"
-                                    >
-                                      <Edit3 className="w-3.5 h-3.5 text-amber-600" />
-                                    </button>
+                                          {item.status !== 'IN_REPAIR' && item.status !== 'ON_HIRE' && (
+                                            <button
+                                              onClick={() => {
+                                                setScannedCode(item.id);
+                                                setShowSendRepairModal(true);
+                                              }}
+                                              className="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 rounded border border-amber-200 transition cursor-pointer"
+                                              title="Send to Repair Workshop"
+                                            >
+                                              <Wrench className="w-3.5 h-3.5 text-amber-600" />
+                                            </button>
+                                          )}
 
-                                    {/* REMOVE FROM ROTATION (ARCHIVE) */}
-                                    <button
-                                      onClick={() => setShowRemoveRotationModal(item)}
-                                      className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded border border-slate-300 transition"
-                                      title="Remove from Active Rotation to Archive"
-                                    >
-                                      <Archive className="w-3.5 h-3.5 text-slate-600" />
-                                    </button>
+                                          {/* EDIT SPECS BUTTON */}
+                                          <button
+                                            onClick={() => setShowEditItemModal(item)}
+                                            className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded border border-slate-300 transition cursor-pointer"
+                                            title="Edit Specs & Status"
+                                          >
+                                            <Edit3 className="w-3.5 h-3.5 text-amber-600" />
+                                          </button>
 
-                                    {/* PERMANENT DELETE STOCK ITEM */}
-                                    <button
-                                      onClick={() => handleDeleteStockItem(item.id)}
-                                      className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded border border-rose-200 transition"
-                                      title="Permanently Delete Item from Cloud Database"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                                          {/* REMOVE FROM ROTATION (ARCHIVE) */}
+                                          <button
+                                            onClick={() => setShowRemoveRotationModal(item)}
+                                            className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded border border-slate-300 transition cursor-pointer"
+                                            title="Remove from Active Rotation to Archive"
+                                          >
+                                            <Archive className="w-3.5 h-3.5 text-slate-600" />
+                                          </button>
+
+                                          {/* PERMANENT DELETE STOCK ITEM */}
+                                          <button
+                                            onClick={() => handleDeleteStockItem(item.id)}
+                                            className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded border border-rose-200 transition cursor-pointer"
+                                            title="Permanently Delete Item from Cloud Database"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            {/* INTERACTIVE TABLE PAGINATION FOOTER */}
+                            <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-slate-50 border-t border-slate-200 text-xs text-slate-600 font-medium">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-700">Rows per page:</span>
+                                <select
+                                  value={inventoryRowsPerPage}
+                                  onChange={(e) => {
+                                    setInventoryRowsPerPage(Number(e.target.value));
+                                    setInventoryTablePage(1);
+                                  }}
+                                  className="bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 font-extrabold text-slate-900 outline-none focus:border-amber-500 shadow-2xs cursor-pointer"
+                                >
+                                  <option value={10}>10</option>
+                                  <option value={20}>20</option>
+                                  <option value={30}>30</option>
+                                  <option value={50}>50</option>
+                                  <option value={100}>100</option>
+                                </select>
+                                <span className="text-slate-500 font-semibold">
+                                  Showing <strong className="text-slate-900">{totalItems > 0 ? startIndex + 1 : 0}</strong>–<strong className="text-slate-900">{endIndex}</strong> of <strong className="text-slate-900">{totalItems}</strong> stock items
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 font-extrabold">
+                                <button
+                                  onClick={() => setInventoryTablePage(p => Math.max(1, p - 1))}
+                                  disabled={currentPage === 1}
+                                  className="px-3.5 py-1.5 bg-white border border-slate-300 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition shadow-2xs cursor-pointer"
+                                >
+                                  ◄ Previous
+                                </button>
+                                
+                                <span className="px-3.5 py-1.5 bg-amber-100 text-amber-950 border border-amber-300 rounded-xl">
+                                  Page {currentPage} of {totalPages}
+                                </span>
+
+                                <button
+                                  onClick={() => setInventoryTablePage(p => Math.min(totalPages, p + 1))}
+                                  disabled={currentPage >= totalPages}
+                                  className="px-3.5 py-1.5 bg-white border border-slate-300 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition shadow-2xs cursor-pointer"
+                                >
+                                  Next ►
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   ) : (
                     /* DEDICATED MASTER ADMIN RETIRED STOCK ARCHIVE */
