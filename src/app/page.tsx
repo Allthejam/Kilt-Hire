@@ -1299,6 +1299,20 @@ export default function KiltHireApp() {
       return;
     }
 
+    // Validate Date Sequence: Collection <= Event <= Return
+    if (fittingForm.collectionDate && fittingForm.eventDate && fittingForm.collectionDate > fittingForm.eventDate) {
+      showToast(`⚠️ Inconsistent Dates: Collection Date (${fittingForm.collectionDate}) cannot be after Event Date (${fittingForm.eventDate})!`, 'warning');
+      return;
+    }
+    if (fittingForm.eventDate && fittingForm.returnDate && fittingForm.eventDate > fittingForm.returnDate) {
+      showToast(`⚠️ Inconsistent Dates: Return Date (${fittingForm.returnDate}) cannot be before Event Date (${fittingForm.eventDate})!`, 'warning');
+      return;
+    }
+    if (fittingForm.collectionDate && fittingForm.returnDate && fittingForm.collectionDate >= fittingForm.returnDate) {
+      showToast(`⚠️ Inconsistent Dates: Return Date (${fittingForm.returnDate}) must be after Collection Date (${fittingForm.collectionDate})!`, 'warning');
+      return;
+    }
+
     // Validate that each outfit has at least 1 garment item
     for (let idx = 0; idx < fittingForm.outfits.length; idx++) {
       const out = fittingForm.outfits[idx];
@@ -3970,15 +3984,62 @@ export default function KiltHireApp() {
                         </div>
                       </div>
 
+                      {/* REAL-TIME DATE CHRONOLOGY INCONSISTENCY WARNING BANNER */}
+                      {(() => {
+                        const isColAfterEv = fittingForm.collectionDate && fittingForm.eventDate && fittingForm.collectionDate > fittingForm.eventDate;
+                        const isEvAfterRet = fittingForm.eventDate && fittingForm.returnDate && fittingForm.eventDate > fittingForm.returnDate;
+                        const isColAfterRet = fittingForm.collectionDate && fittingForm.returnDate && fittingForm.collectionDate >= fittingForm.returnDate;
+
+                        if (isColAfterEv || isEvAfterRet || isColAfterRet) {
+                          return (
+                            <div className="bg-red-50 border border-red-300 rounded-2xl p-3.5 flex items-start gap-3 text-xs text-red-900 animate-in fade-in">
+                              <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                              <div className="space-y-1">
+                                <span className="font-extrabold block text-red-950">⚠️ Date Chronology Error Detected:</span>
+                                <ul className="list-disc list-inside space-y-0.5 text-[11px] font-semibold text-red-800">
+                                  {isColAfterEv && (
+                                    <li>Collection Date ({fittingForm.collectionDate}) is AFTER Event Date ({fittingForm.eventDate}). Customer must collect before or on the event date!</li>
+                                  )}
+                                  {isEvAfterRet && (
+                                    <li>Return Date ({fittingForm.returnDate}) is BEFORE Event Date ({fittingForm.eventDate}). Garments cannot be returned before the event!</li>
+                                  )}
+                                  {isColAfterRet && (
+                                    <li>Return Date ({fittingForm.returnDate}) must be strictly AFTER Collection Date ({fittingForm.collectionDate}).</li>
+                                  )}
+                                </ul>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
                         <div>
                           <label className="block text-slate-700 font-extrabold mb-1">Collection Date *</label>
                           <input 
                             type="date" 
                             required
+                            max={fittingForm.eventDate || undefined}
                             value={fittingForm.collectionDate}
-                            onChange={e => setFittingForm({ ...fittingForm, collectionDate: e.target.value })}
-                            className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm text-xs"
+                            onChange={e => {
+                              const newCol = e.target.value;
+                              let newEv = fittingForm.eventDate;
+                              let newRet = fittingForm.returnDate;
+
+                              // If collection is pushed past current event date, auto-bump event & return dates
+                              if (newEv && newCol > newEv) {
+                                newEv = newCol;
+                                newRet = new Date(new Date(newCol).getTime() + 2 * 86400000).toISOString().slice(0, 10);
+                              }
+
+                              setFittingForm({ ...fittingForm, collectionDate: newCol, eventDate: newEv, returnDate: newRet });
+                            }}
+                            className={`w-full bg-white border rounded-xl p-2.5 text-slate-900 font-bold outline-none shadow-sm text-xs ${
+                              fittingForm.collectionDate && fittingForm.eventDate && fittingForm.collectionDate > fittingForm.eventDate 
+                                ? 'border-red-500 bg-red-50 text-red-900 ring-2 ring-red-300' 
+                                : 'border-slate-300 focus:border-amber-500'
+                            }`}
                           />
                         </div>
                         <div>
@@ -3986,13 +4047,22 @@ export default function KiltHireApp() {
                           <input 
                             type="date" 
                             required
+                            min={fittingForm.collectionDate || undefined}
                             value={fittingForm.eventDate}
                             onChange={e => {
                               const newEv = e.target.value;
-                              const autoRet = new Date(new Date(newEv).getTime() + 2 * 86400000).toISOString().slice(0, 10);
+                              let autoRet = fittingForm.returnDate;
+                              // Auto-calculate return date as 2 days after event date if missing or invalid
+                              if (!autoRet || autoRet <= newEv) {
+                                autoRet = new Date(new Date(newEv).getTime() + 2 * 86400000).toISOString().slice(0, 10);
+                              }
                               setFittingForm({ ...fittingForm, eventDate: newEv, returnDate: autoRet });
                             }}
-                            className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm text-xs"
+                            className={`w-full bg-white border rounded-xl p-2.5 text-slate-900 font-bold outline-none shadow-sm text-xs ${
+                              fittingForm.collectionDate && fittingForm.eventDate && fittingForm.collectionDate > fittingForm.eventDate 
+                                ? 'border-red-500 bg-red-50 text-red-900 ring-2 ring-red-300' 
+                                : 'border-slate-300 focus:border-amber-500'
+                            }`}
                           />
                         </div>
                         <div>
@@ -4000,9 +4070,15 @@ export default function KiltHireApp() {
                           <input 
                             type="date" 
                             required
+                            min={fittingForm.eventDate || fittingForm.collectionDate || undefined}
                             value={fittingForm.returnDate}
                             onChange={e => setFittingForm({ ...fittingForm, returnDate: e.target.value })}
-                            className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm text-xs text-amber-900"
+                            className={`w-full bg-white border rounded-xl p-2.5 font-bold outline-none shadow-sm text-xs ${
+                              (fittingForm.eventDate && fittingForm.returnDate && fittingForm.eventDate > fittingForm.returnDate) ||
+                              (fittingForm.collectionDate && fittingForm.returnDate && fittingForm.collectionDate >= fittingForm.returnDate)
+                                ? 'border-red-500 bg-red-50 text-red-900 ring-2 ring-red-300' 
+                                : 'border-slate-300 text-amber-900 focus:border-amber-500'
+                            }`}
                           />
                         </div>
                       </div>
