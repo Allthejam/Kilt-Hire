@@ -10552,8 +10552,8 @@ export default function KiltHireApp() {
 
       {/* GARMENT SCAN ACTION POPUP MODAL (SCAN 2 & SUBSEQUENT SCANS) */}
       {scanActionItem && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-4 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto shadow-2xl my-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <span className="text-[10px] font-extrabold text-amber-700 uppercase tracking-wider block">🏷️ Garment Scan Recognized</span>
@@ -11010,8 +11010,8 @@ export default function KiltHireApp() {
 
       {/* CREATE PO MODAL WITH DYNAMIC FULL RIGOUT PRICE CAP BREAKDOWN & MULTI-OUTFIT WEDDING PARTY SCANNER */}
       {showCreatePoModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-3xl w-full p-6 space-y-5 my-8 shadow-2xl">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-3xl w-full p-4 sm:p-6 space-y-4 max-h-[92vh] overflow-y-auto shadow-2xl my-auto">
             
             {/* MODAL HEADER */}
             <div className="flex items-start justify-between border-b border-slate-200 pb-3">
@@ -11024,30 +11024,52 @@ export default function KiltHireApp() {
                     {newPoForm.selectedItemIds.length} Items Scanned
                   </span>
                 </div>
-                <h3 className="text-lg font-extrabold text-slate-900 mt-1 flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-extrabold text-slate-900 mt-1 flex items-center gap-2">
                   <CreditCard className="w-5 h-5 text-amber-600" /> Create Customer PO (Single Outfit or Wedding Party)
                 </h3>
               </div>
 
-              <button onClick={() => setShowCreatePoModal(false)} className="p-2 text-slate-400 hover:text-slate-700">
+              <button onClick={() => setShowCreatePoModal(false)} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100 transition cursor-pointer">
                 <X className="w-6 h-6" />
               </button>
             </div>
 
-            {/* LIVE OUTGOING SCANNER BAR */}
-            <div className="bg-blue-50 border border-blue-200 p-4 rounded-2xl space-y-2 text-blue-950">
-              <div className="flex items-center justify-between">
+            {/* LIVE OUTGOING SCANNER BANNER WITH EMBEDDED CAMERA VIEWFINDER */}
+            <div className="bg-blue-50 border border-blue-200 p-4 rounded-2xl space-y-3 text-blue-950">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
                 <span className="font-extrabold text-xs flex items-center gap-1 text-blue-900">
-                  <Zap className="w-4 h-4 text-blue-600" /> Aim QR Scanner to Add Garments to this PO (e.g. Wedding Party Outfits):
+                  <Zap className="w-4 h-4 text-blue-600" /> Aim QR Scanner or Camera to Add Garments:
                 </span>
-                <span className="text-[10px] font-bold text-blue-700">Keep scanning 10, 20+ items continuously!</span>
+                
+                <button
+                  type="button"
+                  onClick={toggleCamera}
+                  className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer ${
+                    activeCamera ? 'bg-rose-600 text-white hover:bg-rose-700' : 'bg-slate-900 text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                  {activeCamera ? '⏹ Turn Camera Off' : '📷 Open Live Camera Scanner'}
+                </button>
               </div>
+
+              {/* LIVE CAMERA VIEWFINDER WHEN ACTIVE */}
+              {activeCamera && (
+                <div className="relative w-full aspect-video max-h-48 bg-slate-950 rounded-xl overflow-hidden border-2 border-amber-500 shadow-inner my-2">
+                  <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 border-2 border-dashed border-amber-400/70 rounded-xl pointer-events-none flex items-center justify-center">
+                    <span className="text-[10px] bg-slate-900/80 text-amber-300 font-extrabold px-2.5 py-1 rounded">
+                      Center QR Tag in Camera Viewfinder to Scan
+                    </span>
+                  </div>
+                </div>
+              )}
 
               <div className="flex gap-2">
                 <input 
                   type="text"
                   autoFocus
-                  placeholder="Scan item QR code to add to PO (e.g. KILT-1001, JKT-1002, SPO-1003)..."
+                  placeholder="Scan or type item QR code (e.g. KILT-1001, JKT-1002)..."
                   onKeyDown={e => {
                     if (e.key === 'Enter') {
                       handleScanCode((e.target as HTMLInputElement).value);
@@ -11056,7 +11078,7 @@ export default function KiltHireApp() {
                   }}
                   className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 outline-none focus:border-amber-500 shadow-sm"
                 />
-                <span className="text-[11px] font-bold text-slate-500 self-center">Press Enter / Aim Scanner</span>
+                <span className="text-[11px] font-bold text-slate-500 self-center hidden sm:inline">Press Enter</span>
               </div>
 
               {/* AVAILABLE STOCK — scan or tap to add to PO */}
