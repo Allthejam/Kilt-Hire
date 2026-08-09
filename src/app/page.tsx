@@ -8188,10 +8188,13 @@ export default function KiltHireApp() {
                       )}
 
                       <button
-                        onClick={() => setShowCreatePoModal(true)}
+                        onClick={() => {
+                          setAssistantTab('start_fitting');
+                          setInterfaceMode('shop_assistant');
+                        }}
                         className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm flex items-center gap-2 transition"
                       >
-                        <PlusCircle className="w-4 h-4" /> Create New Hire PO
+                        <PlusCircle className="w-4 h-4" /> Start New Fitting & Order
                       </button>
                     </div>
                   </div>
@@ -8203,13 +8206,16 @@ export default function KiltHireApp() {
                       </div>
                       <h3 className="text-base font-extrabold text-slate-900">No Purchase Orders in Database</h3>
                       <p className="text-xs text-slate-500 max-w-md mx-auto">
-                        Your Purchase Orders ledger is connected live to Cloud Firestore. Create a new order via the Fitting Station or click Create New Hire PO above.
+                        Your Purchase Orders ledger is connected live to Cloud Firestore. Create a new order via the Start New Fitting & Order station.
                       </p>
                       <button
-                        onClick={() => setShowCreatePoModal(true)}
+                        onClick={() => {
+                          setAssistantTab('start_fitting');
+                          setInterfaceMode('shop_assistant');
+                        }}
                         className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm inline-flex items-center gap-1.5 transition mt-2"
                       >
-                        <PlusCircle className="w-4 h-4" /> Create First Live PO
+                        <PlusCircle className="w-4 h-4" /> Start First Live Fitting & Order
                       </button>
                     </div>
                   ) : (
