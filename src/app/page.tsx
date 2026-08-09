@@ -10733,97 +10733,132 @@ export default function KiltHireApp() {
 
             <form onSubmit={handleRegisterItem} className="space-y-4 text-xs">
               
-              {/* ADULT VS KIDS SIZING DEMOGRAPHIC SELECTOR TOGGLE */}
-              <div>
-                <label className="block text-slate-700 font-bold mb-1.5">Garment Demographic / Sizing Group</label>
-                <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const prices = getDefaultPriceForCategory(regForm.category, false);
-                      setRegForm({
-                        ...regForm,
-                        sizeGroup: 'Adult',
-                        hireRate: prices.hireRate,
-                        depositAmount: prices.deposit
-                      });
-                    }}
-                    className={`py-2.5 px-3 rounded-lg font-bold flex items-center justify-center gap-2 transition ${
-                      regForm.sizeGroup === 'Adult'
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'text-slate-600 hover:bg-white/50'
-                    }`}
-                  >
-                    <User className="w-4 h-4" /> Adult Sizing (Rate £{getDefaultPriceForCategory(regForm.category, false).hireRate})
-                  </button>
+              {/* DETERMINED & LOCKED BY ADMIN QR BATCH SPECIFICATION */}
+              {(() => {
+                const batchMatch = batches.find(b => (b.qrCodes || []).includes(scannedCode));
+                const isBatchLocked = Boolean(batchMatch || scannedCode.includes('-KID') || scannedCode.startsWith('KILT') || scannedCode.startsWith('JKT') || scannedCode.startsWith('SPO') || scannedCode.startsWith('SHO') || scannedCode.startsWith('VST') || scannedCode.startsWith('SHT') || scannedCode.startsWith('SOK') || scannedCode.startsWith('BLT') || scannedCode.startsWith('KNF'));
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const prices = getDefaultPriceForCategory(regForm.category, true);
-                      setRegForm({
-                        ...regForm,
-                        sizeGroup: 'Kid',
-                        hireRate: prices.hireRate,
-                        depositAmount: prices.deposit
-                      });
-                    }}
-                    className={`py-2.5 px-3 rounded-lg font-bold flex items-center justify-center gap-2 transition ${
-                      regForm.sizeGroup === 'Kid'
-                        ? 'bg-purple-600 text-white shadow-sm'
-                        : 'text-slate-600 hover:bg-white/50'
-                    }`}
-                  >
-                    <Baby className="w-4 h-4" /> Kids Sizing (Rate £{getDefaultPriceForCategory(regForm.category, true).hireRate})
-                  </button>
-                </div>
-              </div>
+                return (
+                  <div className="space-y-4">
+                    {/* ADULT VS KIDS SIZING DEMOGRAPHIC SELECTOR TOGGLE */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-slate-700 font-bold">Garment Demographic / Sizing Group</label>
+                        {isBatchLocked && (
+                          <span className="text-[10px] font-extrabold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-300 flex items-center gap-1">
+                            <Lock className="w-3 h-3 text-amber-700" /> Locked by Admin Batch
+                          </span>
+                        )}
+                      </div>
 
-              <div>
-                <label className="block text-slate-700 font-bold mb-1">Item Title / Description</label>
-                <input 
-                  type="text" 
-                  required
-                  autoFocus
-                  placeholder="e.g. Royal Stewart Heavyweight 8-Yard Kilt"
-                  value={regForm.name}
-                  onChange={e => setRegForm({...regForm, name: e.target.value})}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
-                />
-              </div>
+                      <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
+                        <button
+                          type="button"
+                          disabled={isBatchLocked}
+                          onClick={() => {
+                            const prices = getDefaultPriceForCategory(regForm.category, false);
+                            setRegForm({
+                              ...regForm,
+                              sizeGroup: 'Adult',
+                              hireRate: prices.hireRate,
+                              depositAmount: prices.deposit
+                            });
+                          }}
+                          className={`py-2.5 px-3 rounded-lg font-bold flex items-center justify-center gap-2 transition ${
+                            regForm.sizeGroup === 'Adult'
+                              ? 'bg-blue-600 text-white shadow-sm'
+                              : 'text-slate-600 hover:bg-white/50 disabled:opacity-40'
+                          } ${isBatchLocked ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                        >
+                          <User className="w-4 h-4" /> Adult Sizing
+                        </button>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">Category</label>
-                  <select 
-                    value={regForm.category}
-                    onChange={e => {
-                      const newCat = e.target.value as ItemCategory;
-                      const prices = getDefaultPriceForCategory(newCat, regForm.sizeGroup === 'Kid');
-                      setRegForm({
-                        ...regForm, 
-                        category: newCat,
-                        hireRate: prices.hireRate,
-                        depositAmount: prices.deposit
-                      });
-                    }}
-                    className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-semibold outline-none focus:border-amber-500 shadow-sm"
-                  >
-                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
+                        <button
+                          type="button"
+                          disabled={isBatchLocked}
+                          onClick={() => {
+                            const prices = getDefaultPriceForCategory(regForm.category, true);
+                            setRegForm({
+                              ...regForm,
+                              sizeGroup: 'Kid',
+                              hireRate: prices.hireRate,
+                              depositAmount: prices.deposit
+                            });
+                          }}
+                          className={`py-2.5 px-3 rounded-lg font-bold flex items-center justify-center gap-2 transition ${
+                            regForm.sizeGroup === 'Kid'
+                              ? 'bg-purple-600 text-white shadow-sm'
+                              : 'text-slate-600 hover:bg-white/50 disabled:opacity-40'
+                          } ${isBatchLocked ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                        >
+                          <Baby className="w-4 h-4" /> Kids Sizing
+                        </button>
+                      </div>
+                    </div>
 
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">Tartan Pattern / Colour</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={regForm.tartanOrColour}
-                    onChange={e => setRegForm({...regForm, tartanOrColour: e.target.value})}
-                    className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 outline-none focus:border-amber-500 shadow-sm"
-                  />
-                </div>
-              </div>
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1">Item Title / Description</label>
+                      <input 
+                        type="text" 
+                        required
+                        autoFocus
+                        placeholder="e.g. Royal Stewart Heavyweight 8-Yard Kilt"
+                        value={regForm.name}
+                        onChange={e => setRegForm({...regForm, name: e.target.value})}
+                        className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-slate-700 font-bold">Category</label>
+                          {isBatchLocked && (
+                            <span className="text-[9px] font-bold text-amber-800 flex items-center gap-0.5">
+                              <Lock className="w-2.5 h-2.5" /> Batch Locked
+                            </span>
+                          )}
+                        </div>
+                        
+                        {isBatchLocked ? (
+                          <div className="w-full bg-slate-100 border border-slate-300 rounded-lg p-2 font-bold text-slate-900 flex items-center justify-between">
+                            <span>{regForm.category}</span>
+                            <span className="text-[10px] font-extrabold bg-amber-200 text-amber-950 px-1.5 py-0.5 rounded">Fixed</span>
+                          </div>
+                        ) : (
+                          <select 
+                            value={regForm.category}
+                            onChange={e => {
+                              const newCat = e.target.value as ItemCategory;
+                              const prices = getDefaultPriceForCategory(newCat, regForm.sizeGroup === 'Kid');
+                              setRegForm({
+                                ...regForm, 
+                                category: newCat,
+                                hireRate: prices.hireRate,
+                                depositAmount: prices.deposit
+                              });
+                            }}
+                            className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-semibold outline-none focus:border-amber-500 shadow-sm"
+                          >
+                            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-700 font-bold mb-1">Tartan Pattern / Colour</label>
+                        <input 
+                          type="text" 
+                          required
+                          value={regForm.tartanOrColour}
+                          onChange={e => setRegForm({...regForm, tartanOrColour: e.target.value})}
+                          className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 outline-none focus:border-amber-500 shadow-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
