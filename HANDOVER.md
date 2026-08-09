@@ -161,9 +161,9 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+344e3d5  fix: add localStorage items persistence, smart merge for Firestore snapshot sync, and robust case-insensitive QR code lookup so scanned registered items (like KILT-2592 in repair) always open the 5-option action modal without triggering re-registration
 1e09231  fix: link Start New Order PO directly to full Fitting & Order Station with integrated live camera scanner and callback ref for 0 black screens
 71d569a  fix: completely remove rate and deposit price fields/banners from first-scan garment registration popup so staff have zero price controls or access
-06293c9  docs: update in-app Staff User Guide & Operations Manual and create STAFF_USER_GUIDE.md with complete SOPs for scanning, pricing derivation, admin batch locks, 2-scan garment lifecycle, and AI outfit recommendations
 66b56e8  fix: responsive max-height and dual-direction scrolling for mobile scan modals and integrated live camera scanner directly inside Outgoing Order PO Builder
 f1de6bc  feat: implement 2-scan garment lifecycle logic, duplicate registration prevention, and Garment Scan Action Popup Modal for instant state transitions
 cd14112  fix: replace pseudo-random QR generator with ISO 18004 compliant qrcode library, 4-module quiet zone, crisp SVG rendering, and dynamic viewBox so native phone camera apps and built-in scanners scan instantly
