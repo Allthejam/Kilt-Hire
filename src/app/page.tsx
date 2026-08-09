@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BrowserMultiFormatReader, BarcodeFormat } from '@zxing/browser';
 import { DecodeHintType } from '@zxing/library';
 import {
@@ -1726,6 +1726,14 @@ export default function KiltHireApp() {
   // IScannerControls is returned by decodeFromVideoDevice and has a .stop() method
   const scanControlsRef = useRef<{ stop: () => void } | null>(null);
   const lastScanTimeRef = useRef<number>(0);
+  const [videoElementMounted, setVideoElementMounted] = useState<number>(0);
+
+  const videoRefCallback = useCallback((node: HTMLVideoElement | null) => {
+    videoRef.current = node;
+    if (node) {
+      setVideoElementMounted(prev => prev + 1);
+    }
+  }, []);
 
   const toggleCamera = () => {
     if (activeCamera) {
@@ -1869,7 +1877,7 @@ export default function KiltHireApp() {
         scanControlsRef.current = null;
       }
     };
-  }, [activeCamera, selectedDeviceId, zoomLevel]);
+  }, [activeCamera, videoElementMounted, selectedDeviceId, zoomLevel]);
 
   // Get default price & deposit for a category and sizeGroup
   const getDefaultPriceForCategory = (cat: ItemCategory, isKid: boolean) => {
@@ -1900,6 +1908,27 @@ export default function KiltHireApp() {
         [cleanCode]: { condition: 'GOOD_CLEAN', scanned: true, notes: 'Authentic QR label scanned & verified!' }
       }));
       showToast(`🛡️ QR Verified: ${cleanCode} authenticated & checked off!`, 'success');
+      return;
+    }
+
+    // IF IN FITTING & ORDER STATION MODE: ACCUMULATE DIRECTLY INTO FITTING ORDER OUTFIT
+    if ((assistantTab === 'start_fitting' || activeTab === 'start_fitting') && existing && existing.status === 'AVAILABLE') {
+      setFittingForm(prev => {
+        const updatedOutfits = [...prev.outfits];
+        if (updatedOutfits.length > 0) {
+          const first = updatedOutfits[0];
+          if (!first.selectedItemIds.includes(cleanCode)) {
+            updatedOutfits[0] = {
+              ...first,
+              selectedItemIds: [...first.selectedItemIds, cleanCode]
+            };
+            showToast(`➕ Added ${existing.sizeGroup} ${existing.name} (${cleanCode}) to Fitting Order!`, 'success');
+          } else {
+            showToast(`ℹ️ Item (${cleanCode}) is already in this fitting order outfit.`, 'info');
+          }
+        }
+        return { ...prev, outfits: updatedOutfits };
+      });
       return;
     }
 
@@ -4192,6 +4221,62 @@ export default function KiltHireApp() {
 
                   {/* FITTING FORM WORKSPACE */}
                   <form onSubmit={handleSaveFittingSubmit} className="space-y-6 text-xs">
+                    
+                    {/* LIVE QR CAMERA SCANNER BANNER ON FITTING & ORDER STATION */}
+                    <div className="bg-gradient-to-r from-slate-900 via-slate-950 to-amber-950 text-white p-4 rounded-2xl space-y-3 border border-amber-500/30 shadow-md">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          <Zap className="w-5 h-5 text-amber-400 animate-pulse" />
+                          <div>
+                            <span className="font-extrabold text-xs text-amber-300 block">
+                              Live Mobile QR Scanner Active
+                            </span>
+                            <span className="text-[10px] text-slate-300">
+                              Aim camera at garment tags to add items directly to this order:
+                            </span>
+                          </div>
+                        </div>
+                        
+                        <button
+                          type="button"
+                          onClick={toggleCamera}
+                          className={`px-4 py-2 rounded-xl font-extrabold text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer ${
+                            activeCamera ? 'bg-rose-600 hover:bg-rose-700 text-white' : 'bg-amber-500 hover:bg-amber-600 text-slate-950'
+                          }`}
+                        >
+                          <Camera className="w-4 h-4" />
+                          {activeCamera ? '⏹ Turn Camera Off' : '📷 Open Live Camera Scanner'}
+                        </button>
+                      </div>
+
+                      {/* LIVE CAMERA VIEWFINDER WHEN ACTIVE */}
+                      {activeCamera && (
+                        <div className="relative w-full aspect-video max-h-56 bg-slate-950 rounded-xl overflow-hidden border-2 border-amber-500 shadow-inner my-2">
+                          <video ref={videoRefCallback} autoPlay playsInline muted className="w-full h-full object-cover" />
+                          <div className="absolute inset-0 border-2 border-dashed border-amber-400/70 rounded-xl pointer-events-none flex items-center justify-center">
+                            <span className="text-[11px] bg-slate-900/85 text-amber-300 font-extrabold px-3 py-1 rounded-full border border-amber-400/50 shadow">
+                              Center Garment QR Tag in Camera Viewfinder to Add
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex gap-2">
+                        <input 
+                          type="text"
+                          placeholder="Aim camera or type garment QR code (e.g. KILT-1001, JKT-1002)..."
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleScanCode((e.target as HTMLInputElement).value);
+                              (e.target as HTMLInputElement).value = '';
+                            }
+                          }}
+                          className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-mono font-bold text-slate-900 outline-none focus:border-amber-500 shadow-sm"
+                        />
+                        <span className="text-[11px] font-bold text-slate-300 self-center hidden sm:inline">Press Enter to Add</span>
+                      </div>
+                    </div>
                     
                     {/* SECTION 1: LEAD CUSTOMER, EVENT DATES & BILLING MODE */}
                     <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-4 shadow-sm">
@@ -10618,28 +10703,32 @@ export default function KiltHireApp() {
               {/* ACTION 1: START / ADD TO ORDER PO */}
               <button
                 onClick={() => {
-                  const itemId = scanActionItem.id;
+                  const scannedItem = scanActionItem;
                   setScanActionItem(null);
-                  if (showCreatePoModal) {
-                    if (!newPoForm.selectedItemIds.includes(itemId)) {
-                      setNewPoForm(prev => ({
-                        ...prev,
-                        selectedItemIds: [...prev.selectedItemIds, itemId]
-                      }));
-                      showToast(`➕ Added ${scanActionItem.name} (${itemId}) to active Outgoing PO!`, 'success');
-                    } else {
-                      showToast(`ℹ️ ${itemId} is already in this Outgoing PO.`, 'info');
+                  setShowCreatePoModal(false);
+                  
+                  // Switch to full-page Fitting & Order Station
+                  setAssistantTab('start_fitting');
+                  setActiveTab('start_fitting');
+                  setActiveCamera(true);
+
+                  // Add scanned garment into fitting outfits
+                  setFittingForm(prev => {
+                    const updatedOutfits = [...prev.outfits];
+                    if (updatedOutfits.length > 0) {
+                      const first = updatedOutfits[0];
+                      const alreadyAdded = first.selectedItemIds.includes(scannedItem.id);
+                      if (!alreadyAdded) {
+                        updatedOutfits[0] = {
+                          ...first,
+                          selectedItemIds: [...first.selectedItemIds, scannedItem.id]
+                        };
+                      }
                     }
-                  } else {
-                    setShowCreatePoModal(true);
-                    setNewPoForm(prev => ({
-                      ...prev,
-                      selectedItemIds: [itemId],
-                      hireStartDate: new Date().toISOString().slice(0, 10),
-                      hireEndDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-                    }));
-                    showToast(`🛒 Started Outgoing Purchase Order with ${itemId}!`, 'success');
-                  }
+                    return { ...prev, outfits: updatedOutfits };
+                  });
+
+                  showToast(`🛒 Switched to Customer Fitting & Order Station with ${scannedItem.id}!`, 'success');
                 }}
                 className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-2xl shadow-sm transition flex items-center justify-between cursor-pointer"
               >
