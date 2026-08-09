@@ -1763,6 +1763,11 @@ export default function KiltHireApp() {
   // IScannerControls is returned by decodeFromVideoDevice and has a .stop() method
   const scanControlsRef = useRef<{ stop: () => void } | null>(null);
   const lastScanTimeRef = useRef<number>(0);
+  const itemsRef = useRef<KiltItem[]>(items);
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
   const [videoElementMounted, setVideoElementMounted] = useState<number>(0);
 
   const videoRefCallback = useCallback((node: HTMLVideoElement | null) => {
@@ -1852,6 +1857,11 @@ export default function KiltHireApp() {
     // Target device ID or undefined for default back camera
     const deviceToUse = selectedDeviceId || undefined;
 
+    // Ensure video attributes for mobile stream flow
+    videoEl.muted = true;
+    (videoEl as any).playsInline = true;
+    videoEl.play().catch(() => {});
+
     reader.decodeFromVideoDevice(
       deviceToUse,
       videoEl,
@@ -1863,6 +1873,10 @@ export default function KiltHireApp() {
         // Apply hardware track zoom
         if (videoEl.srcObject instanceof MediaStream) {
           applyTrackConstraints(videoEl.srcObject);
+        }
+
+        if (videoEl.paused) {
+          videoEl.play().catch(() => {});
         }
 
         if (result && !stopped) {
@@ -1883,7 +1897,11 @@ export default function KiltHireApp() {
     const canvasCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
 
     fallbackInterval = setInterval(() => {
-      if (stopped || !videoEl || videoEl.readyState < 2) return;
+      if (stopped || !videoEl) return;
+      if (videoEl.paused) {
+        videoEl.play().catch(() => {});
+      }
+      if (videoEl.readyState < 2) return;
       try {
         const vw = videoEl.videoWidth || 640;
         const vh = videoEl.videoHeight || 480;
@@ -1938,8 +1956,9 @@ export default function KiltHireApp() {
     setScannedCode(cleanCode);
     setSimulatedInput('');
     
-    // Check if code is already registered in database (case-insensitive & robust match)
-    const existing = items.find(i => 
+    // Check if code is already registered in database (using live itemsRef for zero-delay lookup without refresh)
+    const currentItemList = itemsRef.current.length > 0 ? itemsRef.current : items;
+    const existing = currentItemList.find(i => 
       i.id.trim().toUpperCase() === cleanCode || 
       i.id.trim().toUpperCase() === rawClean ||
       cleanCode.endsWith(i.id.trim().toUpperCase()) ||
@@ -2112,12 +2131,21 @@ export default function KiltHireApp() {
       repairHistory: []
     };
 
-    setItems(prev => [newItem, ...prev.filter(i => i.id !== scannedCode)]);
+    // Update items array, itemsRef, and localStorage synchronously
+    const updatedItems = [newItem, ...itemsRef.current.filter(i => i.id !== scannedCode)];
+    itemsRef.current = updatedItems;
+    setItems(updatedItems);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('kilt_inventory_items', JSON.stringify(updatedItems));
+    }
+
     upsertItem(newItem).catch(err => console.warn('Failed to save item to Firestore:', err));
     addAuditLog('REGISTERED_ITEM', `Registered new ${newItem.sizeGroup} item ${newItem.name} (${newItem.id}) under ${newItem.category} (Hire £${newItem.hireRate} / Dep £${newItem.depositAmount})`, newItem.id);
     
+    // Close registration modal and AUTOMATICALLY OPEN GARMENT ACTION POPUP MODAL!
     setShowRegisterModal(false);
-    showToast(`✅ ${newItem.sizeGroup} garment ${newItem.id} saved into Available Stock in database! Ready for next scan.`, 'success');
+    setScanActionItem(newItem);
+    showToast(`✅ ${newItem.sizeGroup} garment ${newItem.id} saved into Stock Database! Select next action below.`, 'success');
   };
 
   // EDIT ITEM DETAILS HANDLER
