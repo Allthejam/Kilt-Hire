@@ -161,10 +161,10 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+6318c31  fix: remove all localStorage data persistence and log all PO upserts directly to Cloud Firestore collection purchase_orders
 3873676  feat: update Step 3 grid layout with Added to Order labels, expanded 3+ row view, PO creation & auto-reset for next fitting
 269b190  fix: remove mock PO fallback and clear localStorage cache so deleted POs never reappear
 d642dfe  feat: upgrade app to full Firestore real-time onSnapshot listeners for 100% instant live sync across multiple tablets without page refresh
-2a0602b  feat: add Edit, Delete, Dry Cleaning, and Repair Workshop management controls to Stock Inventory Table
 d64dfef  feat: add Paper Diary Legacy Manual Entry mode to bypass PayPal & deposits for migrating offline paper orders into calendar & pick queues
 5ee2c2e  feat: add Event Occasion selector (parties, Hogmanay, ceilidhs, fashion) and expanded customer roles to fitting station
 5e564ec  feat: add Late Return & Security Deposit Retention Section in full-page return workspace with custom fee input, presets, and live ledger update
