@@ -1611,6 +1611,38 @@ export default function KiltHireApp() {
     }
   };
 
+  const handleMarkHandedOut = async (po: PurchaseOrder) => {
+    try {
+      const updatedPo: PurchaseOrder = {
+        ...po,
+        orderStatus: 'OUT_ON_HIRE'
+      };
+      await upsertPurchaseOrder(updatedPo);
+      setPos(prev => prev.map(p => p.id === po.id ? updatedPo : p));
+      addAuditLog('ORDER_HANDED_OUT', `Order ${po.id} marked as collected & handed out to customer (${po.customerName}). Status locked as OUT_ON_HIRE.`, po.id);
+      showToast(`🚀 Order ${po.id} marked as collected & handed out to ${po.customerName}! Now locked as OUT ON HIRE.`, 'success');
+    } catch (err: any) {
+      showToast(`Failed to update order status: ${err.message}`, 'warning');
+    }
+  };
+
+  const handleMarkBalancePaidInStore = async (po: PurchaseOrder, method: 'CARD_IN_STORE' | 'CASH_IN_STORE' = 'CARD_IN_STORE') => {
+    try {
+      const updatedPo: PurchaseOrder = {
+        ...po,
+        paymentStatus: 'PAID_WITH_DEPOSIT',
+        depositPaymentMethod: method,
+        depositPaidAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
+      };
+      await upsertPurchaseOrder(updatedPo);
+      setPos(prev => prev.map(p => p.id === po.id ? updatedPo : p));
+      addAuditLog('PAID_BALANCE_IN_STORE', `Recorded hire fee & deposit payment of £${po.totalHireFee + po.totalDepositHeld} in store via ${method} for PO ${po.id} (${po.customerName})`, po.id);
+      showToast(`💳 Outstanding balance of £${po.totalHireFee} marked paid in store via ${method === 'CARD_IN_STORE' ? 'Card' : 'Cash'} for PO ${po.id}!`, 'success');
+    } catch (err: any) {
+      showToast(`Failed to update payment status: ${err.message}`, 'warning');
+    }
+  };
+
   // OPEN BREVO OVERDUE GARMENT RETURN EMAIL PREVIEW & DISPATCH
   const handleOpenOverdueNoticeEmail = (po: PurchaseOrder) => {
     const todayMs = new Date().getTime();
@@ -6307,46 +6339,133 @@ export default function KiltHireApp() {
                                   </span>
                                 </div>
 
-                                {outgoingToday.map(po => (
-                                  <div key={po.id} className="bg-white border border-amber-200 p-3.5 rounded-xl space-y-2.5 shadow-sm">
-                                    <div className="flex items-center justify-between">
-                                      <span className="font-mono font-extrabold text-xs text-amber-900 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">{po.id}</span>
-                                      <span className="text-[10px] font-extrabold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full border border-amber-300">
-                                        {po.orderStatus === 'READY_FOR_COLLECTION' ? '✓ Ready for Pickup' : '⏳ Pick Needed'}
-                                      </span>
-                                    </div>
+                                {outgoingToday.map(po => {
+                                  const isCollected = po.orderStatus === 'OUT_ON_HIRE' || po.orderStatus === 'RETURNED_COMPLETED';
+                                  const isCancelled = po.orderStatus === 'CANCELLED';
+                                  const isPaid = po.paymentStatus === 'PAID_WITH_DEPOSIT' || po.paymentStatus === 'FULL_BALANCE_PAID';
+                                  const isUnpaidBalance = !isPaid && !isCancelled;
 
-                                    <div>
-                                      <strong className="text-slate-900 text-xs block">{po.customerName}</strong>
-                                      <span className="text-[11px] text-slate-500 block">{po.customerEmail} • {po.customerPhone}</span>
-                                    </div>
-
-                                    {/* FITTING MEASUREMENTS CARD */}
-                                    {po.measurements && (
-                                      <div className="bg-slate-50 border border-slate-200 p-2 rounded-lg text-[10px] space-y-0.5 font-bold">
-                                        <span className="text-slate-400 uppercase text-[9px] block">Measurements:</span>
-                                        <div className="grid grid-cols-3 gap-1 text-center">
-                                          <div>W: <span className="text-amber-800">{po.measurements.waistInches}"</span></div>
-                                          <div>C: <span className="text-amber-800">{po.measurements.chestInches}"</span></div>
-                                          <div>S: <span className="text-amber-800">{po.measurements.shoeSize}</span></div>
-                                        </div>
+                                  return (
+                                    <div 
+                                      key={po.id} 
+                                      className={`p-4 rounded-2xl space-y-3 transition border ${
+                                        isCancelled ? 'bg-rose-50/50 border-rose-300 opacity-75' :
+                                        isCollected ? 'bg-emerald-500/10 border-emerald-500/40 shadow-sm ring-1 ring-emerald-500/30' :
+                                        isUnpaidBalance ? 'bg-amber-50 border-amber-400 shadow-md ring-2 ring-amber-400/40' :
+                                        'bg-white border-amber-200 shadow-sm'
+                                      }`}
+                                    >
+                                      <div className="flex items-center justify-between gap-1 flex-wrap">
+                                        <span className="font-mono font-extrabold text-xs text-amber-900 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
+                                          {po.id}
+                                        </span>
+                                        {isCancelled ? (
+                                          <span className="text-[10px] font-extrabold bg-rose-100 text-rose-900 px-2.5 py-0.5 rounded-full border border-rose-300">
+                                            ❌ Cancelled
+                                          </span>
+                                        ) : isCollected ? (
+                                          <span className="text-[10px] font-extrabold bg-emerald-600 text-white px-2.5 py-0.5 rounded-full shadow-xs flex items-center gap-1">
+                                            ✓ Collected & Out on Hire (Locked)
+                                          </span>
+                                        ) : (
+                                          <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${
+                                            po.orderStatus === 'READY_FOR_COLLECTION' ? 'bg-indigo-100 text-indigo-900 border-indigo-300' : 'bg-amber-100 text-amber-900 border-amber-300'
+                                          }`}>
+                                            {po.orderStatus === 'READY_FOR_COLLECTION' ? '🏷️ Ready for Pickup' : '📦 Assembly Needed'}
+                                          </span>
+                                        )}
                                       </div>
-                                    )}
 
-                                    <div className="text-[11px] font-bold text-slate-700 bg-slate-50 p-2 rounded-lg border">
-                                      Items ({po.items.length}): {po.items.map(i => i.itemName).join(', ')}
+                                      <div>
+                                        <strong className="text-slate-900 text-xs block">{po.customerName}</strong>
+                                        <span className="text-[11px] text-slate-500 block">{po.customerEmail} • {po.customerPhone}</span>
+                                      </div>
+
+                                      {/* OUTSTANDING BALANCE WARNING & IN STORE PAYMENT TRIGGER */}
+                                      {isUnpaidBalance && (
+                                        <div className="bg-amber-100/90 border border-amber-300 p-2.5 rounded-xl space-y-1.5 text-xs text-amber-950">
+                                          <div className="flex items-center justify-between font-extrabold">
+                                            <span className="flex items-center gap-1 text-amber-900">
+                                              ⚠️ Outstanding Hire Fee Due:
+                                            </span>
+                                            <span className="text-amber-950 font-mono text-sm">£{po.totalHireFee}</span>
+                                          </div>
+                                          <p className="text-[10px] text-amber-900">
+                                            Deposit: £{po.totalDepositHeld} | Payment status: <strong>{po.paymentStatus}</strong>
+                                          </p>
+                                          <div className="flex items-center gap-1.5 pt-1">
+                                            <button
+                                              onClick={() => handleMarkBalancePaidInStore(po, 'CARD_IN_STORE')}
+                                              className="flex-1 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-[11px] rounded-lg transition shadow-2xs cursor-pointer"
+                                            >
+                                              💳 Mark Paid via Card
+                                            </button>
+                                            <button
+                                              onClick={() => handleMarkBalancePaidInStore(po, 'CASH_IN_STORE')}
+                                              className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] rounded-lg transition shadow-2xs cursor-pointer"
+                                            >
+                                              💵 Cash Paid
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* FITTING MEASUREMENTS CARD */}
+                                      {po.measurements && (
+                                        <div className="bg-slate-50 border border-slate-200 p-2 rounded-lg text-[10px] space-y-0.5 font-bold">
+                                          <span className="text-slate-400 uppercase text-[9px] block">Measurements:</span>
+                                          <div className="grid grid-cols-3 gap-1 text-center">
+                                            <div>W: <span className="text-amber-800">{po.measurements.waistInches}"</span></div>
+                                            <div>C: <span className="text-amber-800">{po.measurements.chestInches}"</span></div>
+                                            <div>S: <span className="text-amber-800">{po.measurements.shoeSize}</span></div>
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      <div className="text-[11px] font-bold text-slate-700 bg-slate-50 p-2 rounded-lg border">
+                                        Items ({po.items.length}): {po.items.map(i => i.itemName).join(', ')}
+                                      </div>
+
+                                      {/* ACTION BUTTONS */}
+                                      {!isCancelled && (
+                                        <div className="space-y-1.5">
+                                          {isCollected ? (
+                                            <div className="w-full py-2 bg-emerald-900/10 border border-emerald-500/30 text-emerald-800 font-extrabold text-xs rounded-xl text-center flex items-center justify-center gap-1.5">
+                                              🔒 Order Collected & Handed Out — Locked in Schedule
+                                            </div>
+                                          ) : (
+                                            <div className="flex items-center gap-2">
+                                              <button
+                                                onClick={() => handleMarkHandedOut(po)}
+                                                disabled={isUnpaidBalance}
+                                                className={`flex-1 py-2 font-extrabold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5 ${
+                                                  isUnpaidBalance 
+                                                    ? 'bg-slate-300 text-slate-500 cursor-not-allowed border border-slate-300 opacity-70' 
+                                                    : 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
+                                                }`}
+                                                title={isUnpaidBalance ? 'Collect hire fee balance above before handing out order' : 'Mark order as collected and handed out to customer'}
+                                              >
+                                                <CheckCircle2 className="w-4 h-4" /> Mark Collected & Out on Hire
+                                              </button>
+
+                                              <button
+                                                onClick={() => {
+                                                  setShowCancelPoModal(po);
+                                                  setCancelPinInput('');
+                                                  setCancelReasonInput('');
+                                                  setCancelRefundOption(po.totalDepositHeld > 0 ? 'FULL_REFUND_ISSUED' : 'NO_DEPOSIT_WAS_PAID');
+                                                }}
+                                                className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-xl font-extrabold text-xs transition flex items-center gap-1 shrink-0 cursor-pointer"
+                                              >
+                                                <XCircle className="w-4 h-4 text-rose-600" /> Cancel
+                                              </button>
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
                                     </div>
-
-                                    {po.orderStatus !== 'READY_FOR_COLLECTION' && (
-                                      <button
-                                        onClick={() => handleMarkOrderReadyForCollection(po)}
-                                        className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5"
-                                      >
-                                        <CheckCircle2 className="w-4 h-4" /> Mark Ready for Pickup
-                                      </button>
-                                    )}
-                                  </div>
-                                ))}
+                                  );
+                                })}
                               </div>
                             )}
 
