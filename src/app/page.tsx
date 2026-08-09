@@ -4468,22 +4468,73 @@ export default function KiltHireApp() {
                     </div>
 
                     {/* SUBMIT ACTION BAR */}
-                    <div className="flex flex-wrap items-center justify-between pt-4 border-t border-slate-200 gap-3">
-                      <button
-                        type="button"
-                        onClick={() => { setAssistantTab('scanner'); setActiveTab('scanner'); }}
-                        className="px-5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
-                      >
-                        Cancel
-                      </button>
+                    {(() => {
+                      const missingFields: string[] = [];
+                      if (!fittingForm.eventType?.trim()) missingFields.push('Occasion / Event Type *');
+                      if (!fittingForm.customerName?.trim()) missingFields.push('Principle / Customer Name *');
+                      if (!fittingForm.customerEmail?.trim()) missingFields.push('Customer Email Address *');
+                      if (!fittingForm.customerPhone?.trim()) missingFields.push('Mobile Phone *');
+                      if (!fittingForm.collectionDate) missingFields.push('Collection Date *');
+                      if (!fittingForm.eventDate) missingFields.push('Event / Function Date *');
+                      if (!fittingForm.returnDate) missingFields.push('Return Date *');
 
-                      <button
-                        type="submit"
-                        className="px-8 py-4 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-sm rounded-2xl shadow-xl transition flex items-center gap-2"
-                      >
-                        <CheckCircle2 className="w-5 h-5" /> Save Fitting & Create Order Now
-                      </button>
-                    </div>
+                      if (fittingForm.collectionDate && fittingForm.eventDate && fittingForm.collectionDate > fittingForm.eventDate) {
+                        missingFields.push('Valid Collection ≤ Event Date Timeline');
+                      }
+                      if (fittingForm.eventDate && fittingForm.returnDate && fittingForm.eventDate > fittingForm.returnDate) {
+                        missingFields.push('Valid Event ≤ Return Date Timeline');
+                      }
+                      if (fittingForm.outfits.some(o => o.selectedItemIds.length === 0)) {
+                        missingFields.push('Pick Garments for All Outfits');
+                      }
+
+                      const isComplete = missingFields.length === 0;
+
+                      return (
+                        <div className="space-y-3 pt-4 border-t border-slate-200">
+                          {!isComplete && (
+                            <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3 text-xs text-amber-950 flex items-start gap-2.5 shadow-sm">
+                              <Lock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                              <div>
+                                <span className="font-extrabold block text-amber-900 mb-0.5">
+                                  🔒 Confirm Button Locked — Please complete all mandatory (*) fields to proceed:
+                                </span>
+                                <div className="flex flex-wrap gap-1.5 pt-1">
+                                  {missingFields.map((field, idx) => (
+                                    <span key={idx} className="bg-white border border-amber-300 text-amber-900 font-extrabold text-[10px] px-2 py-0.5 rounded-full shadow-2xs">
+                                      • {field}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <button
+                              type="button"
+                              onClick={() => { setAssistantTab('scanner'); setActiveTab('scanner'); }}
+                              className="px-5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
+                            >
+                              Cancel
+                            </button>
+
+                            <button
+                              type="submit"
+                              disabled={!isComplete}
+                              className={`px-8 py-4 font-extrabold text-sm rounded-2xl transition flex items-center gap-2 ${
+                                isComplete
+                                  ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-xl cursor-pointer ring-2 ring-amber-400/50'
+                                  : 'bg-slate-300 text-slate-500 cursor-not-allowed border border-slate-300 opacity-70 shadow-none'
+                              }`}
+                            >
+                              <CheckCircle2 className={`w-5 h-5 ${isComplete ? 'text-slate-950' : 'text-slate-400'}`} />
+                              {isComplete ? 'Save Fitting & Create Order Now' : 'Complete Required (*) Fields Above to Confirm Order'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                   </form>
                 </div>
