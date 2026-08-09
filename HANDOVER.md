@@ -161,6 +161,7 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+205bc55  fix: top-anchored mobile modal alignment with sticky header, scanned-only items list, and AI outfit recommendations tab in Order PO Builder
 fff12d9  feat: lock category and demographic (Adult/Kid) in New Item Registration Form based on Admin Batch QR Code specs to enforce data integrity
 9cc6654  refactor: remove manual hire rate & deposit input fields from New Item Registration Modal, automatically deriving pricing from Master Category Pricing Matrix
 66b56e8  fix: responsive max-height and dual-direction scrolling for mobile scan modals and integrated live camera scanner directly inside Outgoing Order PO Builder
@@ -170,7 +171,8 @@ c7fa779  feat: implement PO state machine safeguards (Due Picked, Due Out, Out o
 d64dfef  feat: add Paper Diary Legacy Manual Entry mode to bypass PayPal & deposits for migrating offline paper orders into calendar & pick queues
 5ee2c2e  feat: add Event Occasion selector (parties, Hogmanay, ceilidhs, fashion) and expanded customer roles to fitting station
 5e564ec  feat: add Late Return & Security Deposit Retention Section in full-page return workspace with custom fee input, presets, and live ledger update
-e953140  feat: dynamically hide empty movement sections and replace Column 3 with 2-Day Pick & Pack Assembly Queue
+5e564ec  feat: add Late Return & Security Deposit Retention Section in full-page return workspace with custom fee input, presets, and live ledger update
+5e953140  feat: dynamically hide empty movement sections and replace Column 3 with 2-Day Pick & Pack Assembly Queue
 78ba89e  feat: restore Start New Fitting & Order button at the primary position of the subheader status filter bar
 3ca74c6  feat: add PWA support - installable web app, manifest.json, sw.js, PWA icons, iOS install modal & top install banner
 be8993a  feat: switch QR scanner from jsQR to ZXing BrowserMultiFormatReader for better mobile scanning
