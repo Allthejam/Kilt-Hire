@@ -423,6 +423,7 @@ export default function KiltHireApp() {
   const [inventorySearchQuery, setInventorySearchQuery] = useState<string>('');
   const [inventorySortColumn, setInventorySortColumn] = useState<'id' | 'name' | 'category' | 'sizeGroup' | 'tartanOrColour' | 'status'>('id');
   const [inventorySortDirection, setInventorySortDirection] = useState<'asc' | 'desc'>('asc');
+  const [showAiRecommendations, setShowAiRecommendations] = useState<boolean>(false);
 
   // Invite & Staff Management Form State
   const [newInviteEmail, setNewInviteEmail] = useState('');
@@ -11039,11 +11040,11 @@ export default function KiltHireApp() {
 
       {/* CREATE PO MODAL WITH DYNAMIC FULL RIGOUT PRICE CAP BREAKDOWN & MULTI-OUTFIT WEDDING PARTY SCANNER */}
       {showCreatePoModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-3xl w-full p-4 sm:p-6 space-y-4 max-h-[92vh] overflow-y-auto shadow-2xl my-auto">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-start justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-3xl w-full p-4 sm:p-6 space-y-4 max-h-[92vh] overflow-y-auto shadow-2xl my-2 sm:my-4 relative">
             
-            {/* MODAL HEADER */}
-            <div className="flex items-start justify-between border-b border-slate-200 pb-3">
+            {/* MODAL HEADER - STICKY AT TOP FOR MOBILE */}
+            <div className="sticky top-0 bg-white z-20 pb-3 border-b border-slate-200 flex items-start justify-between">
               <div>
                 <div className="flex items-center gap-2">
                   <span className="px-3 py-1 bg-amber-100 text-amber-900 font-extrabold text-xs rounded-full border border-amber-300">
@@ -11108,28 +11109,6 @@ export default function KiltHireApp() {
                   className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 outline-none focus:border-amber-500 shadow-sm"
                 />
                 <span className="text-[11px] font-bold text-slate-500 self-center hidden sm:inline">Press Enter</span>
-              </div>
-
-              {/* AVAILABLE STOCK — scan or tap to add to PO */}
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                <span className="text-[10px] font-bold text-slate-600 self-center">Available to add:</span>
-                {items.filter(i => i.status === 'AVAILABLE').slice(0, 8).map(item => {
-                  const isSelected = newPoForm.selectedItemIds.includes(item.id);
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => handleScanCode(item.id)}
-                      className={`px-2 py-1 rounded text-[11px] font-mono font-bold border transition ${
-                        isSelected 
-                          ? 'bg-emerald-100 text-emerald-900 border-emerald-300' 
-                          : 'bg-white text-slate-700 border-slate-300 hover:bg-amber-50'
-                      }`}
-                    >
-                      {isSelected ? '✓ ' : '+ '}{item.id}
-                    </button>
-                  );
-                })}
               </div>
             </div>
 
@@ -11206,10 +11185,12 @@ export default function KiltHireApp() {
                 </div>
               </div>
 
-              {/* SCANNED ITEMS LIST */}
+              {/* SCANNED ITEMS LIST - SHOWING ONLY ITEMS SCANNED FOR THIS ORDER */}
               <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="block text-slate-700 font-extrabold">Scanned Garment Line Items ({newPoForm.selectedItemIds.length} Total):</label>
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="block text-slate-700 font-extrabold text-xs">
+                    🛒 Scanned Order Line Items ({newPoForm.selectedItemIds.length} Total):
+                  </label>
                   {newPoForm.selectedItemIds.length > 0 && (
                     <button 
                       type="button" 
@@ -11221,36 +11202,105 @@ export default function KiltHireApp() {
                   )}
                 </div>
 
-                <div className="max-h-48 overflow-y-auto bg-slate-50 border border-slate-300 rounded-2xl p-2 space-y-1">
-                  {items.filter(i => i.status === 'AVAILABLE').map(item => {
-                    const isSelected = newPoForm.selectedItemIds.includes(item.id);
-                    return (
-                      <label key={item.id} className={`flex items-center justify-between p-2 rounded-xl cursor-pointer transition ${
-                        isSelected ? 'bg-amber-100/90 border border-amber-300 font-bold' : 'hover:bg-white border border-transparent'
-                      }`}>
-                        <div className="flex items-center gap-2">
-                          <input 
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setNewPoForm({...newPoForm, selectedItemIds: [...newPoForm.selectedItemIds, item.id]});
-                              } else {
-                                setNewPoForm({...newPoForm, selectedItemIds: newPoForm.selectedItemIds.filter(id => id !== item.id)});
-                              }
-                            }}
-                          />
-                          <span className="font-mono font-extrabold text-amber-900">{item.id}</span>
-                          <span className="text-slate-900">{item.name}</span>
+                {newPoForm.selectedItemIds.length === 0 ? (
+                  <div className="bg-slate-50 border border-dashed border-slate-300 rounded-2xl p-4 text-center text-slate-500 space-y-1">
+                    <p className="font-bold text-xs">📦 No garments added yet</p>
+                    <p className="text-[11px]">Aim camera or type garment QR tag above to scan items into this hire order.</p>
+                  </div>
+                ) : (
+                  <div className="max-h-52 overflow-y-auto bg-slate-50 border border-slate-300 rounded-2xl p-2 space-y-1.5 shadow-inner">
+                    {items.filter(i => newPoForm.selectedItemIds.includes(i.id)).map(item => (
+                      <div key={item.id} className="flex items-center justify-between p-2.5 bg-white border border-slate-200 rounded-xl shadow-2xs">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono font-extrabold text-amber-900 text-xs px-2 py-0.5 bg-amber-100 rounded border border-amber-300">
+                            {item.id}
+                          </span>
+                          <span className="font-bold text-slate-900 text-xs">{item.name}</span>
                           <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${item.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900' : 'bg-blue-100 text-blue-900'}`}>
                             {item.sizeGroup} ({item.size})
                           </span>
+                          <span className="text-slate-600 text-[11px] font-medium">• {item.tartanOrColour}</span>
                         </div>
-                        <span className="text-slate-700 font-semibold">£{item.hireRate} hire + £{item.depositAmount} dep</span>
-                      </label>
-                    );
-                  })}
-                </div>
+
+                        <div className="flex items-center gap-3">
+                          <span className="text-slate-800 font-bold text-xs">£{item.hireRate} hire</span>
+                          <button
+                            type="button"
+                            onClick={() => setNewPoForm({...newPoForm, selectedItemIds: newPoForm.selectedItemIds.filter(id => id !== item.id)})}
+                            className="p-1 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                            title="Remove item"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* AI OUTFIT MATCH RECOMMENDATIONS TAB */}
+              <div className="border border-purple-200 rounded-2xl bg-purple-50/50 overflow-hidden shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => setShowAiRecommendations(!showAiRecommendations)}
+                  className="w-full px-4 py-3 bg-gradient-to-r from-purple-100 via-purple-50 to-indigo-50 hover:bg-purple-100 text-purple-950 font-extrabold text-xs flex items-center justify-between transition cursor-pointer"
+                >
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-purple-600 animate-pulse" />
+                    <span>✨ AI Recommended Outfit Accessories to Complete Rigout</span>
+                  </div>
+                  <span className="text-[11px] bg-purple-200 text-purple-900 px-2 py-0.5 rounded-full font-bold">
+                    {showAiRecommendations ? '▼ Hide Suggestions' : '► View AI Outfit Suggestions'}
+                  </span>
+                </button>
+
+                {showAiRecommendations && (
+                  <div className="p-3 border-t border-purple-200 space-y-2 bg-white">
+                    <p className="text-[11px] text-purple-900 font-semibold">
+                      Available items matching your scanned garments for a complete Highland Outfit:
+                    </p>
+                    <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-1">
+                      {(() => {
+                        const selectedItems = items.filter(i => newPoForm.selectedItemIds.includes(i.id));
+                        const selectedCategories = new Set(selectedItems.map(i => i.category));
+                        const primaryDemographic = selectedItems[0]?.sizeGroup || 'Adult';
+
+                        // Recommend available items from categories not yet scanned
+                        const recommendedItems = items.filter(i => 
+                          i.status === 'AVAILABLE' &&
+                          !newPoForm.selectedItemIds.includes(i.id) &&
+                          i.sizeGroup === primaryDemographic &&
+                          !selectedCategories.has(i.category)
+                        ).slice(0, 6);
+
+                        if (recommendedItems.length === 0) {
+                          return (
+                            <span className="text-[11px] text-slate-500 italic p-2">
+                              ✨ Rigout looks complete! All major outfit components are scanned.
+                            </span>
+                          );
+                        }
+
+                        return recommendedItems.map(item => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => {
+                              setNewPoForm(prev => ({ ...prev, selectedItemIds: [...prev.selectedItemIds, item.id] }));
+                              showToast(`✨ Added recommended ${item.category} (${item.id}) to order!`, 'success');
+                            }}
+                            className="px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-950 text-xs rounded-xl font-bold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                          >
+                            <Plus className="w-3.5 h-3.5 text-purple-700" />
+                            <span>+ {item.category} ({item.id})</span>
+                            <span className="text-[10px] text-purple-700 font-mono">£{item.hireRate}</span>
+                          </button>
+                        ));
+                      })()}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* DYNAMIC PRICE BREAKDOWN WITH FULL RIGOUT PRICE CAP */}
