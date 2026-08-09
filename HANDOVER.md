@@ -161,9 +161,9 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+8d85614  feat: add real-time search input bar and clickable column title sorting (Item Name, Category, Demographic, Tartan/Colour, Status) to Stock Inventory table
 f1de6bc  feat: implement 2-scan garment lifecycle logic, duplicate registration prevention, and Garment Scan Action Popup Modal for instant state transitions
 cd14112  fix: replace pseudo-random QR generator with ISO 18004 compliant qrcode library, 4-module quiet zone, crisp SVG rendering, and dynamic viewBox so native phone camera apps and built-in scanners scan instantly
-08de1f5  feat: add interactive rows-per-page pagination controls (10, 20, 30, 50, 100) and page navigation across Stock Inventory and Available Stock pages
 c7fa779  feat: implement PO state machine safeguards (Due Picked, Due Out, Out on Hire return locking) and PIN-authorized Hire Order Cancellation modal with refund tracking
 d64dfef  feat: add Paper Diary Legacy Manual Entry mode to bypass PayPal & deposits for migrating offline paper orders into calendar & pick queues
 5ee2c2e  feat: add Event Occasion selector (parties, Hogmanay, ceilidhs, fashion) and expanded customer roles to fitting station
