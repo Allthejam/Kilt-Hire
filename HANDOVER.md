@@ -161,10 +161,10 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+16d703d  feat: enable live Firestore database persistence and cross-device sync for Category Pricing Matrix & Full Rigout Caps
 d64dfef  feat: add Paper Diary Legacy Manual Entry mode to bypass PayPal & deposits for migrating offline paper orders into calendar & pick queues
 5ee2c2e  feat: add Event Occasion selector (parties, Hogmanay, ceilidhs, fashion) and expanded customer roles to fitting station
 5483ec1  feat: add multi-outfit wedding party fitting workflow with role tags, outfit tabs, and principle vs split individual invoice billing options
-ab64053  feat: convert Historic PO Archive into condensed data table with column sorting, rows-per-page selector (10, 20, 50, 100, ALL), expandable detail drawers, and << < > >> pagination
 5e564ec  feat: add Late Return & Security Deposit Retention Section in full-page return workspace with custom fee input, presets, and live ledger update
 9e5d341  feat: convert Process Return Checklist into a full-page view with 1-tap manual item condition toggles and deposit ledger
 e953140  feat: dynamically hide empty movement sections and replace Column 3 with 2-Day Pick & Pack Assembly Queue
