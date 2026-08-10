@@ -4464,7 +4464,7 @@ export default function KiltHireApp() {
                             <option value="Party / Celebration">🎂 Birthday / Party Celebration</option>
                             <option value="Ceilidh / Formal">🎻 Ceilidh / Formal Dinner</option>
                             <option value="Graduation / Prom">🎓 Graduation / Prom</option>
-                            <option value="Highland Games">🏴󠁧󠁢󠁳󠁣󠁴󠁮󠁿 Highland Games / Gathering</option>
+                            <option value="Highland Games">🏴󠁧󠁢󠁳󠁣󠁴󠁿 Highland Games / Gathering / Young Farmers Event</option>
                             <option value="Fashion / Personal">✨ Fashion / Personal Hire</option>
                             <option value="General Hire">🎉 General Party / Event</option>
                           </select>
@@ -4742,7 +4742,7 @@ export default function KiltHireApp() {
                                       'Party / Celebration': ['Principle / Host', 'Birthday Person', 'Party Guest', 'Family Member'],
                                       'Ceilidh / Formal': ['Principle / Wearer', 'Ceilidh Guest', 'Formal Attendee'],
                                       'Graduation / Prom': ['Graduate / Wearer', 'Prom Guest', 'Family Member'],
-                                      'Highland Games': ['Competitor / Wearer', 'Highland Guest', 'Gathering Attendee'],
+                                      'Highland Games': ['Competitor / Wearer', 'Young Farmer', 'Highland Guest', 'Gathering Attendee'],
                                       'Fashion / Personal': ['Model / Wearer', 'Personal Hire'],
                                       'General Hire': ['Principle / Wearer', 'Guest / Attendee']
                                     };
