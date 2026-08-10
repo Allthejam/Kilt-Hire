@@ -473,7 +473,7 @@ export default function KiltHireApp() {
     customerName: '',
     customerEmail: '',
     customerPhone: '',
-    eventType: 'Wedding Party' as 'Wedding Party' | 'Hogmanay / New Year' | 'Party / Celebration' | 'Ceilidh / Formal' | 'Graduation / Prom' | 'Highland Games' | 'Fashion / Personal' | 'General Hire',
+    eventType: 'Wedding Party' as 'Wedding Party' | 'Funeral / Memorial' | 'Hogmanay / New Year' | 'Party / Celebration' | 'Ceilidh / Formal' | 'Graduation / Prom' | 'Highland Games' | 'Fashion / Personal' | 'General Hire',
     eventDate: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
     collectionDate: new Date(Date.now() + 12 * 86400000).toISOString().slice(0, 10),
     returnDate: new Date(Date.now() + 16 * 86400000).toISOString().slice(0, 10),
@@ -1269,6 +1269,10 @@ export default function KiltHireApp() {
     let defaultRole = `Wearer / Outfit #${nextNum}`;
     if (fittingForm.eventType === 'Wedding Party') {
       defaultRole = nextNum === 2 ? 'Best Man' : nextNum === 3 ? 'Groomsman' : nextNum === 4 ? 'Father of Bride' : `Party Member ${nextNum}`;
+    } else if (fittingForm.eventType === 'Funeral / Memorial') {
+      defaultRole = nextNum === 2 ? 'Immediate Family' : nextNum === 3 ? 'Pallbearer' : `Family Member ${nextNum}`;
+    } else if (fittingForm.eventType === 'Hogmanay / New Year') {
+      defaultRole = nextNum === 2 ? 'Party Guest' : `Guest #${nextNum}`;
     } else {
       defaultRole = nextNum === 2 ? 'Guest / Partner' : `Outfit #${nextNum}`;
     }
@@ -4334,8 +4338,26 @@ export default function KiltHireApp() {
                               const newType = e.target.value as any;
                               setFittingForm(prev => {
                                 const updatedOutfits = [...prev.outfits];
-                                if (updatedOutfits.length > 0 && updatedOutfits[0].roleLabel === 'Groom' && newType !== 'Wedding Party') {
-                                  updatedOutfits[0] = { ...updatedOutfits[0], roleLabel: 'Customer / Wearer' };
+                                if (updatedOutfits.length > 0) {
+                                  let targetRole = updatedOutfits[0].roleLabel;
+                                  if (newType === 'Wedding Party') {
+                                    targetRole = 'Groom';
+                                  } else if (newType === 'Funeral / Memorial') {
+                                    targetRole = 'Chief Mourner / Principle';
+                                  } else if (newType === 'Hogmanay / New Year') {
+                                    targetRole = 'Host / Lead Wearer';
+                                  } else if (newType === 'Party / Celebration') {
+                                    targetRole = 'Principle / Host';
+                                  } else if (newType === 'Graduation / Prom') {
+                                    targetRole = 'Graduate / Wearer';
+                                  } else if (newType === 'Highland Games') {
+                                    targetRole = 'Competitor / Wearer';
+                                  } else if (newType === 'Fashion / Personal') {
+                                    targetRole = 'Model / Wearer';
+                                  } else {
+                                    targetRole = 'Principle / Wearer';
+                                  }
+                                  updatedOutfits[0] = { ...updatedOutfits[0], roleLabel: targetRole };
                                 }
                                 return { ...prev, eventType: newType, outfits: updatedOutfits };
                               });
@@ -4343,6 +4365,7 @@ export default function KiltHireApp() {
                             className="w-full bg-amber-50/70 border border-amber-300 rounded-xl p-3 text-slate-900 font-extrabold outline-none focus:border-amber-500 shadow-sm text-sm"
                           >
                             <option value="Wedding Party">💒 Wedding Party</option>
+                            <option value="Funeral / Memorial">⚰️ Funeral / Memorial Service</option>
                             <option value="Hogmanay / New Year">🎆 Hogmanay / New Year's Eve</option>
                             <option value="Party / Celebration">🎂 Birthday / Party Celebration</option>
                             <option value="Ceilidh / Formal">🎻 Ceilidh / Formal Dinner</option>
@@ -4615,22 +4638,36 @@ export default function KiltHireApp() {
                                   Configuring Outfit #{activeIndex + 1} ({currentOutfit.roleLabel}):
                                 </span>
 
-                                {/* ROLE PRESETS */}
+                                {/* DYNAMIC OCCASION-ALIGNED ROLE PRESETS */}
                                 <div className="flex flex-wrap items-center gap-1">
-                                  {['Customer / Wearer', 'Party Guest', 'Groom', 'Best Man', 'Groomsman', 'Father of Bride', 'Page Boy', 'Usher', 'Fashion / Personal'].map((role) => (
-                                    <button
-                                      key={role}
-                                      type="button"
-                                      onClick={() => updateCurrentOutfit({ roleLabel: role })}
-                                      className={`px-2.5 py-1 text-[10px] font-extrabold rounded-lg transition border ${
-                                        currentOutfit.roleLabel === role
-                                          ? 'bg-purple-600 text-white border-purple-700'
-                                          : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
-                                      }`}
-                                    >
-                                      {role}
-                                    </button>
-                                  ))}
+                                  {(() => {
+                                    const rolePresetsMap: Record<string, string[]> = {
+                                      'Wedding Party': ['Groom', 'Best Man', 'Groomsman', 'Father of Bride', 'Father of Groom', 'Page Boy', 'Usher', 'Wedding Guest'],
+                                      'Funeral / Memorial': ['Chief Mourner / Principle', 'Immediate Family', 'Pallbearer', 'Family Member', 'Attendee'],
+                                      'Hogmanay / New Year': ['Host / Lead Wearer', 'Family Member', 'Party Guest', 'Ceilidh Guest'],
+                                      'Party / Celebration': ['Principle / Host', 'Birthday Person', 'Party Guest', 'Family Member'],
+                                      'Ceilidh / Formal': ['Principle / Wearer', 'Ceilidh Guest', 'Formal Attendee'],
+                                      'Graduation / Prom': ['Graduate / Wearer', 'Prom Guest', 'Family Member'],
+                                      'Highland Games': ['Competitor / Wearer', 'Highland Guest', 'Gathering Attendee'],
+                                      'Fashion / Personal': ['Model / Wearer', 'Personal Hire'],
+                                      'General Hire': ['Principle / Wearer', 'Guest / Attendee']
+                                    };
+                                    const availableRoles = rolePresetsMap[fittingForm.eventType] || ['Principle / Wearer', 'Party Guest', 'Attendee'];
+                                    return availableRoles.map((role) => (
+                                      <button
+                                        key={role}
+                                        type="button"
+                                        onClick={() => updateCurrentOutfit({ roleLabel: role })}
+                                        className={`px-2.5 py-1 text-[10px] font-extrabold rounded-lg transition border ${
+                                          currentOutfit.roleLabel === role
+                                            ? 'bg-purple-600 text-white border-purple-700'
+                                            : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
+                                        }`}
+                                      >
+                                        {role}
+                                      </button>
+                                    ));
+                                  })()}
                                 </div>
                               </div>
 
