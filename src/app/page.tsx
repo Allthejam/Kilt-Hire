@@ -4888,21 +4888,25 @@ export default function KiltHireApp() {
                                 const visibleItems = items.filter(item => {
                                   if (item.status === 'RETIRED') return false;
 
-                                  // Master Category Pricing Matrix Filter Dropdown
-                                  if (fittingCategoryFilter !== 'ALL' && item.category !== fittingCategoryFilter) {
-                                    // Always show item if picked for THIS outfit so user sees their pick
-                                    if (!currentOutfit.selectedItemIds.includes(item.id)) {
-                                      return false;
-                                    }
+                                  const isOutsourced = !!(item.isOutsourcedDefault || item.id.startsWith('EXT-'));
+
+                                  // ── OUTSOURCED FILTER MODE ──────────────────────────────────────
+                                  if (fittingCategoryFilter === 'OUTSOURCED') {
+                                    return isOutsourced;
                                   }
 
-                                  // Always keep items selected for THIS outfit so staff can view/unpick if needed
+                                  // ── REGULAR / ALL FILTER MODES ─────────────────────────────────
+                                  // Always keep items selected for THIS outfit so staff can view/unpick
                                   const isSelectedForThisOutfit = currentOutfit.selectedItemIds.includes(item.id);
                                   if (isSelectedForThisOutfit) return true;
 
-                                  // Outsourced / sub-hire defaults are always in stock — never conflict
-                                  const isOutsourced = !!(item.isOutsourcedDefault || item.id.startsWith('EXT-'));
-                                  if (isOutsourced) return true;
+                                  // Outsourced items only visible in OUTSOURCED filter mode
+                                  if (isOutsourced) return false;
+
+                                  // Master Category Pricing Matrix Filter Dropdown
+                                  if (fittingCategoryFilter !== 'ALL' && item.category !== fittingCategoryFilter) {
+                                    return false;
+                                  }
 
                                   // Hide items picked by another outfit in this same fitting order
                                   const pickedByOtherOutfit = fittingForm.outfits.some((o, idx) => idx !== activeIndex && o.selectedItemIds.includes(item.id));
@@ -4944,9 +4948,11 @@ export default function KiltHireApp() {
                                             className="bg-slate-950 text-white font-extrabold text-xs px-3 py-1 rounded-lg border border-amber-400/50 outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer"
                                           >
                                             <option value="ALL">✨ ALL Categories ({availableCategoryOptions.length} Matrix Types)</option>
+                                            <option value="OUTSOURCED">🏬 Outsourced &amp; Sub-Hire Defaults ({items.filter(i => !!(i.isOutsourcedDefault || i.id.startsWith('EXT-'))).length} Always Available)</option>
                                             {availableCategoryOptions.map(catName => {
                                               const availableInCat = items.filter(i => {
                                                 if (i.category !== catName || i.status === 'RETIRED' || i.status === 'NEEDS_CLEANING' || i.status === 'IN_REPAIR') return false;
+                                                if (!!(i.isOutsourcedDefault || i.id.startsWith('EXT-'))) return false;
                                                 const hasConflict = pos.some(p => {
                                                   if (p.orderStatus === 'RETURNED_COMPLETED' || p.orderStatus === 'CANCELLED') return false;
                                                   if (!p.items.some(it => it.qrCodeId === i.id)) return false;
@@ -4967,7 +4973,10 @@ export default function KiltHireApp() {
 
                                       <div className="flex items-center gap-2 shrink-0">
                                         <span className="text-[11px] font-extrabold text-emerald-300 bg-emerald-950/90 px-3 py-1 rounded-full border border-emerald-500/50">
-                                          {visibleItems.length} Available {fittingCategoryFilter === 'ALL' ? 'Overall' : `in ${fittingCategoryFilter}`}
+                                          {fittingCategoryFilter === 'OUTSOURCED'
+                                            ? `${visibleItems.length} Always Available (Sub-Hire)`
+                                            : `${visibleItems.length} Available ${fittingCategoryFilter === 'ALL' ? 'Overall' : `in ${fittingCategoryFilter}`}`
+                                          }
                                         </span>
                                         <span className="text-xs font-extrabold text-amber-950 bg-amber-400 px-3 py-1 rounded-full border border-amber-300 shadow-sm">
                                           {currentOutfit.selectedItemIds.length} Added to Order
@@ -4977,15 +4986,24 @@ export default function KiltHireApp() {
 
                                     {visibleItems.length === 0 ? (
                                       <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-4 text-center space-y-1">
-                                        <p className="font-extrabold text-amber-900 text-xs">⚠️ No Available Garments in {fittingCategoryFilter === 'ALL' ? 'Stock' : fittingCategoryFilter} for Selected Hire Period</p>
+                                        <p className="font-extrabold text-amber-900 text-xs">
+                                          {fittingCategoryFilter === 'OUTSOURCED'
+                                            ? '🏬 No Outsourced Sub-Hire Items Set Up Yet'
+                                            : `⚠️ No Available Garments in ${fittingCategoryFilter === 'ALL' ? 'Stock' : fittingCategoryFilter} for Selected Hire Period`
+                                          }
+                                        </p>
                                         <p className="text-[11px] text-amber-800">
-                                          All stock in <strong>{fittingCategoryFilter === 'ALL' ? 'all categories' : fittingCategoryFilter}</strong> is currently on hire or reserved between <strong>{fittingForm.collectionDate}</strong> and <strong>{fittingForm.returnDate}</strong>. Select a different category or adjust the hire dates.
+                                          {fittingCategoryFilter === 'OUTSOURCED'
+                                            ? 'Go to Stock Inventory → Outsourced & Sub-Hire Defaults tab to add your first fallback item.'
+                                            : <>All stock in <strong>{fittingCategoryFilter === 'ALL' ? 'all categories' : fittingCategoryFilter}</strong> is currently on hire or reserved between <strong>{fittingForm.collectionDate}</strong> and <strong>{fittingForm.returnDate}</strong>. Select a different category or adjust the hire dates.</>
+                                          }
                                         </p>
                                       </div>
                                     ) : (
                                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-[540px] min-h-[380px] overflow-y-auto p-1.5 border border-slate-200 rounded-2xl bg-slate-50/50">
                                         {visibleItems.map((item) => {
                                           const isSelected = currentOutfit.selectedItemIds.includes(item.id);
+                                          const isItemOutsourced = !!(item.isOutsourcedDefault || item.id.startsWith('EXT-'));
 
                                           return (
                                             <div 
@@ -4993,7 +5011,9 @@ export default function KiltHireApp() {
                                               className={`p-3.5 rounded-2xl border flex flex-col justify-between space-y-2.5 transition ${
                                                 isSelected 
                                                   ? 'bg-amber-50 border-amber-400 shadow-md ring-2 ring-amber-400/50' 
-                                                  : 'bg-white border-slate-200 hover:border-slate-300 shadow-xs'
+                                                  : isItemOutsourced
+                                                    ? 'bg-indigo-50/60 border-indigo-300 hover:border-indigo-400 ring-1 ring-indigo-200'
+                                                    : 'bg-white border-slate-200 hover:border-slate-300 shadow-xs'
                                               }`}
                                             >
                                               <div>
@@ -5001,6 +5021,8 @@ export default function KiltHireApp() {
                                                   <span className="font-mono font-extrabold text-amber-900 text-[11px] bg-amber-100 px-2 py-0.5 rounded border border-amber-300 shrink-0">{item.id}</span>
                                                   {isSelected ? (
                                                     <span className="text-[10px] font-extrabold text-amber-900 bg-amber-200 px-2 py-0.5 rounded-full border border-amber-300 truncate">✓ Added to Order</span>
+                                                  ) : isItemOutsourced ? (
+                                                    <span className="text-[10px] font-extrabold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full border border-indigo-200 shrink-0">🏬 Sub-Hire</span>
                                                   ) : (
                                                     <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">Available</span>
                                                   )}
@@ -5009,6 +5031,9 @@ export default function KiltHireApp() {
                                                 <h5 className="font-extrabold text-slate-900 text-xs leading-snug">{item.name}</h5>
                                                 <p className="text-[10px] text-slate-500 mt-0.5">{item.category} • {item.tartanOrColour}</p>
                                                 <p className="text-[10px] font-bold text-amber-900 mt-0.5">Size: {item.size}</p>
+                                                {isItemOutsourced && item.outsourcedSupplier && (
+                                                  <p className="text-[10px] font-bold text-indigo-600 mt-0.5">Supplier: {item.outsourcedSupplier}</p>
+                                                )}
                                               </div>
 
                                               <div className="flex items-center justify-between pt-2 border-t border-slate-100">
