@@ -189,9 +189,7 @@ export async function seedCollectionIfEmpty<T extends { id: string }>(
 
 export function subscribeItems(onUpdate: (items: KiltItem[]) => void): Unsubscribe {
   return onSnapshot(collection(requireDb(), 'items'), (snap) => {
-    if (!snap.empty) {
-      onUpdate(snap.docs.map(d => d.data() as KiltItem));
-    }
+    onUpdate(snap.docs.map(d => d.data() as KiltItem));
   });
 }
 
@@ -203,9 +201,7 @@ export function subscribePurchaseOrders(onUpdate: (pos: PurchaseOrder[]) => void
 
 export function subscribeBatches(onUpdate: (batches: QRBatch[]) => void): Unsubscribe {
   return onSnapshot(collection(requireDb(), 'batches'), (snap) => {
-    if (!snap.empty) {
-      onUpdate(snap.docs.map(d => d.data() as QRBatch));
-    }
+    onUpdate(snap.docs.map(d => d.data() as QRBatch));
   });
 }
 

@@ -643,12 +643,7 @@ export default function KiltHireApp() {
 
     async function loadFromFirestore() {
       try {
-        // Seed Firestore if empty (first run only)
-        await seedCollectionIfEmpty('items', INITIAL_ITEMS, upsertItem);
-        await seedCollectionIfEmpty('batches', INITIAL_BATCHES, upsertBatch);
-        await seedCollectionIfEmpty('invites', INITIAL_INVITES, upsertInvite);
-
-        // Load initial collections in parallel
+        // Load initial live collections directly from Cloud Firestore Database
         const [fsItems, fsBatches, fsPOs, fsLogs, fsStaff, fsInvites, fsPricing] = await Promise.all([
           getItems(),
           getBatches(),
@@ -670,23 +665,16 @@ export default function KiltHireApp() {
           return Array.from(map.values());
         };
 
-        if (fsItems.length > 0) setItems(prev => mergeItemsList(prev.length > 0 ? prev : INITIAL_ITEMS, fsItems));
-        else setItems(prev => prev.length > 0 ? prev : INITIAL_ITEMS);
-
-        if (fsBatches.length > 0) setBatches(fsBatches);
-        else setBatches(INITIAL_BATCHES);
-
-        if (fsPOs.length > 0) setPos(fsPOs);
-        else setPos([]);
-
-        if (fsLogs.length > 0) setLogs(fsLogs);
-        else setLogs(INITIAL_LOGS);
+        setItems(fsItems || []);
+        setBatches(fsBatches || []);
+        setPos(fsPOs || []);
+        setLogs(fsLogs || []);
 
         if (fsStaff.length > 0) setStaffList(fsStaff);
         else setStaffList(INITIAL_STAFF);
 
         if (fsInvites.length > 0) setInvites(fsInvites);
-        else setInvites(INITIAL_INVITES);
+        else setInvites([]);
 
         if (fsPricing) {
           if (fsPricing.matrix) setPricingMatrix(fsPricing.matrix);
@@ -699,9 +687,7 @@ export default function KiltHireApp() {
 
         // Subscribe to real-time Cloud Firestore updates (LIVE INSTANT SYNC across all tablets)
         unsubItems = subscribeItems((liveItems) => {
-          if (liveItems && liveItems.length > 0) {
-            setItems(prev => mergeItemsList(prev, liveItems));
-          }
+          setItems(liveItems || []);
         });
 
         unsubPOs = subscribePurchaseOrders((livePOs) => {
@@ -737,13 +723,13 @@ export default function KiltHireApp() {
         });
 
       } catch (err) {
-        console.warn('Firestore load failed, using fallback:', err);
-        setItems(INITIAL_ITEMS);
-        setBatches(INITIAL_BATCHES);
+        console.warn('Firestore load note:', err);
+        setItems([]);
+        setBatches([]);
         setPos([]);
-        setLogs(INITIAL_LOGS);
+        setLogs([]);
         setStaffList(INITIAL_STAFF);
-        setInvites(INITIAL_INVITES);
+        setInvites([]);
         setPricingMatrix(DEFAULT_PRICING_MATRIX);
         setTartanList(DEFAULT_TARTANS);
       } finally {
@@ -842,23 +828,7 @@ export default function KiltHireApp() {
     localStorage.setItem('kilt_interface_mode', interfaceMode);
   }, [interfaceMode, isLoaded]);
 
-  // Reset to initial mock data
-  const handleResetData = () => {
-    if (confirm('Reset all demo inventory, POs, repair data, pricing matrix, and staff invites to default mock state?')) {
-      setItems(INITIAL_ITEMS);
-      setBatches(INITIAL_BATCHES);
-      setPos(INITIAL_POS);
-      setLogs(INITIAL_LOGS);
-      setStaffList(INITIAL_STAFF);
-      setInvites(INITIAL_INVITES);
-      setMaxRigoutCapPrice(120);
-      setKidMaxRigoutCapPrice(80);
-      setPricingMatrix(DEFAULT_PRICING_MATRIX);
-      setCurrentUser(INITIAL_STAFF[0]);
-      setScannedCode('');
-      setActiveReturnPo(null);
-    }
-  };
+
 
   // Toast notification trigger
   const showToast = (msg: string, type: 'success' | 'info' | 'warning' = 'success') => {
@@ -3518,14 +3488,7 @@ export default function KiltHireApp() {
             <BookOpen className="w-4 h-4 text-slate-950" /> Staff Operations Guide
           </button>
 
-{currentUser?.role === 'Master Admin' && (
-          <button 
-            onClick={handleResetData}
-            className="w-full py-2 bg-white hover:bg-slate-100 text-slate-500 rounded-lg border border-slate-200 text-[11px] font-bold flex items-center justify-center gap-1.5 shadow-sm transition"
-          >
-            <RotateCcw className="w-3.5 h-3.5" /> Reset to Mock Data
-          </button>
-          )}
+
         </div>
       </aside>
 
