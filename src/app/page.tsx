@@ -641,6 +641,8 @@ export default function KiltHireApp() {
     let unsubLogs: (() => void) | null = null;
     let unsubPricing: (() => void) | null = null;
     let unsubNotes: (() => void) | null = null;
+    let unsubStaff: (() => void) | null = null;
+    let unsubInvites: (() => void) | null = null;
 
     async function loadFromFirestore() {
       try {
@@ -808,11 +810,11 @@ export default function KiltHireApp() {
           setCalendarNotes(liveNotes);
         });
 
-        subscribeStaffProfiles((liveStaff) => {
+        unsubStaff = subscribeStaffProfiles((liveStaff) => {
           if (liveStaff.length > 0) setStaffList(liveStaff);
         });
 
-        subscribeInvites((liveInvites) => {
+        unsubInvites = subscribeInvites((liveInvites) => {
           setInvites(liveInvites);
         });
 
@@ -832,6 +834,18 @@ export default function KiltHireApp() {
     }
 
     loadFromFirestore();
+
+    // Cleanup: unsubscribe all 8 real-time Firestore listeners on unmount
+    return () => {
+      if (unsubItems) unsubItems();
+      if (unsubPOs) unsubPOs();
+      if (unsubBatches) unsubBatches();
+      if (unsubLogs) unsubLogs();
+      if (unsubPricing) unsubPricing();
+      if (unsubNotes) unsubNotes();
+      if (unsubStaff) unsubStaff();
+      if (unsubInvites) unsubInvites();
+    };
   }, []);
 
   // BROWSER REFRESH & CLOSE TAB PROTECTION FOR UNSAVED RETURN INSPECTIONS
