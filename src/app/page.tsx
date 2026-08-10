@@ -12408,6 +12408,212 @@ export default function KiltHireApp() {
         </div>
       )}
 
+      {/* ADD CUSTOM OUTSOURCED DEFAULT ITEM MODAL */}
+      {showAddOutsourcedModal && (() => {
+        const handleSubmitOutsourced = (e: React.FormEvent<HTMLFormElement>) => {
+          e.preventDefault();
+          const fd = new FormData(e.currentTarget);
+          const name = (fd.get('name') as string || '').trim();
+          const category = (fd.get('category') as string) as any;
+          const sizeGroup = (fd.get('sizeGroup') as string) as 'Adult' | 'Kid';
+          const tartanOrColour = (fd.get('tartanOrColour') as string || '').trim() || 'Outsourced / External';
+          const size = (fd.get('size') as string || '').trim() || 'Custom Size';
+          const hireRate = Number(fd.get('hireRate')) || 0;
+          const depositAmount = Number(fd.get('depositAmount')) || 0;
+          const outsourcedWholesaleCost = Number(fd.get('wholesaleCost')) || 0;
+          const outsourcedSupplier = (fd.get('supplier') as string || '').trim() || 'External Supplier';
+
+          const slug = name.replace(/[^a-zA-Z0-9]/g, '-').toUpperCase().slice(0, 16);
+          const newId = `EXT-${slug}-${Date.now().toString(36).toUpperCase().slice(-4)}`;
+
+          const newItem: KiltItem = {
+            id: newId,
+            name,
+            category,
+            sizeGroup,
+            tartanOrColour,
+            size,
+            hireRate,
+            depositAmount,
+            status: 'AVAILABLE',
+            isOutsourcedDefault: true,
+            outsourcedSupplier,
+            outsourcedWholesaleCost,
+            registeredAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
+            registeredByStaff: currentUser?.name || 'Staff'
+          };
+
+          setItems(prev => [newItem, ...prev]);
+          upsertItem(newItem).catch(err => console.warn('Failed to save outsourced item:', err));
+          showToast(`✅ Custom outsourced item "${name}" (${newId}) added successfully!`, 'success');
+          setShowAddOutsourcedModal(false);
+        };
+
+        return (
+          <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg border border-indigo-200 animate-in fade-in zoom-in-95">
+              {/* MODAL HEADER */}
+              <div className="bg-gradient-to-r from-indigo-900 to-slate-900 text-white rounded-t-3xl p-5 flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-300">Stock Inventory</span>
+                  <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                    <Store className="w-4 h-4 text-indigo-300" /> Add Custom Outsourced Default Item
+                  </h3>
+                  <p className="text-[11px] text-indigo-200">Item will always be in stock as a sub-hire fallback. A unique QR code will be auto-generated.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddOutsourcedModal(false)}
+                  className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center transition"
+                >
+                  <X className="w-4 h-4 text-white" />
+                </button>
+              </div>
+
+              {/* MODAL FORM */}
+              <form onSubmit={handleSubmitOutsourced} className="p-6 space-y-4">
+                {/* NAME */}
+                <div>
+                  <label className="block text-slate-700 font-extrabold text-xs mb-1">Item Name / Description *</label>
+                  <input
+                    name="name"
+                    required
+                    type="text"
+                    placeholder="e.g. Default Outsourced Prince Charlie Jacket"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                {/* CATEGORY + DEMOGRAPHIC */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-700 font-extrabold text-xs mb-1">Category *</label>
+                    <select
+                      name="category"
+                      required
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 outline-none focus:border-indigo-500"
+                    >
+                      {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-extrabold text-xs mb-1">Demographic *</label>
+                    <select
+                      name="sizeGroup"
+                      required
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 outline-none focus:border-indigo-500"
+                    >
+                      <option value="Adult">Adult</option>
+                      <option value="Kid">Kid</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* TARTAN / SIZE */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-700 font-extrabold text-xs mb-1">Tartan / Colour</label>
+                    <input
+                      name="tartanOrColour"
+                      type="text"
+                      placeholder="e.g. Navy, Black, Royal Stewart"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-extrabold text-xs mb-1">Size / Fit</label>
+                    <input
+                      name="size"
+                      type="text"
+                      placeholder="e.g. Custom Chest & Length"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                {/* PRICING ROW */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-slate-700 font-extrabold text-xs mb-1">Customer Hire (£) *</label>
+                    <div className="flex items-center gap-1 bg-amber-50 border border-amber-300 rounded-xl px-2">
+                      <span className="text-slate-400 font-bold text-xs">£</span>
+                      <input
+                        name="hireRate"
+                        required
+                        type="number"
+                        min={0}
+                        defaultValue={50}
+                        className="flex-1 bg-transparent py-2.5 text-xs font-extrabold text-amber-900 outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-extrabold text-xs mb-1">Security Deposit (£) *</label>
+                    <div className="flex items-center gap-1 bg-emerald-50 border border-emerald-300 rounded-xl px-2">
+                      <span className="text-slate-400 font-bold text-xs">£</span>
+                      <input
+                        name="depositAmount"
+                        required
+                        type="number"
+                        min={0}
+                        defaultValue={50}
+                        className="flex-1 bg-transparent py-2.5 text-xs font-extrabold text-emerald-900 outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-extrabold text-xs mb-1">Sub-Hire Cost (£)</label>
+                    <div className="flex items-center gap-1 bg-slate-50 border border-slate-300 rounded-xl px-2">
+                      <span className="text-slate-400 font-bold text-xs">£</span>
+                      <input
+                        name="wholesaleCost"
+                        type="number"
+                        min={0}
+                        defaultValue={35}
+                        className="flex-1 bg-transparent py-2.5 text-xs font-extrabold text-slate-900 outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* SUPPLIER */}
+                <div>
+                  <label className="block text-slate-700 font-extrabold text-xs mb-1">Preferred Supplier / Store</label>
+                  <input
+                    name="supplier"
+                    type="text"
+                    placeholder="e.g. Highland Scottish Supplies Ltd"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                {/* INFO NOTICE */}
+                <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-[11px] text-indigo-800 font-semibold">
+                  🏬 This item will be saved as <strong>Always in Stock</strong> — it will never show date conflicts and can be added to any number of customer fitting orders simultaneously. A unique QR code ID (e.g. <code className="font-mono bg-indigo-100 px-1 rounded">EXT-...</code>) will be auto-generated so you can print and pin physical labels by the till.
+                </div>
+
+                {/* ACTION BUTTONS */}
+                <div className="flex items-center justify-end gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddOutsourcedModal(false)}
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5"
+                  >
+                    <Store className="w-4 h-4" /> Save Outsourced Item
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
+
     </div>
   );
 }
