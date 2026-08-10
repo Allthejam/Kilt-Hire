@@ -161,16 +161,15 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+6f25150  feat: add Funeral / Memorial Service occasion option and dynamically align outfit role presets by event type
 9c351f4  fix: completely remove automatic mock data seeding, mock fallbacks, and Reset to Mock Data button so database is 100% live and persistent
 03d0c06  fix: add synchronous itemsRef tracking, immediate Garment Action Popup Modal trigger upon saving registration, and forced video playback stream keep-alive for mobile camera scanning
-c3e1116  fix: clear prefilled text values in new item registration form and use example placeholders with Highland Kiltmakers as example brand
 66b56e8  fix: responsive max-height and dual-direction scrolling for mobile scan modals and integrated live camera scanner directly inside Outgoing Order PO Builder
 f1de6bc  feat: implement 2-scan garment lifecycle logic, duplicate registration prevention, and Garment Scan Action Popup Modal for instant state transitions
 cd14112  fix: replace pseudo-random QR generator with ISO 18004 compliant qrcode library, 4-module quiet zone, crisp SVG rendering, and dynamic viewBox so native phone camera apps and built-in scanners scan instantly
 c7fa779  feat: implement PO state machine safeguards (Due Picked, Due Out, Out on Hire return locking) and PIN-authorized Hire Order Cancellation modal with refund tracking
 d64dfef  feat: add Paper Diary Legacy Manual Entry mode to bypass PayPal & deposits for migrating offline paper orders into calendar & pick queues
 5ee2c2e  feat: add Event Occasion selector (parties, Hogmanay, ceilidhs, fashion) and expanded customer roles to fitting station
-5e564ec  feat: add Late Return & Security Deposit Retention Section in full-page return workspace with custom fee input, presets, and live ledger update
 5e564ec  feat: add Late Return & Security Deposit Retention Section in full-page return workspace with custom fee input, presets, and live ledger update
 5e953140  feat: dynamically hide empty movement sections and replace Column 3 with 2-Day Pick & Pack Assembly Queue
 78ba89e  feat: restore Start New Fitting & Order button at the primary position of the subheader status filter bar
