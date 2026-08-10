@@ -4900,6 +4900,10 @@ export default function KiltHireApp() {
                                   const isSelectedForThisOutfit = currentOutfit.selectedItemIds.includes(item.id);
                                   if (isSelectedForThisOutfit) return true;
 
+                                  // Outsourced / sub-hire defaults are always in stock — never conflict
+                                  const isOutsourced = !!(item.isOutsourcedDefault || item.id.startsWith('EXT-'));
+                                  if (isOutsourced) return true;
+
                                   // Hide items picked by another outfit in this same fitting order
                                   const pickedByOtherOutfit = fittingForm.outfits.some((o, idx) => idx !== activeIndex && o.selectedItemIds.includes(item.id));
                                   if (pickedByOtherOutfit) return false;
@@ -8911,6 +8915,23 @@ export default function KiltHireApp() {
                               >
                                 <ShoppingCart className="w-3.5 h-3.5" /> Add into Fitting Order
                               </button>
+
+                              {/* PRINT QR LABEL */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const matrix = generateQrMatrix(item.id);
+                                  const path = renderQrSvgPath(matrix);
+                                  const vbSize = getQrViewBoxSize(matrix);
+                                  const svgBlock = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + vbSize + ' ' + vbSize + '" width="180" height="180" style="display:block;margin:0 auto 12px;"><rect width="' + vbSize + '" height="' + vbSize + '" fill="white"/><path d="' + path + '" fill="black"/></svg>';
+                                  const html = '<!DOCTYPE html><html><head><title>QR: ' + item.id + '</title><style>*{margin:0;padding:0;box-sizing:border-box;font-family:Arial,sans-serif;}body{background:#fff;}@media print{@page{size:100mm 120mm;margin:5mm;}}.card{width:220px;border:2px solid #1e293b;border-radius:12px;padding:16px 14px 12px;text-align:center;margin:8px auto;}.badge{display:inline-block;background:#312e81;color:#e0e7ff;font-size:9px;font-weight:800;letter-spacing:1px;text-transform:uppercase;padding:3px 8px;border-radius:999px;margin-bottom:8px;}.id{font-size:13px;font-weight:900;color:#1e293b;font-family:monospace;background:#f1f5f9;padding:4px 8px;border-radius:6px;display:inline-block;margin-bottom:6px;}.name{font-size:10px;font-weight:700;color:#334155;margin-bottom:10px;}hr{border:none;border-top:1px solid #e2e8f0;margin:8px 0;}.row{display:flex;justify-content:space-between;font-size:9px;color:#475569;margin:3px 0;}.val{font-weight:800;color:#1e293b;}.green{color:#15803d;}.footer{font-size:8px;color:#94a3b8;margin-top:8px;}</style></head><body><div class="card"><div class="badge">&#127978; Outsourced / Sub-Hire</div>' + svgBlock + '<div class="id">' + item.id + '</div><div class="name">' + item.name + '</div><hr/><div class="row"><span>Customer Hire:</span><span class="val green">&#163;' + item.hireRate + '</span></div><div class="row"><span>Security Deposit:</span><span class="val">&#163;' + item.depositAmount + '</span></div><div class="row"><span>Category:</span><span class="val">' + item.category + '</span></div><div class="row"><span>Supplier:</span><span class="val">' + (item.outsourcedSupplier || 'External Supplier') + '</span></div><hr/><div class="footer">Highland Kilt Hire &middot; Sub-Hire Fallback &middot; Always In Stock</div></div><script>window.onload=function(){window.print();}<\/script></body></html>';
+                                  const w = window.open('', '_blank', 'width=320,height=500');
+                                  if (w) { w.document.write(html); w.document.close(); }
+                                }}
+                                className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs rounded-xl border border-slate-300 transition flex items-center justify-center gap-1.5"
+                              >
+                                <Printer className="w-3.5 h-3.5" /> Print QR Label
+                              </button>
                             </div>
                           ))}
                         </div>
@@ -8930,7 +8951,7 @@ export default function KiltHireApp() {
                         };
 
                         const activeStockList = items
-                          .filter(item => item.status !== 'RETIRED' && (inventorySizeFilter === 'ALL' || item.sizeGroup === inventorySizeFilter))
+                          .filter(item => item.status !== 'RETIRED' && !item.isOutsourcedDefault && !item.id.startsWith('EXT-') && (inventorySizeFilter === 'ALL' || item.sizeGroup === inventorySizeFilter))
                           .filter(item => {
                             if (!inventorySearchQuery.trim()) return true;
                             const q = inventorySearchQuery.toLowerCase().trim();
