@@ -161,9 +161,9 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-T0QQDMDLNZ
 ## Recent Git Commits
 
 ```
+ec1b106  feat: add Outsourced & Sub-Hire Defaults tab in stock inventory page with pre-configured default items, custom hire prices, security deposits, wholesale sub-hire costs, and preferred supplier editor
 6f25150  feat: add Funeral / Memorial Service occasion option and dynamically align outfit role presets by event type
 9c351f4  fix: completely remove automatic mock data seeding, mock fallbacks, and Reset to Mock Data button so database is 100% live and persistent
-03d0c06  fix: add synchronous itemsRef tracking, immediate Garment Action Popup Modal trigger upon saving registration, and forced video playback stream keep-alive for mobile camera scanning
 66b56e8  fix: responsive max-height and dual-direction scrolling for mobile scan modals and integrated live camera scanner directly inside Outgoing Order PO Builder
 f1de6bc  feat: implement 2-scan garment lifecycle logic, duplicate registration prevention, and Garment Scan Action Popup Modal for instant state transitions
 cd14112  fix: replace pseudo-random QR generator with ISO 18004 compliant qrcode library, 4-module quiet zone, crisp SVG rendering, and dynamic viewBox so native phone camera apps and built-in scanners scan instantly
