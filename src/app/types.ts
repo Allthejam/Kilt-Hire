@@ -76,6 +76,9 @@ export interface KiltItem {
   retiredReason?: string; // Audit explanation if retired from rotation (Sold, Stolen, Destroyed)
   retiredAt?: string;
   retiredByStaff?: string;
+  isOutsourcedDefault?: boolean; // True for default sub-hire items hired in from external stores
+  outsourcedSupplier?: string; // e.g. "Highland Scottish Supplies Ltd", "Lochcarron Sub-Hire"
+  outsourcedWholesaleCost?: number; // Cost paid to external supplier to hire in
 }
 
 export interface QRReprintLog {

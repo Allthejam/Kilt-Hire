@@ -275,7 +275,8 @@ export default function KiltHireApp() {
 
   // Inventory tab demographic filter & Sub-Tabs in Admin
   const [inventorySizeFilter, setInventorySizeFilter] = useState<'ALL' | 'Adult' | 'Kid'>('ALL');
-  const [inventorySubTab, setInventorySubTab] = useState<'ACTIVE' | 'LAUNDRY' | 'REPAIR' | 'ARCHIVE'>('ACTIVE');
+  const [inventorySubTab, setInventorySubTab] = useState<'ACTIVE' | 'OUTSOURCED' | 'ARCHIVE'>('ACTIVE');
+  const [showAddOutsourcedModal, setShowAddOutsourcedModal] = useState(false);
 
   // Auth state
   const [currentUser, setCurrentUser] = useState<StaffUser | null>(INITIAL_STAFF[0]);
@@ -665,7 +666,100 @@ export default function KiltHireApp() {
           return Array.from(map.values());
         };
 
-        setItems(fsItems || []);
+        const defaultOutsourcedItems: KiltItem[] = [
+          {
+            id: 'EXT-KILT-DEFAULT',
+            name: 'Default Outsourced Kilt (Sub-Hire)',
+            category: 'Kilts',
+            sizeGroup: 'Adult',
+            tartanOrColour: 'Outsourced / Sub-Hire Tartan',
+            size: 'Custom Waist & Length',
+            brandMake: 'Highland Kiltmakers Sub-Hire',
+            hireRate: 50,
+            depositAmount: 50,
+            status: 'AVAILABLE',
+            isOutsourcedDefault: true,
+            outsourcedSupplier: 'Highland Scottish Supplies Ltd',
+            outsourcedWholesaleCost: 35,
+            registeredAt: '2026-08-10 09:00'
+          },
+          {
+            id: 'EXT-JKT-DEFAULT',
+            name: 'Default Outsourced Jacket (Sub-Hire)',
+            category: 'Jackets',
+            sizeGroup: 'Adult',
+            tartanOrColour: 'Outsourced / Sub-Hire Jacket',
+            size: 'Custom Chest & Length',
+            brandMake: 'Lochcarron Sub-Hire',
+            hireRate: 50,
+            depositAmount: 50,
+            status: 'AVAILABLE',
+            isOutsourcedDefault: true,
+            outsourcedSupplier: 'Lochcarron Sub-Hire',
+            outsourcedWholesaleCost: 35,
+            registeredAt: '2026-08-10 09:00'
+          },
+          {
+            id: 'EXT-VST-DEFAULT',
+            name: 'Default Outsourced Waistcoat (Sub-Hire)',
+            category: 'Waistcoats',
+            sizeGroup: 'Adult',
+            tartanOrColour: 'Outsourced / Sub-Hire Waistcoat',
+            size: 'Custom Chest Size',
+            brandMake: 'Highland Craftsmen',
+            hireRate: 20,
+            depositAmount: 20,
+            status: 'AVAILABLE',
+            isOutsourcedDefault: true,
+            outsourcedSupplier: 'Highland Scottish Supplies Ltd',
+            outsourcedWholesaleCost: 12,
+            registeredAt: '2026-08-10 09:00'
+          },
+          {
+            id: 'EXT-SPO-DEFAULT',
+            name: 'Default Outsourced Sporran (Sub-Hire)',
+            category: 'Sporrans',
+            sizeGroup: 'Adult',
+            tartanOrColour: 'Outsourced Dress Sporran',
+            size: 'Standard Adult',
+            brandMake: 'Highland Craftsmen',
+            hireRate: 15,
+            depositAmount: 15,
+            status: 'AVAILABLE',
+            isOutsourcedDefault: true,
+            outsourcedSupplier: 'Highland Scottish Supplies Ltd',
+            outsourcedWholesaleCost: 10,
+            registeredAt: '2026-08-10 09:00'
+          },
+          {
+            id: 'EXT-SHO-DEFAULT',
+            name: 'Default Outsourced Ghillie Brogues (Sub-Hire)',
+            category: 'Ghillie Brogues',
+            sizeGroup: 'Adult',
+            tartanOrColour: 'Black Leather',
+            size: 'Custom Shoe Size',
+            brandMake: 'Kiltmaker Co.',
+            hireRate: 15,
+            depositAmount: 15,
+            status: 'AVAILABLE',
+            isOutsourcedDefault: true,
+            outsourcedSupplier: 'Highland Scottish Supplies Ltd',
+            outsourcedWholesaleCost: 10,
+            registeredAt: '2026-08-10 09:00'
+          }
+        ];
+
+        // Ensure default outsourced items exist in database
+        const loadedItems = fsItems || [];
+        const missingDefaults = defaultOutsourcedItems.filter(def => !loadedItems.some(i => i.id === def.id));
+        if (missingDefaults.length > 0) {
+          missingDefaults.forEach(def => {
+            upsertItem(def).catch(err => console.warn('Failed to upsert default outsourced item:', err));
+          });
+        }
+
+        const combinedItems = [...missingDefaults, ...loadedItems];
+        setItems(combinedItems);
         setBatches(fsBatches || []);
         setPos(fsPOs || []);
         setLogs(fsLogs || []);
@@ -8582,13 +8676,19 @@ export default function KiltHireApp() {
                         <Layers className="w-5 h-5 text-amber-600" /> Stock Inventory Database
                       </h2>
 
-                      {/* SUB TAB: ACTIVE vs ARCHIVE (ADMIN RESTRICTED ARCHIVE) */}
+                      {/* SUB TAB: ACTIVE vs OUTSOURCED vs ARCHIVE */}
                       <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
                         <button
                           onClick={() => setInventorySubTab('ACTIVE')}
                           className={`px-3 py-1 rounded-lg transition ${inventorySubTab === 'ACTIVE' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
                         >
-                          Active Stock ({items.filter(i=>i.status!=='RETIRED').length})
+                          Active Shop Stock ({items.filter(i=>i.status!=='RETIRED' && !i.isOutsourcedDefault).length})
+                        </button>
+                        <button
+                          onClick={() => setInventorySubTab('OUTSOURCED')}
+                          className={`px-3 py-1 rounded-lg flex items-center gap-1.5 transition ${inventorySubTab === 'OUTSOURCED' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                        >
+                          <Store className="w-3.5 h-3.5" /> Outsourced & Sub-Hire Defaults ({items.filter(i=>i.isOutsourcedDefault || i.id.startsWith('EXT-')).length})
                         </button>
                         <button
                           onClick={() => setInventorySubTab('ARCHIVE')}
@@ -8650,7 +8750,173 @@ export default function KiltHireApp() {
                     )}
                   </div>
 
-                  {inventorySubTab === 'ACTIVE' ? (
+                  {inventorySubTab === 'OUTSOURCED' ? (
+                    <div className="space-y-6">
+                      {/* HEADER BANNER FOR OUTSOURCED & SUB-HIRE DEFAULTS */}
+                      <div className="bg-gradient-to-r from-indigo-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-6 shadow-md space-y-3 border border-indigo-800">
+                        <div className="flex flex-wrap items-center justify-between gap-4">
+                          <div className="space-y-1">
+                            <span className="px-3 py-1 bg-indigo-500/30 text-indigo-200 border border-indigo-400/40 rounded-full text-[11px] font-extrabold uppercase tracking-wider inline-flex items-center gap-1.5">
+                              <Store className="w-3.5 h-3.5 text-indigo-300" /> Outsourced & Sub-Hire Inventory Defaults
+                            </span>
+                            <h3 className="text-xl font-extrabold text-white">Default Outsourced Garments & External Sub-Hire Rates</h3>
+                            <p className="text-xs text-indigo-200 max-w-2xl leading-relaxed">
+                              Configure default garments and pricing when hiring in Kilts, Jackets, Waistcoats, or Accessories from outside suppliers if shop inventory runs low. Set customer rental rates, security deposits, wholesale sub-hire costs, and preferred suppliers.
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setShowAddOutsourcedModal(true)}
+                            className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5"
+                          >
+                            <PlusCircle className="w-4 h-4" /> Add Custom Outsourced Default Item
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* OUTSOURCED DEFAULTS CARDS GRID */}
+                      <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                          <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                            <Store className="w-4 h-4 text-indigo-600" /> Default Sub-Hire Garment Catalog ({items.filter(i => i.isOutsourcedDefault || i.id.startsWith('EXT-')).length} Items)
+                          </h4>
+                          <span className="text-[11px] font-bold text-slate-500">Live prices auto-fill into Fitting Orders</span>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {items.filter(i => i.isOutsourcedDefault || i.id.startsWith('EXT-')).map(item => (
+                            <div key={item.id} className="p-5 bg-indigo-50/40 border border-indigo-200 rounded-2xl space-y-3.5 shadow-sm hover:border-indigo-400 transition">
+                              <div className="flex items-start justify-between">
+                                <div>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-mono font-extrabold text-indigo-900 bg-indigo-100 px-2.5 py-0.5 rounded text-[10px] border border-indigo-300">
+                                      {item.id}
+                                    </span>
+                                    <span className="text-[10px] font-extrabold bg-blue-100 text-blue-900 px-2 py-0.5 rounded">
+                                      {item.category}
+                                    </span>
+                                    <span className="text-[10px] font-extrabold bg-purple-100 text-purple-900 px-2 py-0.5 rounded">
+                                      {item.sizeGroup}
+                                    </span>
+                                  </div>
+                                  <h5 className="font-extrabold text-slate-900 text-sm mt-1.5">{item.name}</h5>
+                                  <p className="text-xs text-slate-500">{item.tartanOrColour}</p>
+                                </div>
+                              </div>
+
+                              {/* INLINE EDITABLE PRICING MATRIX */}
+                              <div className="bg-white p-3 rounded-xl border border-indigo-100 space-y-2 text-xs">
+                                <div className="grid grid-cols-2 gap-2 border-b border-slate-100 pb-2">
+                                  <div>
+                                    <label className="block text-[10px] font-bold text-slate-500">Customer Rental (£)</label>
+                                    <div className="flex items-center gap-1 mt-0.5">
+                                      <span className="text-slate-400 font-bold">£</span>
+                                      <input 
+                                        type="number"
+                                        min={0}
+                                        value={item.hireRate}
+                                        onChange={e => {
+                                          const val = Number(e.target.value);
+                                          const updated = { ...item, hireRate: val };
+                                          setItems(prev => prev.map(i => i.id === item.id ? updated : i));
+                                          upsertItem(updated).catch(err => console.warn(err));
+                                        }}
+                                        className="w-full bg-amber-50 border border-amber-300 rounded-lg px-2 py-1 font-mono font-extrabold text-amber-900 text-xs outline-none"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-[10px] font-bold text-slate-500">Security Deposit (£)</label>
+                                    <div className="flex items-center gap-1 mt-0.5">
+                                      <span className="text-slate-400 font-bold">£</span>
+                                      <input 
+                                        type="number"
+                                        min={0}
+                                        value={item.depositAmount}
+                                        onChange={e => {
+                                          const val = Number(e.target.value);
+                                          const updated = { ...item, depositAmount: val };
+                                          setItems(prev => prev.map(i => i.id === item.id ? updated : i));
+                                          upsertItem(updated).catch(err => console.warn(err));
+                                        }}
+                                        className="w-full bg-emerald-50 border border-emerald-300 rounded-lg px-2 py-1 font-mono font-extrabold text-emerald-900 text-xs outline-none"
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <label className="block text-[10px] font-bold text-slate-500">Sub-Hire Cost (£)</label>
+                                    <div className="flex items-center gap-1 mt-0.5">
+                                      <span className="text-slate-400 font-bold">£</span>
+                                      <input 
+                                        type="number"
+                                        min={0}
+                                        value={item.outsourcedWholesaleCost || 35}
+                                        onChange={e => {
+                                          const val = Number(e.target.value);
+                                          const updated = { ...item, outsourcedWholesaleCost: val };
+                                          setItems(prev => prev.map(i => i.id === item.id ? updated : i));
+                                          upsertItem(updated).catch(err => console.warn(err));
+                                        }}
+                                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 font-mono font-bold text-slate-900 text-xs outline-none"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-[10px] font-bold text-slate-500">Default Supplier</label>
+                                    <input 
+                                      type="text"
+                                      value={item.outsourcedSupplier || 'Highland Scottish Supplies'}
+                                      onChange={e => {
+                                        const val = e.target.value;
+                                        const updated = { ...item, outsourcedSupplier: val };
+                                        setItems(prev => prev.map(i => i.id === item.id ? updated : i));
+                                        upsertItem(updated).catch(err => console.warn(err));
+                                      }}
+                                      className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 font-bold text-slate-900 text-xs outline-none mt-0.5"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  // Add to fitting form outfit 0
+                                  setFittingForm(prev => {
+                                    const updatedOutfits = [...prev.outfits];
+                                    if (updatedOutfits.length > 0) {
+                                      const first = updatedOutfits[0];
+                                      if (!first.selectedItemIds.includes(item.id)) {
+                                        updatedOutfits[0] = {
+                                          ...first,
+                                          selectedItemIds: [...first.selectedItemIds, item.id]
+                                        };
+                                        showToast(`➕ Added Outsourced ${item.name} (${item.id}) to Fitting Order!`, 'success');
+                                      } else {
+                                        showToast(`ℹ️ Item (${item.id}) is already in this fitting outfit.`, 'info');
+                                      }
+                                    }
+                                    return { ...prev, outfits: updatedOutfits };
+                                  });
+                                  setAssistantTab('start_fitting');
+                                  setActiveTab('start_fitting');
+                                }}
+                                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-sm transition flex items-center justify-center gap-1.5"
+                              >
+                                <ShoppingCart className="w-3.5 h-3.5" /> Add into Fitting Order
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ) : inventorySubTab === 'ACTIVE' ? (
                     <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm space-y-0">
                       {(() => {
                         const handleSort = (col: 'id' | 'name' | 'category' | 'sizeGroup' | 'tartanOrColour' | 'status') => {
