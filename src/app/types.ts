@@ -1,14 +1,4 @@
-export type ItemCategory = 
-  | 'Kilts'
-  | 'Jackets'
-  | 'Waistcoats'
-  | 'Sporrans'
-  | 'Ghillie Brogues'
-  | 'Shirts'
-  | 'Socks & Garters'
-  | 'Belts & Buckles'
-  | 'Sgian-dubh (Knife)'
-  | 'Miscellaneous';
+export type ItemCategory = string;
 
 export type ItemStatus = 'AVAILABLE' | 'ON_HIRE' | 'NEEDS_CLEANING' | 'IN_REPAIR' | 'RETIRED';
 
