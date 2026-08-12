@@ -4397,14 +4397,18 @@ export default function KiltHireApp() {
                         </button>
                       </div>
 
-                      {/* LIVE CAMERA VIEWFINDER WHEN ACTIVE */}
+                      {/* LIVE CAMERA VIEWFINDER WHEN ACTIVE — identical to main scanner */}
                       {activeCamera && (
-                        <div className="relative w-full aspect-video max-h-56 bg-slate-950 rounded-xl overflow-hidden border-2 border-amber-500 shadow-inner my-2">
-                          <video ref={videoRefCallback} autoPlay playsInline muted className="w-full h-full object-cover" />
-                          <div className="absolute inset-0 border-2 border-dashed border-amber-400/70 rounded-xl pointer-events-none flex items-center justify-center">
-                            <span className="text-[11px] bg-slate-900/85 text-amber-300 font-extrabold px-3 py-1 rounded-full border border-amber-400/50 shadow">
-                              Center Garment QR Tag in Camera Viewfinder to Add
-                            </span>
+                        <div className="relative w-full aspect-square max-w-xs mx-auto bg-black rounded-2xl overflow-hidden border-4 border-emerald-500 shadow-md my-2">
+                          <video ref={videoRefCallback} autoPlay playsInline muted style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'center center' }} className="w-full h-full object-cover transition-transform duration-200" />
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <div className="relative w-48 h-48">
+                              <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-amber-400 rounded-tl-xl" />
+                              <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-amber-400 rounded-tr-xl" />
+                              <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-amber-400 rounded-bl-xl" />
+                              <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-amber-400 rounded-br-xl" />
+                              <span className="absolute bottom-[-28px] left-1/2 -translate-x-1/2 text-[10px] bg-slate-900/85 text-amber-300 font-extrabold px-3 py-1 rounded-full border border-amber-400/50 whitespace-nowrap">Center QR Tag in Frame</span>
+                            </div>
                           </div>
                         </div>
                       )}
@@ -11567,14 +11571,18 @@ export default function KiltHireApp() {
                 </button>
               </div>
 
-              {/* LIVE CAMERA VIEWFINDER WHEN ACTIVE */}
+              {/* LIVE CAMERA VIEWFINDER WHEN ACTIVE — identical to main scanner */}
               {activeCamera && (
-                <div className="relative w-full aspect-video max-h-48 bg-slate-950 rounded-xl overflow-hidden border-2 border-amber-500 shadow-inner my-2">
-                  <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-                  <div className="absolute inset-0 border-2 border-dashed border-amber-400/70 rounded-xl pointer-events-none flex items-center justify-center">
-                    <span className="text-[10px] bg-slate-900/80 text-amber-300 font-extrabold px-2.5 py-1 rounded">
-                      Center QR Tag in Camera Viewfinder to Scan
-                    </span>
+                <div className="relative w-full aspect-square max-w-xs mx-auto bg-black rounded-2xl overflow-hidden border-4 border-emerald-500 shadow-md my-2">
+                  <video ref={videoRefCallback} autoPlay playsInline muted style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'center center' }} className="w-full h-full object-cover transition-transform duration-200" />
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="relative w-48 h-48">
+                      <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-amber-400 rounded-tl-xl" />
+                      <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-amber-400 rounded-tr-xl" />
+                      <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-amber-400 rounded-bl-xl" />
+                      <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-amber-400 rounded-br-xl" />
+                      <span className="absolute bottom-[-28px] left-1/2 -translate-x-1/2 text-[10px] bg-slate-900/85 text-amber-300 font-extrabold px-3 py-1 rounded-full border border-amber-400/50 whitespace-nowrap">Center QR Tag in Frame</span>
+                    </div>
                   </div>
                 </div>
               )}
