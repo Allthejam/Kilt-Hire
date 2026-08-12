@@ -807,6 +807,7 @@ export default function KiltHireApp() {
             if (livePricing.matrix) setPricingMatrix(livePricing.matrix);
             if (livePricing.maxRigoutCapPrice) setMaxRigoutCapPrice(livePricing.maxRigoutCapPrice);
             if (livePricing.kidMaxRigoutCapPrice) setKidMaxRigoutCapPrice(livePricing.kidMaxRigoutCapPrice);
+            if (livePricing.tartanList && livePricing.tartanList.length > 0) setTartanList(livePricing.tartanList);
           }
         });
 
@@ -1837,7 +1838,7 @@ export default function KiltHireApp() {
 
   const handleSavePricingToFirestore = async () => {
     try {
-      await savePricing(pricingMatrix, maxRigoutCapPrice, kidMaxRigoutCapPrice);
+      await savePricing(pricingMatrix, maxRigoutCapPrice, kidMaxRigoutCapPrice, tartanList);
       addAuditLog('UPDATED_PRICING_MATRIX', `Saved live store pricing matrix & rigout caps (Adult £${maxRigoutCapPrice}, Kid £${kidMaxRigoutCapPrice}) across all devices.`);
       showToast('🎉 Pricing Matrix & Rigout Caps successfully saved to Cloud Firestore Database across all devices!', 'success');
     } catch (err: any) {
@@ -2475,8 +2476,10 @@ export default function KiltHireApp() {
       showToast(`⚠️ "${cleanName}" already exists in the Tartan Catalog.`, 'warning');
       return;
     }
-    setTartanList(prev => [...prev, cleanName]);
+    const updated = [...tartanList, cleanName];
+    setTartanList(updated);
     setNewTartanInput('');
+    savePricing(pricingMatrix, maxRigoutCapPrice, kidMaxRigoutCapPrice, updated).catch(err => console.warn(err));
     addAuditLog('ADDED_TARTAN', `Added new custom Tartan/Colour "${cleanName}" to product catalog.`);
     showToast(`✨ Added "${cleanName}" to Tartan & Colour Catalog!`, 'success');
   };
@@ -2487,7 +2490,9 @@ export default function KiltHireApp() {
       showToast(`⚠️ At least one Tartan/Colour must remain in the catalog.`, 'warning');
       return;
     }
-    setTartanList(prev => prev.filter(t => t !== tartanName));
+    const updated = tartanList.filter(t => t !== tartanName);
+    setTartanList(updated);
+    savePricing(pricingMatrix, maxRigoutCapPrice, kidMaxRigoutCapPrice, updated).catch(err => console.warn(err));
     addAuditLog('DELETED_TARTAN', `Removed Tartan/Colour "${tartanName}" from product catalog.`);
     showToast(`Deleted "${tartanName}" from catalog.`, 'info');
   };
@@ -7736,7 +7741,7 @@ export default function KiltHireApp() {
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                               {tartanList.map(tartan => {
-                                const itemCount = items.filter(i => i.tartanOrColour === tartan && i.status !== 'RETIRED').length;
+                                const itemCount = items.filter(i => i.tartanOrColour === tartan && i.status !== 'RETIRED' && !i.isOutsourcedDefault && !i.id.startsWith('EXT-')).length;
                                 return (
                                   <div key={tartan} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between shadow-sm hover:border-amber-300 transition">
                                     <div>
@@ -7765,7 +7770,7 @@ export default function KiltHireApp() {
 
                             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                               {CATEGORIES.map(cat => {
-                                const count = items.filter(i => i.category === cat && i.status !== 'RETIRED').length;
+                                const count = items.filter(i => i.category === cat && i.status !== 'RETIRED' && !i.isOutsourcedDefault && !i.id.startsWith('EXT-')).length;
                                 return (
                                   <div key={cat} className="p-3.5 bg-amber-50/50 border border-amber-200 rounded-2xl text-xs space-y-1">
                                     <span className="font-extrabold text-amber-950 block">{cat}</span>
@@ -7781,7 +7786,7 @@ export default function KiltHireApp() {
                             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-3">
                               <div>
                                 <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                                  <Package className="w-4 h-4 text-amber-600" /> Bulk Storage Bins & Accessory Pools ({items.filter(i => i.isBulkPool).length} Master Bins)
+                                  <Package className="w-4 h-4 text-amber-600" /> Bulk Storage Bins & Accessory Pools ({items.filter(i => i.isBulkPool && !i.isOutsourcedDefault && !i.id.startsWith('EXT-')).length} Master Bins)
                                 </h4>
                                 <p className="text-xs text-slate-500">
                                   Master storage boxes for non-serialized accessories (Sgian-dubhs, Kilt Pins, Belts & Buckles, Garters). Update stock pools or print bin stickers!
@@ -7790,7 +7795,7 @@ export default function KiltHireApp() {
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              {items.filter(i => i.isBulkPool).map(bin => {
+                              {items.filter(i => i.isBulkPool && !i.isOutsourcedDefault && !i.id.startsWith('EXT-')).map(bin => {
                                 const onHireCount = (bin.bulkTotal || 0) - (bin.bulkQuantity || 0);
                                 return (
                                   <div key={bin.id} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 shadow-sm hover:border-amber-300 transition">

@@ -154,6 +154,7 @@ export interface PricingSettingsDoc {
   matrix: CategoryPriceSetting[];
   maxRigoutCapPrice?: number;
   kidMaxRigoutCapPrice?: number;
+  tartanList?: string[];
 }
 
 export async function getPricing(): Promise<PricingSettingsDoc | null> {
@@ -162,10 +163,10 @@ export async function getPricing(): Promise<PricingSettingsDoc | null> {
   return pricingDoc ? (pricingDoc.data() as PricingSettingsDoc) : null;
 }
 
-export async function savePricing(matrix: CategoryPriceSetting[], maxRigoutCapPrice?: number, kidMaxRigoutCapPrice?: number): Promise<void> {
+export async function savePricing(matrix: CategoryPriceSetting[], maxRigoutCapPrice?: number, kidMaxRigoutCapPrice?: number, tartanList?: string[]): Promise<void> {
   await setDoc(
     doc(requireDb(), 'settings', 'pricing'), 
-    sanitizeForFirestore({ matrix, maxRigoutCapPrice, kidMaxRigoutCapPrice }), 
+    sanitizeForFirestore({ matrix, maxRigoutCapPrice, kidMaxRigoutCapPrice, tartanList }), 
     { merge: true }
   );
 }
