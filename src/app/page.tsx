@@ -12897,6 +12897,8 @@ export default function KiltHireApp() {
             </div>
           </div>
         );
+      })()}
+
       {/* OUTSOURCED / SUB-HIRE ADMIN APPROVAL MODAL */}
       {showOutsourcedApprovalModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
