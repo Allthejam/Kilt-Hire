@@ -279,6 +279,8 @@ export default function KiltHireApp() {
   const [showAddOutsourcedModal, setShowAddOutsourcedModal] = useState(false);
   const [editOutsourcedItem, setEditOutsourcedItem] = useState<KiltItem | null>(null);
   const [deleteOutsourcedConfirm, setDeleteOutsourcedConfirm] = useState<string | null>(null);
+  const [isOutsourcedUnlocked, setIsOutsourcedUnlocked] = useState(false);
+  const [showOutsourcedApprovalModal, setShowOutsourcedApprovalModal] = useState(false);
 
   // Auth state
   const [currentUser, setCurrentUser] = useState<StaffUser | null>(INITIAL_STAFF[0]);
@@ -3105,8 +3107,8 @@ export default function KiltHireApp() {
     { id: 'scanner', label: 'QR Scanner & Actions', icon: QrCode, badge: scItem ? '1 Active' : null, restricted: false },
     { id: 'pricing', label: 'Pricing Settings Matrix', icon: PriceTag, badge: 'Adult & Kids', restricted: !isMasterAdmin },
     { id: 'batches', label: 'QR Batch Printing', icon: Printer, badge: `${batches.length} Batches`, restricted: !isMasterAdmin },
-    { id: 'inventory', label: 'Stock Inventory', icon: Layers, badge: `${items.filter(i=>i.status!=='RETIRED').length}`, restricted: false },
-    { id: 'pos', label: 'Hire POs & PayPal', icon: CreditCard, badge: `${pos.length}`, restricted: false },
+    { id: 'inventory', label: 'Stock Inventory', icon: Layers, badge: `${items.filter(i=>i.status!=='RETIRED' && !i.isOutsourcedDefault && !i.id.startsWith('EXT-')).length} Shop Items`, restricted: false },
+    { id: 'pos', label: 'Hire POs & PayPal', icon: CreditCard, badge: `${pos.filter(p => p.orderStatus !== 'CANCELLED' && p.orderStatus !== 'RETURNED_COMPLETED' && !p.items.every(i => i.returned)).length} Active`, restricted: false },
     { id: 'laundry', label: 'Dry Cleaning Laundry', icon: Sparkles, badge: `${items.filter(i=>i.status==='NEEDS_CLEANING').length}`, restricted: false },
     { id: 'repairs', label: 'In Repair / Workshop', icon: Wrench, badge: `${items.filter(i=>i.status==='IN_REPAIR').length}`, restricted: false },
     { id: 'analytics', label: 'Master Admin Analytics', icon: BarChart3, badge: 'ROI & Revenue', restricted: !isMasterAdmin },
@@ -3834,7 +3836,7 @@ export default function KiltHireApp() {
                     <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${
                       assistantTab === 'pos' ? 'bg-slate-950 text-amber-400' : 'bg-amber-100 text-amber-900'
                     }`}>
-                      {pos.length}
+                      {pos.filter(p => p.orderStatus !== 'CANCELLED' && p.orderStatus !== 'RETURNED_COMPLETED' && !p.items.every(i => i.returned)).length} Active
                     </span>
                   </button>
 
@@ -4967,7 +4969,14 @@ export default function KiltHireApp() {
                                           <label className="text-[11px] font-extrabold text-amber-300 whitespace-nowrap">Filter Category:</label>
                                           <select
                                             value={fittingCategoryFilter}
-                                            onChange={(e) => setFittingCategoryFilter(e.target.value)}
+                                            onChange={(e) => {
+                                              const val = e.target.value;
+                                              if (val === 'OUTSOURCED' && !isOutsourcedUnlocked) {
+                                                setShowOutsourcedApprovalModal(true);
+                                                return;
+                                              }
+                                              setFittingCategoryFilter(val);
+                                            }}
                                             className="bg-slate-950 text-white font-extrabold text-xs px-3 py-1 rounded-lg border border-amber-400/50 outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer"
                                           >
                                             <option value="ALL">✨ ALL Categories ({availableCategoryOptions.length} Matrix Types)</option>
@@ -8760,19 +8769,19 @@ export default function KiltHireApp() {
                             onClick={() => { setInventorySizeFilter('ALL'); setInventoryTablePage(1); }}
                             className={`px-3 py-1.5 rounded-lg transition ${inventorySizeFilter === 'ALL' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
                           >
-                            All Sizes ({items.filter(i=>i.status!=='RETIRED').length})
+                            All Shop Sizes ({items.filter(i=>i.status!=='RETIRED' && !i.isOutsourcedDefault && !i.id.startsWith('EXT-')).length})
                           </button>
                           <button
                             onClick={() => { setInventorySizeFilter('Adult'); setInventoryTablePage(1); }}
                             className={`px-3 py-1.5 rounded-lg flex items-center gap-1 transition ${inventorySizeFilter === 'Adult' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600'}`}
                           >
-                            <User className="w-3.5 h-3.5" /> Adults ({items.filter(i=>i.sizeGroup==='Adult' && i.status!=='RETIRED').length})
+                            <User className="w-3.5 h-3.5" /> Adults ({items.filter(i=>i.sizeGroup==='Adult' && i.status!=='RETIRED' && !i.isOutsourcedDefault && !i.id.startsWith('EXT-')).length})
                           </button>
                           <button
                             onClick={() => { setInventorySizeFilter('Kid'); setInventoryTablePage(1); }}
                             className={`px-3 py-1.5 rounded-lg flex items-center gap-1 transition ${inventorySizeFilter === 'Kid' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-600'}`}
                           >
-                            <Baby className="w-3.5 h-3.5" /> Kids ({items.filter(i=>i.sizeGroup==='Kid' && i.status!=='RETIRED').length})
+                            <Baby className="w-3.5 h-3.5" /> Kids ({items.filter(i=>i.sizeGroup==='Kid' && i.status!=='RETIRED' && !i.isOutsourcedDefault && !i.id.startsWith('EXT-')).length})
                           </button>
                         </div>
 
@@ -9391,63 +9400,86 @@ export default function KiltHireApp() {
               )}
 
               {/* TAB 4: POs & PAYPAL WITH FULL RIGOUT PRICE CAP BREAKDOWN */}
-              {activeTab === 'pos' && (
-                <div className="space-y-6">
-                  <div className="flex flex-wrap items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-                    <div>
-                      <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                        <CreditCard className="w-5 h-5 text-amber-600" /> Hire Purchase Orders & PayPal Deposit Ledger
-                      </h2>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Track active customer hires, PayPal deposits held, returned clean items, and Full Rigout price caps. Saved live to Firestore database.
-                      </p>
-                    </div>
+              {activeTab === 'pos' && (() => {
+                const activePosList = pos.filter(p => p.orderStatus !== 'CANCELLED' && p.orderStatus !== 'RETURNED_COMPLETED' && !p.items.every(i => i.returned));
+                const historicPosCount = pos.filter(p => p.orderStatus === 'CANCELLED' || p.orderStatus === 'RETURNED_COMPLETED' || p.items.every(i => i.returned)).length;
 
-                    <div className="flex items-center gap-2.5">
-                      {pos.length > 0 && (
-                        <button
-                          onClick={handleClearAllPosFromFirestore}
-                          className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200 shadow-sm flex items-center gap-1.5 transition"
-                          title="Clear all POs from Cloud Firestore database"
-                        >
-                          <Trash2 className="w-4 h-4 text-rose-600" /> Clear All POs ({pos.length})
-                        </button>
-                      )}
-
-                      <button
-                        onClick={() => {
-                          setAssistantTab('start_fitting');
-                          setInterfaceMode('shop_assistant');
-                        }}
-                        className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm flex items-center gap-2 transition"
-                      >
-                        <PlusCircle className="w-4 h-4" /> Start New Fitting & Order
-                      </button>
-                    </div>
-                  </div>
-
-                  {pos.length === 0 ? (
-                    <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center space-y-3 shadow-sm">
-                      <div className="w-14 h-14 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto border border-amber-200">
-                        <CreditCard className="w-7 h-7" />
+                return (
+                  <div className="space-y-6">
+                    <div className="flex flex-wrap items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                      <div>
+                        <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                          <CreditCard className="w-5 h-5 text-amber-600" /> Active Customer Purchase Orders ({activePosList.length})
+                        </h2>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Track active customer hires, PayPal deposits held, and Full Rigout price caps. Completed &amp; cancelled hires automatically move to Historic PO Archive.
+                        </p>
                       </div>
-                      <h3 className="text-base font-extrabold text-slate-900">No Purchase Orders in Database</h3>
-                      <p className="text-xs text-slate-500 max-w-md mx-auto">
-                        Your Purchase Orders ledger is connected live to Cloud Firestore. Create a new order via the Start New Fitting & Order station.
-                      </p>
-                      <button
-                        onClick={() => {
-                          setAssistantTab('start_fitting');
-                          setInterfaceMode('shop_assistant');
-                        }}
-                        className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm inline-flex items-center gap-1.5 transition mt-2"
-                      >
-                        <PlusCircle className="w-4 h-4" /> Start First Live Fitting & Order
-                      </button>
+
+                      <div className="flex items-center gap-2.5">
+                        {historicPosCount > 0 && (
+                          <button
+                            onClick={() => setAssistantTab('historic_pos')}
+                            className="px-4 py-2.5 bg-purple-50 hover:bg-purple-100 text-purple-800 font-bold text-xs rounded-xl border border-purple-200 shadow-2xs flex items-center gap-1.5 transition"
+                          >
+                            <FileText className="w-4 h-4 text-purple-600" /> View Historic PO Archive ({historicPosCount})
+                          </button>
+                        )}
+
+                        {activePosList.length > 0 && (
+                          <button
+                            onClick={handleClearAllPosFromFirestore}
+                            className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200 shadow-sm flex items-center gap-1.5 transition"
+                            title="Clear active POs from Cloud Firestore database"
+                          >
+                            <Trash2 className="w-4 h-4 text-rose-600" /> Clear Active POs ({activePosList.length})
+                          </button>
+                        )}
+
+                        <button
+                          onClick={() => {
+                            setAssistantTab('start_fitting');
+                            setInterfaceMode('shop_assistant');
+                          }}
+                          className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm flex items-center gap-2 transition"
+                        >
+                          <PlusCircle className="w-4 h-4" /> Start New Fitting & Order
+                        </button>
+                      </div>
                     </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {pos.map(po => {
+
+                    {activePosList.length === 0 ? (
+                      <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center space-y-3 shadow-sm">
+                        <div className="w-14 h-14 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto border border-amber-200">
+                          <CreditCard className="w-7 h-7" />
+                        </div>
+                        <h3 className="text-base font-extrabold text-slate-900">No Active Customer Purchase Orders</h3>
+                        <p className="text-xs text-slate-500 max-w-md mx-auto">
+                          All previous orders have been completed/returned or cancelled (stored safely in the Historic PO Archive).
+                        </p>
+                        <div className="flex justify-center gap-3 pt-1">
+                          {historicPosCount > 0 && (
+                            <button
+                              onClick={() => setAssistantTab('historic_pos')}
+                              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-sm inline-flex items-center gap-1.5 transition"
+                            >
+                              <FileText className="w-4 h-4" /> Open Historic PO Archive ({historicPosCount})
+                            </button>
+                          )}
+                          <button
+                            onClick={() => {
+                              setAssistantTab('start_fitting');
+                              setInterfaceMode('shop_assistant');
+                            }}
+                            className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm inline-flex items-center gap-1.5 transition"
+                          >
+                            <PlusCircle className="w-4 h-4" /> Start New Fitting & Order
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {activePosList.map(po => {
                         const returnedCount = po.items.filter(i => i.returned).length;
                         const totalCount = po.items.length;
                         const isComplete = returnedCount === totalCount && totalCount > 0;
@@ -9671,9 +9703,10 @@ export default function KiltHireApp() {
                         );
                       })}
                     </div>
-                )}
-              </div>
-            )}
+                  )}
+                </div>
+              );
+            })()}
 
               {/* TAB 5: DRY CLEANING LAUNDRY */}
               {activeTab === 'laundry' && (
@@ -12864,7 +12897,59 @@ export default function KiltHireApp() {
             </div>
           </div>
         );
-      })()}
+      {/* OUTSOURCED / SUB-HIRE ADMIN APPROVAL MODAL */}
+      {showOutsourcedApprovalModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-5 border border-slate-200">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 bg-amber-100 text-amber-800 rounded-2xl flex items-center justify-center border border-amber-300 shrink-0">
+                <Lock className="w-6 h-6 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 leading-tight">Admin Approval Required</h3>
+                <p className="text-xs text-amber-800 font-semibold mt-0.5">Outsourced &amp; Sub-Hire Fallback Garments</p>
+              </div>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3.5 space-y-2 text-xs text-amber-950">
+              <p className="font-bold flex items-center gap-1.5 text-amber-900">
+                <ShieldCheck className="w-4 h-4 text-amber-600" /> Shop Stock Priority Policy:
+              </p>
+              <p className="text-[11px] text-amber-900 leading-relaxed">
+                Highland Kilt Hire requires hiring our own in-house shop stock first. Sub-hire items from external suppliers should only be added if shop stock is exhausted for this hire period.
+              </p>
+            </div>
+
+            <div className="space-y-3 text-xs text-slate-600">
+              <p className="font-semibold">
+                Do you have Admin authorization to unlock outsourced sub-hire fallback items for this fitting order?
+              </p>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowOutsourcedApprovalModal(false)}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold rounded-xl text-xs transition border border-slate-300 cursor-pointer"
+                >
+                  Cancel / Use Shop Stock
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOutsourcedUnlocked(true);
+                    setFittingCategoryFilter('OUTSOURCED');
+                    setShowOutsourcedApprovalModal(false);
+                    showToast('🔓 Admin Approved: Outsourced Sub-Hire Fallbacks unlocked for this order.', 'success');
+                  }}
+                  className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold rounded-xl text-xs shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <ShieldCheck className="w-4 h-4" /> Authorize &amp; Unlock
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
