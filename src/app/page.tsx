@@ -282,7 +282,27 @@ export default function KiltHireApp() {
   const [isOutsourcedUnlocked, setIsOutsourcedUnlocked] = useState(false);
   const [showOutsourcedApprovalModal, setShowOutsourcedApprovalModal] = useState(false);
 
-  // Auth state
+  // Staff Outsourced PIN Authorization Modal State
+  const [outsourcedPinModalItem, setOutsourcedPinModalItem] = useState<KiltItem | null>(null);
+  const [adminPinInput, setAdminPinInput] = useState<string>('');
+  const [pinErrorMsg, setPinErrorMsg] = useState<string>('');
+
+  // Master Category Pricing Matrix Add & Delete Category State
+  const [showAddCategoryModal, setShowAddCategoryModal] = useState<boolean>(false);
+  const [newCategoryForm, setNewCategoryForm] = useState({
+    category: '',
+    adultHireRate: 50,
+    adultDeposit: 50,
+    kidHireRate: 30,
+    kidDeposit: 30
+  });
+  const [deleteCategoryConfirm, setDeleteCategoryConfirm] = useState<string | null>(null);
+
+  const validateAdminPin = (pinStr: string): boolean => {
+    const clean = pinStr.trim();
+    if (clean === '1234') return true;
+    return staffList.some(s => (s.role === 'Master Admin' || s.role === 'Admin') && s.pin === clean);
+  };
   const [currentUser, setCurrentUser] = useState<StaffUser | null>(INITIAL_STAFF[0]);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   
@@ -7617,7 +7637,7 @@ export default function KiltHireApp() {
 
                           {/* CATEGORY PRICING MATRIX TABLE */}
                           <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
-                            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                            <div className="p-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-4">
                               <div>
                                 <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
                                   <PriceTag className="w-5 h-5 text-amber-600" /> Master Category Pricing Matrix (Adults vs Kids)
@@ -7626,6 +7646,14 @@ export default function KiltHireApp() {
                                   Set default rental rates and security deposits for all items. Garments automatically pre-fill these prices during registration.
                                 </p>
                               </div>
+
+                              <button
+                                type="button"
+                                onClick={() => setShowAddCategoryModal(true)}
+                                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
+                              >
+                                <PlusCircle className="w-4 h-4" /> Add New Category
+                              </button>
                             </div>
 
                             <div className="overflow-x-auto">
@@ -7637,12 +7665,25 @@ export default function KiltHireApp() {
                                     <th className="py-4 px-4 bg-amber-50/50 text-amber-950">Adult Deposit (£)</th>
                                     <th className="py-4 px-4 bg-purple-50/50 text-purple-950 border-l border-purple-200">Kids Rental (£)</th>
                                     <th className="py-4 px-4 bg-purple-50/50 text-purple-950">Kids Deposit (£)</th>
+                                    <th className="py-4 px-4 text-center">Actions</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 font-semibold">
                                   {pricingMatrix.map(setting => (
                                     <tr key={setting.category} className="hover:bg-slate-50 transition">
-                                      <td className="py-3 px-4 font-bold text-slate-900">{setting.category}</td>
+                                      <td className="py-3 px-4 font-bold text-slate-900">
+                                        <input
+                                          type="text"
+                                          value={setting.category}
+                                          onChange={e => {
+                                            const newCatName = e.target.value;
+                                            const updated = pricingMatrix.map(p => p.category === setting.category ? { ...p, category: newCatName } : p);
+                                            setPricingMatrix(updated);
+                                            savePricing(updated, maxRigoutCapPrice, kidMaxRigoutCapPrice, tartanList).catch(err => console.warn(err));
+                                          }}
+                                          className="bg-transparent border border-transparent hover:border-slate-300 focus:border-amber-500 rounded px-1.5 py-0.5 font-extrabold text-slate-900 text-xs outline-none"
+                                        />
+                                      </td>
                                       <td className="py-3 px-4 bg-amber-50/30 border-l border-amber-100">
                                         <div className="flex items-center gap-1">
                                           <span className="text-slate-400">£</span>
@@ -7690,6 +7731,41 @@ export default function KiltHireApp() {
                                             className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 font-mono font-bold text-emerald-800 outline-none focus:border-purple-500 shadow-sm"
                                           />
                                         </div>
+                                      </td>
+                                      <td className="py-3 px-4 text-center">
+                                        {deleteCategoryConfirm === setting.category ? (
+                                          <div className="flex items-center justify-center gap-1">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                const updated = pricingMatrix.filter(p => p.category !== setting.category);
+                                                setPricingMatrix(updated);
+                                                savePricing(updated, maxRigoutCapPrice, kidMaxRigoutCapPrice, tartanList).catch(err => console.warn(err));
+                                                showToast(`🗑️ Removed category "${setting.category}" from Pricing Matrix.`, 'info');
+                                                setDeleteCategoryConfirm(null);
+                                              }}
+                                              className="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-[10px] rounded-lg transition cursor-pointer"
+                                            >
+                                              Confirm
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => setDeleteCategoryConfirm(null)}
+                                              className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition cursor-pointer"
+                                            >
+                                              <X className="w-3 h-3" />
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            title={`Delete ${setting.category} category`}
+                                            onClick={() => setDeleteCategoryConfirm(setting.category)}
+                                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                                          >
+                                            <Trash2 className="w-4 h-4" />
+                                          </button>
+                                        )}
                                       </td>
                                     </tr>
                                   ))}
@@ -8827,220 +8903,266 @@ export default function KiltHireApp() {
                             </span>
                             <h3 className="text-xl font-extrabold text-white">Default Outsourced Garments & External Sub-Hire Rates</h3>
                             <p className="text-xs text-indigo-200 max-w-2xl leading-relaxed">
-                              Configure default garments and pricing when hiring in Kilts, Jackets, Waistcoats, or Accessories from outside suppliers if shop inventory runs low. Set customer rental rates, security deposits, wholesale sub-hire costs, and preferred suppliers.
+                              {!isMasterAdmin && currentUser?.role !== 'Admin'
+                                ? 'Staff reference catalog of fallback garments when shop inventory runs low. Adding any sub-hire item to a fitting order requires Admin PIN authorization.'
+                                : 'Configure default garments and pricing when hiring in Kilts, Jackets, Waistcoats, or Accessories from outside suppliers. Set rental rates, deposits, wholesale costs, and suppliers.'
+                              }
                             </p>
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={() => setShowAddOutsourcedModal(true)}
-                            className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5"
-                          >
-                            <PlusCircle className="w-4 h-4" /> Add Custom Outsourced Default Item
-                          </button>
+                          {(isMasterAdmin || currentUser?.role === 'Admin') && (
+                            <button
+                              type="button"
+                              onClick={() => setShowAddOutsourcedModal(true)}
+                              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <PlusCircle className="w-4 h-4" /> Add Custom Outsourced Default Item
+                            </button>
+                          )}
                         </div>
                       </div>
 
-                      {/* OUTSOURCED DEFAULTS CARDS GRID */}
-                      <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
-                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                          <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                            <Store className="w-4 h-4 text-indigo-600" /> Default Sub-Hire Garment Catalog ({items.filter(i => i.isOutsourcedDefault || i.id.startsWith('EXT-')).length} Items)
-                          </h4>
-                          <span className="text-[11px] font-bold text-slate-500">Live prices auto-fill into Fitting Orders</span>
-                        </div>
+                      {/* IF STAFF MEMBER: RENDER CLEAN STAFF COPY SUB-HIRE TABLE */}
+                      {!isMasterAdmin && currentUser?.role !== 'Admin' ? (
+                        <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
+                          <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                            <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                              <Store className="w-4 h-4 text-indigo-600" /> Default Sub-Hire Garment Catalog ({items.filter(i => i.isOutsourcedDefault || i.id.startsWith('EXT-')).length} Items)
+                            </h4>
+                            <span className="text-[11px] font-bold text-slate-500">🔒 Admin PIN required to add into order</span>
+                          </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {items.filter(i => i.isOutsourcedDefault || i.id.startsWith('EXT-')).map(item => (
-                            <div key={item.id} className="p-5 bg-indigo-50/40 border border-indigo-200 rounded-2xl space-y-3.5 shadow-sm hover:border-indigo-400 transition">
-                              <div className="flex items-start justify-between">
-                                <div>
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="font-mono font-extrabold text-indigo-900 bg-indigo-100 px-2.5 py-0.5 rounded text-[10px] border border-indigo-300">
-                                      {item.id}
-                                    </span>
-                                    <span className="text-[10px] font-extrabold bg-blue-100 text-blue-900 px-2 py-0.5 rounded">
-                                      {item.category}
-                                    </span>
-                                    <span className="text-[10px] font-extrabold bg-purple-100 text-purple-900 px-2 py-0.5 rounded">
-                                      {item.sizeGroup}
-                                    </span>
-                                  </div>
-                                  <h5 className="font-extrabold text-slate-900 text-sm mt-1.5">{item.name}</h5>
-                                  <p className="text-xs text-slate-500">{item.tartanOrColour}</p>
-                                </div>
-                                {/* EDIT & DELETE ACTIONS */}
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  <button
-                                    type="button"
-                                    title="Edit item"
-                                    onClick={() => setEditOutsourcedItem(item)}
-                                    className="w-7 h-7 rounded-lg bg-indigo-100 hover:bg-indigo-200 text-indigo-700 flex items-center justify-center transition"
-                                  >
-                                    <Edit3 className="w-3.5 h-3.5" />
-                                  </button>
-                                  {deleteOutsourcedConfirm === item.id ? (
-                                    <div className="flex items-center gap-1">
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs text-slate-700">
+                              <thead className="bg-slate-50 text-slate-900 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px]">
+                                <tr>
+                                  <th className="py-3.5 px-4">Code / ID</th>
+                                  <th className="py-3.5 px-4">Garment Title</th>
+                                  <th className="py-3.5 px-4">Category</th>
+                                  <th className="py-3.5 px-4">Size Group</th>
+                                  <th className="py-3.5 px-4">Customer Hire Fee (£)</th>
+                                  <th className="py-3.5 px-4">Security Deposit (£)</th>
+                                  <th className="py-3.5 px-4 text-center">Order Action</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 font-semibold">
+                                {items.filter(i => i.isOutsourcedDefault || i.id.startsWith('EXT-')).map(item => (
+                                  <tr key={item.id} className="hover:bg-indigo-50/30 transition">
+                                    <td className="py-3.5 px-4">
+                                      <span className="font-mono font-extrabold text-indigo-900 bg-indigo-100 px-2.5 py-0.5 rounded text-[10px] border border-indigo-300">
+                                        {item.id}
+                                      </span>
+                                    </td>
+                                    <td className="py-3.5 px-4 font-extrabold text-slate-900">{item.name}</td>
+                                    <td className="py-3.5 px-4">
+                                      <span className="bg-blue-100 text-blue-900 font-extrabold px-2 py-0.5 rounded text-[10px]">
+                                        {item.category}
+                                      </span>
+                                    </td>
+                                    <td className="py-3.5 px-4">
+                                      <span className="bg-purple-100 text-purple-900 font-extrabold px-2 py-0.5 rounded text-[10px]">
+                                        {item.sizeGroup}
+                                      </span>
+                                    </td>
+                                    <td className="py-3.5 px-4 font-extrabold text-emerald-700">£{item.hireRate}</td>
+                                    <td className="py-3.5 px-4 font-bold text-slate-700">£{item.depositAmount}</td>
+                                    <td className="py-3.5 px-4 text-center">
                                       <button
                                         type="button"
-                                        onClick={() => {
-                                          setItems(prev => prev.filter(i => i.id !== item.id));
-                                          deleteItem(item.id).catch(err => console.warn('Delete failed:', err));
-                                          showToast(`🗑️ Outsourced item "${item.name}" deleted.`, 'info');
-                                          setDeleteOutsourcedConfirm(null);
-                                        }}
-                                        className="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-[10px] rounded-lg transition"
+                                        onClick={() => setOutsourcedPinModalItem(item)}
+                                        className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition inline-flex items-center gap-1.5 cursor-pointer"
                                       >
-                                        Confirm
+                                        <Lock className="w-3.5 h-3.5 text-indigo-200" /> Add to Order
                                       </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => setDeleteOutsourcedConfirm(null)}
-                                        className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition"
-                                      >
-                                        <X className="w-3 h-3" />
-                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ) : (
+                        /* ADMIN MANAGEMENT CARDS GRID */
+                        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+                          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                              <Store className="w-4 h-4 text-indigo-600" /> Default Sub-Hire Garment Catalog ({items.filter(i => i.isOutsourcedDefault || i.id.startsWith('EXT-')).length} Items)
+                            </h4>
+                            <span className="text-[11px] font-bold text-slate-500">Live prices auto-fill into Fitting Orders</span>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {items.filter(i => i.isOutsourcedDefault || i.id.startsWith('EXT-')).map(item => (
+                              <div key={item.id} className="p-5 bg-indigo-50/40 border border-indigo-200 rounded-2xl space-y-3.5 shadow-sm hover:border-indigo-400 transition">
+                                <div className="flex items-start justify-between">
+                                  <div>
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="font-mono font-extrabold text-indigo-900 bg-indigo-100 px-2.5 py-0.5 rounded text-[10px] border border-indigo-300">
+                                        {item.id}
+                                      </span>
+                                      <span className="text-[10px] font-extrabold bg-blue-100 text-blue-900 px-2 py-0.5 rounded">
+                                        {item.category}
+                                      </span>
+                                      <span className="text-[10px] font-extrabold bg-purple-100 text-purple-900 px-2 py-0.5 rounded">
+                                        {item.sizeGroup}
+                                      </span>
                                     </div>
-                                  ) : (
+                                    <h5 className="font-extrabold text-slate-900 text-sm mt-1.5">{item.name}</h5>
+                                    <p className="text-xs text-slate-500">{item.tartanOrColour}</p>
+                                  </div>
+                                  {/* EDIT & DELETE ACTIONS FOR ADMIN */}
+                                  <div className="flex items-center gap-1.5 shrink-0">
                                     <button
                                       type="button"
-                                      title="Delete item"
-                                      onClick={() => setDeleteOutsourcedConfirm(item.id)}
-                                      className="w-7 h-7 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 flex items-center justify-center transition"
+                                      title="Edit item"
+                                      onClick={() => setEditOutsourcedItem(item)}
+                                      className="w-7 h-7 rounded-lg bg-indigo-100 hover:bg-indigo-200 text-indigo-700 flex items-center justify-center transition cursor-pointer"
                                     >
-                                      <Trash2 className="w-3.5 h-3.5" />
+                                      <Edit3 className="w-3.5 h-3.5" />
                                     </button>
-                                  )}
+                                    {deleteOutsourcedConfirm === item.id ? (
+                                      <div className="flex items-center gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setItems(prev => prev.filter(i => i.id !== item.id));
+                                            deleteItem(item.id).catch(err => console.warn('Delete failed:', err));
+                                            showToast(`🗑️ Outsourced item "${item.name}" deleted.`, 'info');
+                                            setDeleteOutsourcedConfirm(null);
+                                          }}
+                                          className="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-[10px] rounded-lg transition cursor-pointer"
+                                        >
+                                          Confirm
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setDeleteOutsourcedConfirm(null)}
+                                          className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition cursor-pointer"
+                                        >
+                                          <X className="w-3 h-3" />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        title="Delete item"
+                                        onClick={() => setDeleteOutsourcedConfirm(item.id)}
+                                        className="w-7 h-7 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 flex items-center justify-center transition cursor-pointer"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
+
+                                {/* INLINE EDITABLE PRICING MATRIX */}
+                                <div className="bg-white p-3 rounded-xl border border-indigo-100 space-y-2 text-xs">
+                                  <div className="grid grid-cols-2 gap-2 border-b border-slate-100 pb-2">
+                                    <div>
+                                      <label className="block text-[10px] font-bold text-slate-500">Customer Rental (£)</label>
+                                      <div className="flex items-center gap-1 mt-0.5">
+                                        <span className="text-slate-400 font-bold">£</span>
+                                        <input 
+                                          type="number"
+                                          min={0}
+                                          value={item.hireRate}
+                                          onChange={e => {
+                                            const val = Number(e.target.value);
+                                            const updated = { ...item, hireRate: val };
+                                            setItems(prev => prev.map(i => i.id === item.id ? updated : i));
+                                            upsertItem(updated).catch(err => console.warn(err));
+                                          }}
+                                          className="w-full bg-amber-50 border border-amber-300 rounded-lg px-2 py-1 font-mono font-extrabold text-amber-900 text-xs outline-none"
+                                        />
+                                      </div>
+                                    </div>
+
+                                    <div>
+                                      <label className="block text-[10px] font-bold text-slate-500">Security Deposit (£)</label>
+                                      <div className="flex items-center gap-1 mt-0.5">
+                                        <span className="text-slate-400 font-bold">£</span>
+                                        <input 
+                                          type="number"
+                                          min={0}
+                                          value={item.depositAmount}
+                                          onChange={e => {
+                                            const val = Number(e.target.value);
+                                            const updated = { ...item, depositAmount: val };
+                                            setItems(prev => prev.map(i => i.id === item.id ? updated : i));
+                                            upsertItem(updated).catch(err => console.warn(err));
+                                          }}
+                                          className="w-full bg-emerald-50 border border-emerald-300 rounded-lg px-2 py-1 font-mono font-extrabold text-emerald-900 text-xs outline-none"
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                      <label className="block text-[10px] font-bold text-slate-500">Sub-Hire Cost (£)</label>
+                                      <div className="flex items-center gap-1 mt-0.5">
+                                        <span className="text-slate-400 font-bold">£</span>
+                                        <input 
+                                          type="number"
+                                          min={0}
+                                          value={item.outsourcedWholesaleCost || 35}
+                                          onChange={e => {
+                                            const val = Number(e.target.value);
+                                            const updated = { ...item, outsourcedWholesaleCost: val };
+                                            setItems(prev => prev.map(i => i.id === item.id ? updated : i));
+                                            upsertItem(updated).catch(err => console.warn(err));
+                                          }}
+                                          className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 font-mono font-bold text-slate-900 text-xs outline-none"
+                                        />
+                                      </div>
+                                    </div>
+
+                                    <div>
+                                      <label className="block text-[10px] font-bold text-slate-500">Default Supplier</label>
+                                      <input 
+                                        type="text"
+                                        value={item.outsourcedSupplier || 'Highland Scottish Supplies'}
+                                        onChange={e => {
+                                          const val = e.target.value;
+                                          const updated = { ...item, outsourcedSupplier: val };
+                                          setItems(prev => prev.map(i => i.id === item.id ? updated : i));
+                                          upsertItem(updated).catch(err => console.warn(err));
+                                        }}
+                                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 font-bold text-slate-900 text-xs outline-none mt-0.5"
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setOutsourcedPinModalItem(item)}
+                                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-sm transition flex items-center justify-center gap-1.5 cursor-pointer"
+                                >
+                                  <Lock className="w-3.5 h-3.5 text-indigo-200" /> Add into Fitting Order (Admin PIN)
+                                </button>
+
+                                {/* PRINT QR LABEL */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const matrix = generateQrMatrix(item.id);
+                                    const path = renderQrSvgPath(matrix);
+                                    const vbSize = getQrViewBoxSize(matrix);
+                                    const svgBlock = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + vbSize + ' ' + vbSize + '" width="180" height="180" style="display:block;margin:0 auto 12px;"><rect width="' + vbSize + '" height="' + vbSize + '" fill="white"/><path d="' + path + '" fill="black"/></svg>';
+                                    const html = '<!DOCTYPE html><html><head><title>QR: ' + item.id + '</title><style>*{margin:0;padding:0;box-sizing:border-box;font-family:Arial,sans-serif;}body{background:#fff;}@media print{@page{size:100mm 120mm;margin:5mm;}}.card{width:220px;border:2px solid #1e293b;border-radius:12px;padding:16px 14px 12px;text-align:center;margin:8px auto;}.badge{display:inline-block;background:#312e81;color:#e0e7ff;font-size:9px;font-weight:800;letter-spacing:1px;text-transform:uppercase;padding:3px 8px;border-radius:999px;margin-bottom:8px;}.id{font-size:13px;font-weight:900;color:#1e293b;font-family:monospace;background:#f1f5f9;padding:4px 8px;border-radius:6px;display:inline-block;margin-bottom:6px;}.name{font-size:10px;font-weight:700;color:#334155;margin-bottom:10px;}hr{border:none;border-top:1px solid #e2e8f0;margin:8px 0;}.row{display:flex;justify-space-between;font-size:9px;color:#475569;margin:3px 0;}.val{font-weight:800;color:#1e293b;}.green{color:#15803d;}.footer{font-size:8px;color:#94a3b8;margin-top:8px;}</style></head><body><div class="card"><div class="badge">&#127978; Outsourced / Sub-Hire</div>' + svgBlock + '<div class="id">' + item.id + '</div><div class="name">' + item.name + '</div><hr/><div class="row"><span>Customer Hire:</span><span class="val green">&#163;' + item.hireRate + '</span></div><div class="row"><span>Security Deposit:</span><span class="val">&#163;' + item.depositAmount + '</span></div><div class="row"><span>Category:</span><span class="val">' + item.category + '</span></div><div class="row"><span>Supplier:</span><span class="val">' + (item.outsourcedSupplier || 'External Supplier') + '</span></div><hr/><div class="footer">Highland Kilt Hire &middot; Sub-Hire Fallback &middot; Always In Stock</div></div><script>window.onload=function(){window.print();}</script></body></html>';
+                                    const w = window.open('', '_blank', 'width=320,height=500');
+                                    if (w) { w.document.write(html); w.document.close(); }
+                                  }}
+                                  className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs rounded-xl border border-slate-300 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                                >
+                                  <Printer className="w-3.5 h-3.5" /> Print QR Label
+                                </button>
                               </div>
-
-                              {/* INLINE EDITABLE PRICING MATRIX */}
-                              <div className="bg-white p-3 rounded-xl border border-indigo-100 space-y-2 text-xs">
-                                <div className="grid grid-cols-2 gap-2 border-b border-slate-100 pb-2">
-                                  <div>
-                                    <label className="block text-[10px] font-bold text-slate-500">Customer Rental (£)</label>
-                                    <div className="flex items-center gap-1 mt-0.5">
-                                      <span className="text-slate-400 font-bold">£</span>
-                                      <input 
-                                        type="number"
-                                        min={0}
-                                        value={item.hireRate}
-                                        onChange={e => {
-                                          const val = Number(e.target.value);
-                                          const updated = { ...item, hireRate: val };
-                                          setItems(prev => prev.map(i => i.id === item.id ? updated : i));
-                                          upsertItem(updated).catch(err => console.warn(err));
-                                        }}
-                                        className="w-full bg-amber-50 border border-amber-300 rounded-lg px-2 py-1 font-mono font-extrabold text-amber-900 text-xs outline-none"
-                                      />
-                                    </div>
-                                  </div>
-
-                                  <div>
-                                    <label className="block text-[10px] font-bold text-slate-500">Security Deposit (£)</label>
-                                    <div className="flex items-center gap-1 mt-0.5">
-                                      <span className="text-slate-400 font-bold">£</span>
-                                      <input 
-                                        type="number"
-                                        min={0}
-                                        value={item.depositAmount}
-                                        onChange={e => {
-                                          const val = Number(e.target.value);
-                                          const updated = { ...item, depositAmount: val };
-                                          setItems(prev => prev.map(i => i.id === item.id ? updated : i));
-                                          upsertItem(updated).catch(err => console.warn(err));
-                                        }}
-                                        className="w-full bg-emerald-50 border border-emerald-300 rounded-lg px-2 py-1 font-mono font-extrabold text-emerald-900 text-xs outline-none"
-                                      />
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div>
-                                    <label className="block text-[10px] font-bold text-slate-500">Sub-Hire Cost (£)</label>
-                                    <div className="flex items-center gap-1 mt-0.5">
-                                      <span className="text-slate-400 font-bold">£</span>
-                                      <input 
-                                        type="number"
-                                        min={0}
-                                        value={item.outsourcedWholesaleCost || 35}
-                                        onChange={e => {
-                                          const val = Number(e.target.value);
-                                          const updated = { ...item, outsourcedWholesaleCost: val };
-                                          setItems(prev => prev.map(i => i.id === item.id ? updated : i));
-                                          upsertItem(updated).catch(err => console.warn(err));
-                                        }}
-                                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 font-mono font-bold text-slate-900 text-xs outline-none"
-                                      />
-                                    </div>
-                                  </div>
-
-                                  <div>
-                                    <label className="block text-[10px] font-bold text-slate-500">Default Supplier</label>
-                                    <input 
-                                      type="text"
-                                      value={item.outsourcedSupplier || 'Highland Scottish Supplies'}
-                                      onChange={e => {
-                                        const val = e.target.value;
-                                        const updated = { ...item, outsourcedSupplier: val };
-                                        setItems(prev => prev.map(i => i.id === item.id ? updated : i));
-                                        upsertItem(updated).catch(err => console.warn(err));
-                                      }}
-                                      className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 font-bold text-slate-900 text-xs outline-none mt-0.5"
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  // Add to fitting form outfit 0
-                                  setFittingForm(prev => {
-                                    const updatedOutfits = [...prev.outfits];
-                                    if (updatedOutfits.length > 0) {
-                                      const first = updatedOutfits[0];
-                                      if (!first.selectedItemIds.includes(item.id)) {
-                                        updatedOutfits[0] = {
-                                          ...first,
-                                          selectedItemIds: [...first.selectedItemIds, item.id]
-                                        };
-                                        showToast(`➕ Added Outsourced ${item.name} (${item.id}) to Fitting Order!`, 'success');
-                                      } else {
-                                        showToast(`ℹ️ Item (${item.id}) is already in this fitting outfit.`, 'info');
-                                      }
-                                    }
-                                    return { ...prev, outfits: updatedOutfits };
-                                  });
-                                  setAssistantTab('start_fitting');
-                                  setActiveTab('start_fitting');
-                                }}
-                                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-sm transition flex items-center justify-center gap-1.5"
-                              >
-                                <ShoppingCart className="w-3.5 h-3.5" /> Add into Fitting Order
-                              </button>
-
-                              {/* PRINT QR LABEL */}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const matrix = generateQrMatrix(item.id);
-                                  const path = renderQrSvgPath(matrix);
-                                  const vbSize = getQrViewBoxSize(matrix);
-                                  const svgBlock = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + vbSize + ' ' + vbSize + '" width="180" height="180" style="display:block;margin:0 auto 12px;"><rect width="' + vbSize + '" height="' + vbSize + '" fill="white"/><path d="' + path + '" fill="black"/></svg>';
-                                  const html = '<!DOCTYPE html><html><head><title>QR: ' + item.id + '</title><style>*{margin:0;padding:0;box-sizing:border-box;font-family:Arial,sans-serif;}body{background:#fff;}@media print{@page{size:100mm 120mm;margin:5mm;}}.card{width:220px;border:2px solid #1e293b;border-radius:12px;padding:16px 14px 12px;text-align:center;margin:8px auto;}.badge{display:inline-block;background:#312e81;color:#e0e7ff;font-size:9px;font-weight:800;letter-spacing:1px;text-transform:uppercase;padding:3px 8px;border-radius:999px;margin-bottom:8px;}.id{font-size:13px;font-weight:900;color:#1e293b;font-family:monospace;background:#f1f5f9;padding:4px 8px;border-radius:6px;display:inline-block;margin-bottom:6px;}.name{font-size:10px;font-weight:700;color:#334155;margin-bottom:10px;}hr{border:none;border-top:1px solid #e2e8f0;margin:8px 0;}.row{display:flex;justify-content:space-between;font-size:9px;color:#475569;margin:3px 0;}.val{font-weight:800;color:#1e293b;}.green{color:#15803d;}.footer{font-size:8px;color:#94a3b8;margin-top:8px;}</style></head><body><div class="card"><div class="badge">&#127978; Outsourced / Sub-Hire</div>' + svgBlock + '<div class="id">' + item.id + '</div><div class="name">' + item.name + '</div><hr/><div class="row"><span>Customer Hire:</span><span class="val green">&#163;' + item.hireRate + '</span></div><div class="row"><span>Security Deposit:</span><span class="val">&#163;' + item.depositAmount + '</span></div><div class="row"><span>Category:</span><span class="val">' + item.category + '</span></div><div class="row"><span>Supplier:</span><span class="val">' + (item.outsourcedSupplier || 'External Supplier') + '</span></div><hr/><div class="footer">Highland Kilt Hire &middot; Sub-Hire Fallback &middot; Always In Stock</div></div><script>window.onload=function(){window.print();}<\/script></body></html>';
-                                  const w = window.open('', '_blank', 'width=320,height=500');
-                                  if (w) { w.document.write(html); w.document.close(); }
-                                }}
-                                className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs rounded-xl border border-slate-300 transition flex items-center justify-center gap-1.5"
-                              >
-                                <Printer className="w-3.5 h-3.5" /> Print QR Label
-                              </button>
-                            </div>
-                          ))}
+                            ))}
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   ) : inventorySubTab === 'ACTIVE' ? (
                     <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm space-y-0">
@@ -12958,6 +13080,220 @@ export default function KiltHireApp() {
         </div>
       )}
 
+      {/* STAFF OUTSOURCED ITEM ADMIN PIN AUTHORIZATION MODAL */}
+      {outsourcedPinModalItem && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-5 border border-slate-200">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 bg-indigo-100 text-indigo-800 rounded-2xl flex items-center justify-center border border-indigo-300 shrink-0">
+                <Lock className="w-6 h-6 text-indigo-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 leading-tight">Admin Authorization Required</h3>
+                <p className="text-xs text-indigo-700 font-semibold mt-0.5">Adding Sub-Hire Garment to Fitting Order</p>
+              </div>
+            </div>
+
+            <div className="bg-indigo-50/70 border border-indigo-200 rounded-2xl p-3.5 space-y-1.5 text-xs text-indigo-950">
+              <div className="flex items-center gap-2">
+                <span className="font-mono font-extrabold text-indigo-900 bg-indigo-100 px-2 py-0.5 rounded text-[10px] border border-indigo-300">
+                  {outsourcedPinModalItem.id}
+                </span>
+                <span className="font-extrabold text-slate-900">{outsourcedPinModalItem.name}</span>
+              </div>
+              <p className="text-[11px] text-slate-600">
+                Category: <strong>{outsourcedPinModalItem.category}</strong> • Hire Rate: <strong>£{outsourcedPinModalItem.hireRate}</strong> • Deposit: <strong>£{outsourcedPinModalItem.depositAmount}</strong>
+              </p>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (validateAdminPin(adminPinInput)) {
+                  setIsOutsourcedUnlocked(true);
+                  setFittingForm(prev => {
+                    const updatedOutfits = [...prev.outfits];
+                    if (updatedOutfits.length > 0) {
+                      const first = updatedOutfits[0];
+                      if (!first.selectedItemIds.includes(outsourcedPinModalItem.id)) {
+                        updatedOutfits[0] = {
+                          ...first,
+                          selectedItemIds: [...first.selectedItemIds, outsourcedPinModalItem.id]
+                        };
+                      }
+                    }
+                    return { ...prev, outfits: updatedOutfits };
+                  });
+                  showToast(`🔓 Admin Authorized: Added ${outsourcedPinModalItem.name} to Fitting Order!`, 'success');
+                  setAssistantTab('start_fitting');
+                  setActiveTab('start_fitting');
+                  setOutsourcedPinModalItem(null);
+                  setAdminPinInput('');
+                  setPinErrorMsg('');
+                } else {
+                  setPinErrorMsg('Invalid Admin PIN. Please enter a valid Staff/Admin security PIN (e.g. 1234).');
+                }
+              }}
+              className="space-y-4 text-xs"
+            >
+              <div>
+                <label className="block text-slate-700 font-extrabold mb-1">Enter Admin Security PIN</label>
+                <input
+                  type="password"
+                  required
+                  autoFocus
+                  placeholder="Enter 4-digit Admin PIN..."
+                  value={adminPinInput}
+                  onChange={e => {
+                    setAdminPinInput(e.target.value);
+                    setPinErrorMsg('');
+                  }}
+                  className="w-full bg-white border border-slate-300 rounded-xl p-3 text-slate-900 font-mono font-extrabold text-center text-lg outline-none focus:border-amber-500 shadow-sm"
+                />
+                {pinErrorMsg && (
+                  <p className="text-rose-600 text-[11px] font-extrabold mt-1.5 bg-rose-50 p-2 rounded-lg border border-rose-200">{pinErrorMsg}</p>
+                )}
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOutsourcedPinModalItem(null);
+                    setAdminPinInput('');
+                    setPinErrorMsg('');
+                  }}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold rounded-xl text-xs transition border border-slate-300 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-xl text-xs shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <ShieldCheck className="w-4 h-4" /> Authorize &amp; Add
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ADD NEW PRODUCT CATEGORY MODAL FOR PRICING MATRIX */}
+      {showAddCategoryModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-5 border border-slate-200">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 bg-amber-100 text-amber-800 rounded-2xl flex items-center justify-center border border-amber-300 shrink-0">
+                <PriceTag className="w-6 h-6 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 leading-tight">Add New Product Category</h3>
+                <p className="text-xs text-amber-800 font-semibold mt-0.5">Master Category Pricing Matrix</p>
+              </div>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const cleanName = newCategoryForm.category.trim();
+                if (!cleanName) return;
+                if (pricingMatrix.some(p => p.category.toLowerCase() === cleanName.toLowerCase())) {
+                  showToast(`⚠️ Category "${cleanName}" already exists in the Master Pricing Matrix.`, 'warning');
+                  return;
+                }
+                const updated = [
+                  ...pricingMatrix,
+                  {
+                    category: cleanName,
+                    adultHireRate: Number(newCategoryForm.adultHireRate) || 50,
+                    adultDeposit: Number(newCategoryForm.adultDeposit) || 50,
+                    kidHireRate: Number(newCategoryForm.kidHireRate) || 30,
+                    kidDeposit: Number(newCategoryForm.kidDeposit) || 30
+                  }
+                ];
+                setPricingMatrix(updated);
+                savePricing(updated, maxRigoutCapPrice, kidMaxRigoutCapPrice, tartanList).catch(err => console.warn(err));
+                addAuditLog('ADDED_CATEGORY', `Added new product category "${cleanName}" to Master Pricing Matrix.`);
+                showToast(`✨ Category "${cleanName}" added to Master Pricing Matrix across all devices!`, 'success');
+                setShowAddCategoryModal(false);
+                setNewCategoryForm({ category: '', adultHireRate: 50, adultDeposit: 50, kidHireRate: 30, kidDeposit: 30 });
+              }}
+              className="space-y-4 text-xs"
+            >
+              <div>
+                <label className="block text-slate-700 font-extrabold mb-1">Category Title</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Plaid & Brooch, Cufflinks, Ties & Cravats..."
+                  value={newCategoryForm.category}
+                  onChange={e => setNewCategoryForm({ ...newCategoryForm, category: e.target.value })}
+                  className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 bg-amber-50/50 p-3 rounded-2xl border border-amber-200">
+                <div>
+                  <label className="block text-[11px] font-extrabold text-amber-950 mb-1">Adult Hire Rate (£)</label>
+                  <input
+                    type="number" min={0} required
+                    value={newCategoryForm.adultHireRate}
+                    onChange={e => setNewCategoryForm({ ...newCategoryForm, adultHireRate: Number(e.target.value) })}
+                    className="w-full bg-white border border-amber-300 rounded-lg p-2 font-mono font-extrabold text-amber-900 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-extrabold text-amber-950 mb-1">Adult Deposit (£)</label>
+                  <input
+                    type="number" min={0} required
+                    value={newCategoryForm.adultDeposit}
+                    onChange={e => setNewCategoryForm({ ...newCategoryForm, adultDeposit: Number(e.target.value) })}
+                    className="w-full bg-white border border-amber-300 rounded-lg p-2 font-mono font-extrabold text-emerald-900 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 bg-purple-50/50 p-3 rounded-2xl border border-purple-200">
+                <div>
+                  <label className="block text-[11px] font-extrabold text-purple-950 mb-1">Kids Hire Rate (£)</label>
+                  <input
+                    type="number" min={0} required
+                    value={newCategoryForm.kidHireRate}
+                    onChange={e => setNewCategoryForm({ ...newCategoryForm, kidHireRate: Number(e.target.value) })}
+                    className="w-full bg-white border border-purple-300 rounded-lg p-2 font-mono font-extrabold text-purple-900 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-extrabold text-purple-950 mb-1">Kids Deposit (£)</label>
+                  <input
+                    type="number" min={0} required
+                    value={newCategoryForm.kidDeposit}
+                    onChange={e => setNewCategoryForm({ ...newCategoryForm, kidDeposit: Number(e.target.value) })}
+                    className="w-full bg-white border border-purple-300 rounded-lg p-2 font-mono font-extrabold text-emerald-900 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowAddCategoryModal(false)}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold rounded-xl text-xs transition border border-slate-300 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold rounded-xl text-xs shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <PlusCircle className="w-4 h-4" /> Add Category
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
