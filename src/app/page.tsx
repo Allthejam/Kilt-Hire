@@ -3063,9 +3063,9 @@ export default function KiltHireApp() {
   const scItem = items.find(i => i.id === scannedCode);
   const isMasterAdmin = currentUser?.role === 'Master Admin';
 
-  const availableItems = items.filter(i => i.status === 'AVAILABLE');
-  const onHireItems = items.filter(i => i.status === 'ON_HIRE');
-  const inRepairItems = items.filter(i => i.status === 'IN_REPAIR');
+  const availableItems = items.filter(i => i.status === 'AVAILABLE' && !i.isOutsourcedDefault && !i.id.startsWith('EXT-'));
+  const onHireItems = items.filter(i => i.status === 'ON_HIRE' && !i.isOutsourcedDefault && !i.id.startsWith('EXT-'));
+  const inRepairItems = items.filter(i => i.status === 'IN_REPAIR' && !i.isOutsourcedDefault && !i.id.startsWith('EXT-'));
   const retiredItems = items.filter(i => i.status === 'RETIRED');
   const assemblyDuePos = pos.filter(p => p.orderStatus === 'ASSEMBLY_DUE' || p.orderStatus === 'DEPOSIT_PAID_CONFIRMED' || p.orderStatus === 'RESERVED_PENDING_PAYMENT');
 
@@ -3076,7 +3076,7 @@ export default function KiltHireApp() {
     categoryFilter: string = 'ALL',
     tartanFilter: string = 'ALL'
   ) => {
-    let result = targetList.filter(i => i.status !== 'RETIRED');
+    let result = targetList.filter(i => i.status !== 'RETIRED' && !i.isOutsourcedDefault && !i.id.startsWith('EXT-'));
 
     if (sizeFilter !== 'ALL') {
       result = result.filter(i => i.sizeGroup === sizeFilter);
