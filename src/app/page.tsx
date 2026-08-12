@@ -2137,6 +2137,9 @@ export default function KiltHireApp() {
   const openPoReturnChecklist = (po: PurchaseOrder, triggerQrCode?: string) => {
     setActiveReturnPo(po);
     setAssistantTab('process_return');
+    // Ensure we're in Shop Assistant mode where the process_return UI lives
+    setInterfaceMode('shop_assistant');
+
     const initialChecklist: Record<string, { condition: 'UNSELECTED' | 'GOOD_CLEAN' | 'NEEDS_CLEANING' | 'NEEDS_REPAIR' | 'MISSING'; scanned: boolean; notes: string }> = {};
 
     po.items.forEach(li => {
