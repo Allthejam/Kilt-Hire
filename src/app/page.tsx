@@ -283,6 +283,7 @@ export default function KiltHireApp() {
   const [showOutsourcedApprovalModal, setShowOutsourcedApprovalModal] = useState(false);
 
   // Staff Outsourced PIN Authorization Modal State
+  const [staffStockSubTab, setStaffStockSubTab] = useState<'SHOP_STOCK' | 'OUTSOURCED_DEFAULTS'>('SHOP_STOCK');
   const [outsourcedPinModalItem, setOutsourcedPinModalItem] = useState<KiltItem | null>(null);
   const [adminPinInput, setAdminPinInput] = useState<string>('');
   const [pinErrorMsg, setPinErrorMsg] = useState<string>('');
@@ -3786,18 +3787,34 @@ export default function KiltHireApp() {
                   </button>
 
                   <button
-                    onClick={() => { setAssistantTab('in_stock'); setActiveTab('inventory'); }}
-                    className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
-                      assistantTab === 'in_stock' 
+                    onClick={() => { setAssistantTab('in_stock'); setStaffStockSubTab('SHOP_STOCK'); setActiveTab('inventory'); }}
+                    className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition cursor-pointer ${
+                      assistantTab === 'in_stock' && staffStockSubTab === 'SHOP_STOCK'
                         ? 'bg-emerald-600 text-white shadow-sm' 
                         : 'text-slate-600 hover:bg-slate-100'
                     }`}
                   >
-                    <Package className="w-4 h-4" /> Available in Stock
+                    <Package className="w-4 h-4" /> Available In-House Stock
                     <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${
-                      assistantTab === 'in_stock' ? 'bg-white text-emerald-900' : 'bg-emerald-100 text-emerald-800'
+                      assistantTab === 'in_stock' && staffStockSubTab === 'SHOP_STOCK' ? 'bg-white text-emerald-900' : 'bg-emerald-100 text-emerald-800'
                     }`}>
                       {availableItems.length}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => { setAssistantTab('in_stock'); setStaffStockSubTab('OUTSOURCED_DEFAULTS'); setActiveTab('inventory'); }}
+                    className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition cursor-pointer ${
+                      assistantTab === 'in_stock' && staffStockSubTab === 'OUTSOURCED_DEFAULTS'
+                        ? 'bg-indigo-600 text-white shadow-sm' 
+                        : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Store className="w-4 h-4 text-indigo-300" /> Outsourced &amp; Sub-Hire Defaults
+                    <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${
+                      assistantTab === 'in_stock' && staffStockSubTab === 'OUTSOURCED_DEFAULTS' ? 'bg-white text-indigo-950' : 'bg-indigo-100 text-indigo-900'
+                    }`}>
+                      {items.filter(i => i.isOutsourcedDefault || i.id.startsWith('EXT-')).length}
                     </span>
                   </button>
 
@@ -5283,7 +5300,37 @@ export default function KiltHireApp() {
 
 
               {assistantTab === 'in_stock' && (
-                <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-5">
+                <div className="space-y-4">
+                  {/* SUB-TAB SWITCHER BAR FOR STAFF AVAILABLE STOCK */}
+                  <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200 text-xs font-bold w-full sm:w-fit">
+                    <button
+                      type="button"
+                      onClick={() => setStaffStockSubTab('SHOP_STOCK')}
+                      className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-2 cursor-pointer ${
+                        staffStockSubTab === 'SHOP_STOCK'
+                          ? 'bg-emerald-600 text-white shadow-sm font-extrabold'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                      }`}
+                    >
+                      <Package className="w-4 h-4" />
+                      In-House Shop Stock ({availableItems.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStaffStockSubTab('OUTSOURCED_DEFAULTS')}
+                      className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-2 cursor-pointer ${
+                        staffStockSubTab === 'OUTSOURCED_DEFAULTS'
+                          ? 'bg-indigo-600 text-white shadow-sm font-extrabold'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                      }`}
+                    >
+                      <Store className="w-4 h-4 text-indigo-300" />
+                      Outsourced &amp; Sub-Hire Defaults ({items.filter(i => i.isOutsourcedDefault || i.id.startsWith('EXT-')).length})
+                    </button>
+                  </div>
+
+                  {staffStockSubTab === 'SHOP_STOCK' ? (
+                    <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-5">
                   <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
                     <div>
                       <h3 className="text-base font-extrabold text-emerald-900 flex items-center gap-2">
@@ -5556,7 +5603,164 @@ export default function KiltHireApp() {
                     );
                   })()}
                 </div>
+              ) : (
+                /* OUTSOURCED & SUB-HIRE DEFAULTS VIEW FOR STAFF */
+                <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-5">
+                  <div className="bg-gradient-to-r from-indigo-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-5 shadow-md space-y-2 border border-indigo-800">
+                    <span className="px-3 py-1 bg-indigo-500/30 text-indigo-200 border border-indigo-400/40 rounded-full text-[10px] font-extrabold uppercase tracking-wider inline-flex items-center gap-1.5">
+                      <Store className="w-3.5 h-3.5 text-indigo-300" /> External Sub-Hire Reference Catalog
+                    </span>
+                    <h3 className="text-lg font-extrabold text-white">Outsourced &amp; Sub-Hire Defaults</h3>
+                    <p className="text-xs text-indigo-200 max-w-2xl leading-relaxed">
+                      Default fallback garments available when in-house shop stock runs low. Filter by category or demographic. Adding any sub-hire item to a fitting order requires Admin PIN authorization.
+                    </p>
+                  </div>
+
+                  {/* SEARCH & FILTERS TOOLBAR */}
+                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-3 shadow-inner">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                        <PriceTag className="w-4 h-4 text-indigo-600" /> Sub-Hire Catalog Search &amp; Filters
+                      </span>
+                      {(assistantSizeFilter !== 'ALL' || assistantCategoryFilter !== 'ALL' || assistantSearch) && (
+                        <button
+                          onClick={() => {
+                            setAssistantSizeFilter('ALL');
+                            setAssistantCategoryFilter('ALL');
+                            setAssistantSearch('');
+                          }}
+                          className="text-[11px] font-extrabold text-indigo-700 hover:text-indigo-900 hover:bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-300 transition cursor-pointer"
+                        >
+                          🧹 Reset Filters
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                      <div>
+                        <label className="block text-[11px] font-extrabold text-slate-700 mb-1">Garment Category</label>
+                        <select
+                          value={assistantCategoryFilter}
+                          onChange={e => setAssistantCategoryFilter(e.target.value)}
+                          className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-800 outline-none focus:border-indigo-500 shadow-sm"
+                        >
+                          <option value="ALL">All Categories ({items.filter(i => i.isOutsourcedDefault || i.id.startsWith('EXT-')).length})</option>
+                          {pricingMatrix.map(pm => (
+                            <option key={pm.category} value={pm.category}>
+                              {pm.category} ({items.filter(i => (i.isOutsourcedDefault || i.id.startsWith('EXT-')) && i.category === pm.category).length})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-extrabold text-slate-700 mb-1">Demographic Group</label>
+                        <div className="flex bg-white p-1 rounded-xl border border-slate-300 font-bold">
+                          <button
+                            onClick={() => setAssistantSizeFilter('ALL')}
+                            className={`flex-1 py-1 rounded-lg text-center transition cursor-pointer ${assistantSizeFilter === 'ALL' ? 'bg-indigo-900 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                          >
+                            All ({items.filter(i => i.isOutsourcedDefault || i.id.startsWith('EXT-')).length})
+                          </button>
+                          <button
+                            onClick={() => setAssistantSizeFilter('Adult')}
+                            className={`flex-1 py-1 rounded-lg text-center transition cursor-pointer ${assistantSizeFilter === 'Adult' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                          >
+                            Adults
+                          </button>
+                          <button
+                            onClick={() => setAssistantSizeFilter('Kid')}
+                            className={`flex-1 py-1 rounded-lg text-center transition cursor-pointer ${assistantSizeFilter === 'Kid' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                          >
+                            Kids
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-extrabold text-slate-700 mb-1">Search Sub-Hire Items</label>
+                        <div className="relative">
+                          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                          <input
+                            type="text"
+                            placeholder="Search code, title, category..."
+                            value={assistantSearch}
+                            onChange={e => setAssistantSearch(e.target.value)}
+                            className="w-full bg-white border border-slate-300 rounded-xl pl-9 pr-3 py-1.5 text-xs font-bold text-slate-900 outline-none focus:border-indigo-500 shadow-sm"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* STAFF CLEAN READ-ONLY SUB-HIRE TABLE */}
+                  <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                    <table className="w-full text-left text-xs text-slate-700">
+                      <thead className="bg-slate-50 text-slate-900 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px]">
+                        <tr>
+                          <th className="py-3.5 px-4">Code / ID</th>
+                          <th className="py-3.5 px-4">Garment Title</th>
+                          <th className="py-3.5 px-4">Category</th>
+                          <th className="py-3.5 px-4">Size Group</th>
+                          <th className="py-3.5 px-4">Customer Hire Fee (£)</th>
+                          <th className="py-3.5 px-4">Security Deposit (£)</th>
+                          <th className="py-3.5 px-4 text-center">Order Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-semibold">
+                        {items
+                          .filter(i => i.isOutsourcedDefault || i.id.startsWith('EXT-'))
+                          .filter(i => assistantCategoryFilter === 'ALL' || i.category === assistantCategoryFilter)
+                          .filter(i => assistantSizeFilter === 'ALL' || i.sizeGroup === assistantSizeFilter)
+                          .filter(i => {
+                            if (!assistantSearch.trim()) return true;
+                            const q = assistantSearch.toLowerCase().trim();
+                            return (
+                              i.id.toLowerCase().includes(q) ||
+                              i.name.toLowerCase().includes(q) ||
+                              i.category.toLowerCase().includes(q) ||
+                              i.sizeGroup.toLowerCase().includes(q) ||
+                              i.tartanOrColour.toLowerCase().includes(q)
+                            );
+                          })
+                          .map(item => (
+                            <tr key={item.id} className="hover:bg-indigo-50/30 transition">
+                              <td className="py-3.5 px-4">
+                                <span className="font-mono font-extrabold text-indigo-900 bg-indigo-100 px-2.5 py-0.5 rounded text-[10px] border border-indigo-300">
+                                  {item.id}
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4 font-extrabold text-slate-900">{item.name}</td>
+                              <td className="py-3.5 px-4">
+                                <span className="bg-blue-100 text-blue-900 font-extrabold px-2 py-0.5 rounded text-[10px]">
+                                  {item.category}
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <span className="bg-purple-100 text-purple-900 font-extrabold px-2 py-0.5 rounded text-[10px]">
+                                  {item.sizeGroup}
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4 font-extrabold text-emerald-700">£{item.hireRate}</td>
+                              <td className="py-3.5 px-4 font-bold text-slate-700">£{item.depositAmount}</td>
+                              <td className="py-3.5 px-4 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => setOutsourcedPinModalItem(item)}
+                                  className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition inline-flex items-center gap-1.5 cursor-pointer"
+                                >
+                                  <Lock className="w-3.5 h-3.5 text-indigo-200" /> Add to Order
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               )}
+            </div>
+          )}
 
               {/* ON HIRE LIST TAB */}
               {assistantTab === 'on_hire' && (
