@@ -13672,6 +13672,8 @@ export default function KiltHireApp() {
             </form>
           </div>
         </div>
+      )}
+
       {/* 📦 PICK & PACK ASSEMBLY VERIFICATION MODAL (BESPOKE HANGER & OUTFIT BAG QR SCANNERS) */}
       {showAssemblyModal && (() => {
         const po = showAssemblyModal;
