@@ -280,6 +280,12 @@ export default function KiltHireApp() {
 
   // Shop Assistant Floor Tabs: 'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'calendar' | 'pos' | 'historic_pos' | 'start_fitting' | 'process_return'
   const [assistantTab, setAssistantTab] = useState<'scanner' | 'in_stock' | 'on_hire' | 'needs_cleaning' | 'in_repair' | 'calendar' | 'pos' | 'historic_pos' | 'start_fitting' | 'process_return'>('scanner');
+  // Assembly Verification & Accessory QR Scanning State (Bespoke Hanger & Outfit Bag Required)
+  const [showAssemblyModal, setShowAssemblyModal] = useState<PurchaseOrder | null>(null);
+  const [assemblyHangerInput, setAssemblyHangerInput] = useState<string>('');
+  const [assemblyBagInput, setAssemblyBagInput] = useState<string>('');
+  const [showPrintPickSheetModal, setShowPrintPickSheetModal] = useState<PurchaseOrder | null>(null);
+
   const [assistantSearch, setAssistantSearch] = useState('');
   const [historicPoSearch, setHistoricPoSearch] = useState('');
   const [historicDateFilter, setHistoricDateFilter] = useState<'ALL' | 'THIS_MONTH' | 'LAST_30_DAYS' | 'CUSTOM'>('ALL');
@@ -1722,11 +1728,29 @@ export default function KiltHireApp() {
     }
   };
 
-  const handleMarkOrderReadyForCollection = async (po: PurchaseOrder) => {
+  const openAssemblyModal = (po: PurchaseOrder) => {
+    setShowAssemblyModal(po);
+    setAssemblyHangerInput(po.hangerQr || '');
+    setAssemblyBagInput(po.outfitBagQr || '');
+  };
+
+  const handleConfirmAssemblyAndMarkReady = async (po: PurchaseOrder) => {
+    const cleanHanger = assemblyHangerInput.trim().toUpperCase();
+    const cleanBag = assemblyBagInput.trim().toUpperCase();
+
+    if (!cleanHanger || !cleanBag) {
+      showToast('⚠️ Scan or enter BOTH Highland Kiltmakers Bespoke Hanger QR and Outfit Bag QR before marking ready!', 'warning');
+      return;
+    }
+
     try {
       const updatedPo: PurchaseOrder = {
         ...po,
         orderStatus: 'READY_FOR_COLLECTION',
+        hangerQr: cleanHanger,
+        hangerScannedAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+        outfitBagQr: cleanBag,
+        outfitBagScannedAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
         assembledAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
         assembledByStaff: currentUser?.name || 'Allan'
       };
@@ -1746,8 +1770,10 @@ export default function KiltHireApp() {
       setPos(prev => prev.map(p => p.id === po.id ? updatedPo : p));
       setItems(updatedItems);
 
-      addAuditLog('ORDER_READY_FOR_COLLECTION', `Order ${po.id} assembled and marked ready for collection by ${currentUser?.name || 'Allan'}. Items allocated ON_HIRE.`, po.id);
-      showToast(`📦 Order ${po.id} marked ready for collection! Items allocated ON_HIRE.`, 'success');
+      addAuditLog('ORDER_READY_FOR_COLLECTION', `Order ${po.id} assembled (Hanger: ${cleanHanger}, Outfit Bag: ${cleanBag}) & marked ready for collection by ${currentUser?.name || 'Allan'}. Items allocated ON_HIRE.`, po.id);
+      showToast(`📦 Order ${po.id} assembled! Hanger ${cleanHanger} & Outfit Bag ${cleanBag} verified. Items allocated ON_HIRE.`, 'success');
+
+      setShowAssemblyModal(null);
 
       // Generate Brevo Collection Email Preview
       const isFullyPaid = po.paymentStatus === 'FULL_BALANCE_PAID' || po.paymentStatus === 'PAID_WITH_DEPOSIT';
@@ -2093,6 +2119,19 @@ export default function KiltHireApp() {
       cleanCode.endsWith(i.id.trim().toUpperCase()) ||
       i.id.trim().toUpperCase().endsWith(cleanCode)
     );
+
+    // IF AN OUTFIT BAG QR OR BESPOKE HANGER QR IS SCANNED (e.g. BAG-1001 or assigned outfitBagQr / hangerQr on an active PO)
+    const matchingBagPo = pos.find(p => 
+      (p.outfitBagQr && (p.outfitBagQr.trim().toUpperCase() === cleanCode || cleanCode.includes(p.outfitBagQr.trim().toUpperCase()))) || 
+      (p.hangerQr && (p.hangerQr.trim().toUpperCase() === cleanCode || cleanCode.includes(p.hangerQr.trim().toUpperCase()))) ||
+      (p.outfits || []).some(o => (o.outfitBagQr && o.outfitBagQr.trim().toUpperCase() === cleanCode) || (o.hangerQr && o.hangerQr.trim().toUpperCase() === cleanCode))
+    );
+
+    if (matchingBagPo && assistantTab !== 'process_return') {
+      openPoReturnChecklist(matchingBagPo, cleanCode);
+      showToast(`🎒 Scanned Outfit Bag (${cleanCode})! Loaded PO #${matchingBagPo.id} for ${matchingBagPo.customerName} (${matchingBagPo.items.length} packed garments inside).`, 'success');
+      return;
+    }
 
     // IF RETURN CHECKLIST MODAL IS OPEN: VERIFY THIS ITEM WITH PHYSICAL QR SCAN!
     if (activeReturnPo && activeReturnPo.items.some(li => li.qrCodeId === cleanCode)) {
@@ -7230,7 +7269,7 @@ export default function KiltHireApp() {
 
                                     <div>
                                       <strong className="text-slate-900 text-xs block">{po.customerName}</strong>
-                                      <span className="text-[11px] text-slate-500 block">{po.customerEmail} • {po.customerPhone}</span>
+{po.customerEmail} • {po.customerPhone}
                                     </div>
 
                                     {/* FITTING MEASUREMENTS CARD */}
@@ -7244,6 +7283,24 @@ export default function KiltHireApp() {
                                         </div>
                                       </div>
                                     )}
+
+                                    <div className="flex items-center gap-2 pt-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => setShowPrintPickSheetModal(po)}
+                                        className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs rounded-xl transition border border-slate-300 flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                                        title="Print physical paper pick sheet for shop floor picking"
+                                      >
+                                        <Printer className="w-3.5 h-3.5 text-slate-700" /> Paper Sheet
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => openAssemblyModal(po)}
+                                        className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5 cursor-pointer"
+                                      >
+                                        <CheckCircle2 className="w-4 h-4" /> Assembly &amp; Scan QRs
+                                      </button>
+                                    </div>
 
                                     <div className="text-[11px] font-bold text-slate-700 bg-slate-50 p-2 rounded-lg border">
                                       Garments to Pick ({po.items.length}): {po.items.map(i => i.itemName).join(', ')}
@@ -9849,6 +9906,25 @@ export default function KiltHireApp() {
                                   }`}>
                                     {isCancelled ? 'CANCELLED' : po.paymentStatus}
                                   </span>
+                                  {isPickPending && (
+                                    <span className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => setShowPrintPickSheetModal(po)}
+                                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-xl font-extrabold text-xs shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                                        title="Print physical paper pick sheet"
+                                      >
+                                        <Printer className="w-3.5 h-3.5 text-slate-700" /> Paper Sheet
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => openAssemblyModal(po)}
+                                        className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition flex items-center gap-1 cursor-pointer"
+                                      >
+                                        <CheckCircle2 className="w-3.5 h-3.5" /> Assembly &amp; Scan QRs
+                                      </button>
+                                    </span>
+                                  )}
                                   {po.fullRigoutCapApplied && (
                                     <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 rounded">
                                       ✨ Full Rigout Price Cap Applied (-£{po.fullRigoutDiscount})
@@ -13596,7 +13672,390 @@ export default function KiltHireApp() {
             </form>
           </div>
         </div>
-      )}
+      {/* 📦 PICK & PACK ASSEMBLY VERIFICATION MODAL (BESPOKE HANGER & OUTFIT BAG QR SCANNERS) */}
+      {showAssemblyModal && (() => {
+        const po = showAssemblyModal;
+        const isHangerFilled = Boolean(assemblyHangerInput.trim());
+        const isBagFilled = Boolean(assemblyBagInput.trim());
+        const isFullyVerified = isHangerFilled && isBagFilled;
+
+        return (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+            <div className="bg-white border border-slate-200 rounded-3xl max-w-2xl w-full p-6 space-y-5 shadow-2xl overflow-y-auto max-h-[92vh] my-auto">
+              
+              {/* MODAL HEADER */}
+              <div className="flex items-start justify-between border-b border-slate-200 pb-4">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-2.5 py-0.5 bg-indigo-100 text-indigo-900 font-mono font-extrabold text-xs rounded-lg border border-indigo-300">
+                      {po.id}
+                    </span>
+                    <span className="px-2.5 py-0.5 text-xs font-extrabold bg-amber-100 text-amber-900 border border-amber-300 rounded-full">
+                      Pick &amp; Pack Order Assembly Queue
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-extrabold text-slate-900 mt-1">
+                    Customer: {po.customerName} ({po.customerPhone})
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Collection Date: <strong className="text-indigo-900">{po.hireStartDate}</strong> | Event: <strong>{po.eventDate}</strong>
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowPrintPickSheetModal(po)}
+                    className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs rounded-xl border border-slate-300 transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Printer className="w-4 h-4 text-slate-700" /> Print Paper Pick Sheet
+                  </button>
+
+                  <button 
+                    type="button"
+                    onClick={() => setShowAssemblyModal(null)} 
+                    className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* SECTION 1: CUSTOMER FITTING MEASUREMENTS CARD */}
+              {po.measurements && (
+                <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl space-y-1 text-xs">
+                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 block">
+                    📏 Customer Fitting Measurement Reference:
+                  </span>
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center font-bold text-slate-900 pt-1">
+                    <div className="bg-white p-2 rounded-xl border border-slate-200">
+                      <span className="text-[9px] text-slate-400 uppercase block">Waist</span>
+                      <span className="text-indigo-900 font-extrabold">{po.measurements.waistInches || 'N/A'}"</span>
+                    </div>
+                    <div className="bg-white p-2 rounded-xl border border-slate-200">
+                      <span className="text-[9px] text-slate-400 uppercase block">Chest</span>
+                      <span className="text-indigo-900 font-extrabold">{po.measurements.chestInches || 'N/A'}"</span>
+                    </div>
+                    <div className="bg-white p-2 rounded-xl border border-slate-200">
+                      <span className="text-[9px] text-slate-400 uppercase block">Sleeve</span>
+                      <span className="text-indigo-900 font-extrabold">{po.measurements.sleeveLengthInches || 'N/A'}"</span>
+                    </div>
+                    <div className="bg-white p-2 rounded-xl border border-slate-200">
+                      <span className="text-[9px] text-slate-400 uppercase block">Length</span>
+                      <span className="text-indigo-900 font-extrabold">{po.measurements.kiltLengthInches || 'N/A'}"</span>
+                    </div>
+                    <div className="bg-white p-2 rounded-xl border border-slate-200">
+                      <span className="text-[9px] text-slate-400 uppercase block">Shoe</span>
+                      <span className="text-indigo-900 font-extrabold">{po.measurements.shoeSize || 'N/A'}</span>
+                    </div>
+                    <div className="bg-white p-2 rounded-xl border border-slate-200">
+                      <span className="text-[9px] text-slate-400 uppercase block">Height</span>
+                      <span className="text-indigo-900 font-extrabold">{po.measurements.heightFtInches || 'N/A'}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* SECTION 2: GARMENTS PICK CHECKLIST */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-extrabold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                  <span>🧥 Garment Pick List ({po.items.length} Items)</span>
+                  <span className="text-slate-400 font-normal">Verify iron-on QR tags</span>
+                </h4>
+                <div className="border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100">
+                  {po.items.map(item => (
+                    <div key={item.qrCodeId} className="p-3 bg-slate-50/50 flex items-center justify-between gap-3 text-xs">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-extrabold text-amber-900 bg-amber-100 px-2 py-0.5 rounded text-[10px] border border-amber-300">
+                            {item.qrCodeId}
+                          </span>
+                          <span className="font-extrabold text-slate-900">{item.itemName}</span>
+                        </div>
+                        <span className="text-[11px] text-slate-500 font-semibold block mt-0.5">
+                          Category: {item.category} | Size: {item.size} ({item.sizeGroup})
+                        </span>
+                      </div>
+                      <span className="px-2.5 py-1 bg-emerald-100 text-emerald-900 font-extrabold text-[10px] rounded-full border border-emerald-300 shrink-0">
+                        ✓ PICKED
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* SECTION 3: MANDATORY ACCESSORIES (BESPOKE HANGER & OUTFIT BAG QR SCANNERS) */}
+              <div className="bg-indigo-50/70 border border-indigo-200 p-4 rounded-2xl space-y-4">
+                <div>
+                  <h4 className="text-sm font-extrabold text-indigo-950 flex items-center gap-2">
+                    <Store className="w-4 h-4 text-indigo-600" /> Mandatory Order Accessories &amp; QR Tag Scanning
+                  </h4>
+                  <p className="text-xs text-indigo-800 mt-0.5">
+                    Scan or enter the stitched/ironed QR codes for the Bespoke Hanger and Outfit Bag before completing assembly.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  
+                  {/* 1. HIGHLAND KILTMAKERS BESPOKE HANGER QR */}
+                  <div className="bg-white border border-indigo-200 p-3.5 rounded-2xl space-y-2 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+                        🏷️ Bespoke Hanger QR *
+                      </label>
+                      {isHangerFilled ? (
+                        <span className="text-[10px] font-extrabold bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-full border border-emerald-300">
+                          ✓ SCANNED
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-extrabold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full border border-amber-300">
+                          REQUIRED
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="Scan or type e.g. HNG-1001"
+                        value={assemblyHangerInput}
+                        onChange={e => setAssemblyHangerInput(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono font-extrabold text-indigo-900 outline-none focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setAssemblyHangerInput(`HNG-${po.id.replace(/[^0-9]/g, '') || '1001'}`)}
+                      className="w-full py-1 text-[10px] font-extrabold text-indigo-700 hover:text-indigo-900 hover:bg-indigo-50 rounded-lg transition"
+                    >
+                      ⚡ Auto-Assign Hanger Tag Code (HNG-{po.id.replace(/[^0-9]/g, '') || '1001'})
+                    </button>
+                  </div>
+
+                  {/* 2. HIGHLAND KILTMAKERS OUTFIT BAG QR */}
+                  <div className="bg-white border border-indigo-200 p-3.5 rounded-2xl space-y-2 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+                        🎒 Outfit Bag QR Tag *
+                      </label>
+                      {isBagFilled ? (
+                        <span className="text-[10px] font-extrabold bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-full border border-emerald-300">
+                          ✓ SCANNED
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-extrabold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full border border-amber-300">
+                          REQUIRED
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="Scan or type e.g. BAG-1001"
+                        value={assemblyBagInput}
+                        onChange={e => setAssemblyBagInput(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono font-extrabold text-indigo-900 outline-none focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setAssemblyBagInput(`BAG-${po.id.replace(/[^0-9]/g, '') || '1001'}`)}
+                      className="w-full py-1 text-[10px] font-extrabold text-indigo-700 hover:text-indigo-900 hover:bg-indigo-50 rounded-lg transition"
+                    >
+                      ⚡ Auto-Assign Outfit Bag Tag Code (BAG-{po.id.replace(/[^0-9]/g, '') || '1001'})
+                    </button>
+                  </div>
+
+                </div>
+              </div>
+
+              {/* VALIDATION WARNING OR LOCK ALERT */}
+              {!isFullyVerified && (
+                <div className="bg-amber-100/90 border border-amber-300 p-3 rounded-2xl text-xs text-amber-950 flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0" />
+                  <div>
+                    <strong className="block font-extrabold text-amber-900">Assembly Requirement Locked</strong>
+                    <span className="text-[11px] text-amber-900">
+                      Both Highland Kiltmakers Bespoke Hanger QR and Outfit Bag QR must be entered/scanned before order can be marked Ready for Collection.
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* ACTION FOOTER */}
+              <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAssemblyModal(null)}
+                  className="px-5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                
+                <button
+                  type="button"
+                  disabled={!isFullyVerified}
+                  onClick={() => handleConfirmAssemblyAndMarkReady(po)}
+                  className={`flex-1 py-3 font-extrabold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-2 ${
+                    isFullyVerified
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
+                      : 'bg-slate-300 text-slate-500 cursor-not-allowed opacity-75'
+                  }`}
+                >
+                  <CheckCircle2 className="w-4.5 h-4.5" /> Confirm Assembly &amp; Mark Ready for Collection
+                </button>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 🖨️ PRINTABLE PAPER PICK SHEET MODAL */}
+      {showPrintPickSheetModal && (() => {
+        const po = showPrintPickSheetModal;
+
+        return (
+          <div className="print-modal-overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-start sm:items-center justify-center p-3 sm:p-6 overflow-y-auto">
+            <div className="print-modal-content bg-white border border-slate-200 rounded-3xl max-w-3xl w-full flex flex-col shadow-2xl overflow-hidden my-auto max-h-[92vh]">
+              
+              {/* HEADER BAR */}
+              <div className="no-print bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+                <div>
+                  <span className="px-2.5 py-0.5 bg-amber-500 text-slate-950 font-mono font-extrabold text-xs rounded">
+                    {po.id}
+                  </span>
+                  <h3 className="text-base font-extrabold text-white mt-1">
+                    Print Paper Pick Sheet for {po.customerName}
+                  </h3>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Printer className="w-4 h-4" /> Send Pick Sheet to Printer
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowPrintPickSheetModal(null)}
+                    className="p-1 text-slate-400 hover:text-white rounded-full transition cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* PRINTABLE BODY */}
+              <div className="printable-sheet p-8 space-y-6 text-slate-900 bg-white overflow-y-auto">
+                <div className="flex items-start justify-between border-b-2 border-slate-900 pb-4">
+                  <div>
+                    <h2 className="text-2xl font-black uppercase tracking-wider text-slate-950">
+                      Highland Kiltmakers
+                    </h2>
+                    <p className="text-xs font-bold text-slate-600">Store Order Assembly &amp; Garment Paper Pick Sheet</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-mono text-xl font-black bg-slate-100 border-2 border-slate-900 px-3 py-1 rounded-lg inline-block">
+                      {po.id}
+                    </span>
+                    <span className="block text-xs font-extrabold text-slate-700 mt-1">
+                      Collection Date: {po.hireStartDate}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-300 text-xs">
+                  <div>
+                    <strong className="block text-slate-500 uppercase text-[10px]">Customer Details:</strong>
+                    <span className="text-base font-extrabold text-slate-950 block">{po.customerName}</span>
+                    <span className="block font-semibold">{po.customerPhone} • {po.customerEmail}</span>
+                  </div>
+
+                  <div>
+                    <strong className="block text-slate-500 uppercase text-[10px]">Hire Schedule:</strong>
+                    <span className="block font-bold">Pickup: <strong>{po.hireStartDate}</strong></span>
+                    <span className="block font-bold">Event Date: <strong>{po.eventDate}</strong></span>
+                    <span className="block font-bold">Return Deadline: <strong>{po.hireEndDate}</strong></span>
+                  </div>
+                </div>
+
+                {po.measurements && (
+                  <div className="border border-slate-300 p-3 rounded-xl space-y-1">
+                    <strong className="text-[10px] uppercase font-black tracking-wider text-slate-600 block">
+                      Customer 6-Point Fitting Measurements:
+                    </strong>
+                    <div className="grid grid-cols-6 gap-2 text-center text-xs font-black pt-1">
+                      <div className="border border-slate-300 p-1.5 rounded">Waist: {po.measurements.waistInches || 'N/A'}"</div>
+                      <div className="border border-slate-300 p-1.5 rounded">Chest: {po.measurements.chestInches || 'N/A'}"</div>
+                      <div className="border border-slate-300 p-1.5 rounded">Sleeve: {po.measurements.sleeveLengthInches || 'N/A'}"</div>
+                      <div className="border border-slate-300 p-1.5 rounded">Length: {po.measurements.kiltLengthInches || 'N/A'}"</div>
+                      <div className="border border-slate-300 p-1.5 rounded">Shoe: {po.measurements.shoeSize || 'N/A'}</div>
+                      <div className="border border-slate-300 p-1.5 rounded">Height: {po.measurements.heightFtInches || 'N/A'}</div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <h4 className="text-xs font-black uppercase tracking-wider border-b border-slate-300 pb-1">
+                    Garments Pick List ({po.items.length} Items)
+                  </h4>
+                  <table className="w-full text-left text-xs border border-slate-300">
+                    <thead className="bg-slate-100 border-b border-slate-300 font-extrabold uppercase text-[10px]">
+                      <tr>
+                        <th className="p-2 border-r border-slate-300">Item QR Tag</th>
+                        <th className="p-2 border-r border-slate-300">Garment Name</th>
+                        <th className="p-2 border-r border-slate-300">Category</th>
+                        <th className="p-2 border-r border-slate-300">Size / Demographic</th>
+                        <th className="p-2 text-center">Pick Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 font-bold">
+                      {po.items.map(item => (
+                        <tr key={item.qrCodeId}>
+                          <td className="p-2 border-r border-slate-300 font-mono font-black">{item.qrCodeId}</td>
+                          <td className="p-2 border-r border-slate-300">{item.itemName}</td>
+                          <td className="p-2 border-r border-slate-300">{item.category}</td>
+                          <td className="p-2 border-r border-slate-300">{item.size} ({item.sizeGroup})</td>
+                          <td className="p-2 text-center">[ &nbsp; ] PICKED</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="border-2 border-slate-900 p-4 rounded-xl space-y-3 bg-slate-50/50">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-950">
+                    Mandatory Outfit Accessories Verification Checklist
+                  </h4>
+                  <div className="grid grid-cols-2 gap-4 text-xs font-bold">
+                    <div className="border border-slate-300 p-3 rounded-lg bg-white space-y-1">
+                      <span>[ &nbsp; ] Highland Kiltmakers Bespoke Hanger</span>
+                      <p className="text-[10px] font-mono text-slate-600">Scanned Hanger QR Tag: __________________</p>
+                    </div>
+                    <div className="border border-slate-300 p-3 rounded-lg bg-white space-y-1">
+                      <span>[ &nbsp; ] Highland Kiltmakers Outfit Bag</span>
+                      <p className="text-[10px] font-mono text-slate-600">Scanned Outfit Bag QR Tag: __________________</p>
+                    </div>
+                  </div>
+                  <div className="pt-2 text-xs font-bold text-slate-700 flex justify-between">
+                    <span>Assembly Completed By: ___________________________</span>
+                    <span>Date / Time: _______________</span>
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

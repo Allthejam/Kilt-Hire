@@ -139,6 +139,19 @@ export interface CancellationRecord {
   refundAmount: number;
 }
 
+export interface POOutfit {
+  id: string; // e.g. "OUTFIT-1"
+  roleLabel: string; // e.g. "Groom", "Best Man", "Groomsman #1"
+  wearerName?: string;
+  items: POLineItem[];
+  outfitBagQr?: string;
+  outfitBagScannedAt?: string;
+  hangerQr?: string;
+  hangerScannedAt?: string;
+  assembledAt?: string;
+  assembledByStaff?: string;
+}
+
 export interface PurchaseOrder {
   id: string; // e.g. "PO-2026-9011"
   customerName: string;
@@ -148,6 +161,11 @@ export interface PurchaseOrder {
   hireStartDate: string; // YYYY-MM-DD (Pick-up)
   hireEndDate: string; // YYYY-MM-DD (Return)
   items: POLineItem[];
+  outfits?: POOutfit[];
+  outfitBagQr?: string;
+  outfitBagScannedAt?: string;
+  hangerQr?: string;
+  hangerScannedAt?: string;
   itemizedSubtotal: number;
   fullRigoutCapApplied: boolean;
   fullRigoutDiscount: number;
