@@ -164,6 +164,27 @@ const CATEGORIES: ItemCategory[] = [
   'Miscellaneous'
 ];
 
+// Dynamic QR Category Tag Prefix Generator for standard & custom categories
+const getCategoryPrefix = (categoryName: string): string => {
+  const cat = (categoryName || '').trim();
+  if (cat === 'Kilts') return 'KILT';
+  if (cat === 'Jackets') return 'JKT';
+  if (cat === 'Sporrans') return 'SPO';
+  if (cat === 'Ghillie Brogues' || cat === 'Shoes') return 'SHO';
+  if (cat === 'Waistcoats') return 'VST';
+  if (cat === 'Shirts') return 'SHT';
+  if (cat.toLowerCase().includes('sock') || cat.toLowerCase().includes('garter') || cat.toLowerCase().includes('flash')) return 'SOK';
+  if (cat.toLowerCase().includes('belt') || cat.toLowerCase().includes('buckle')) return 'BLT';
+  if (cat.toLowerCase().includes('sgian') || cat.toLowerCase().includes('knife')) return 'KNF';
+  if (cat.toLowerCase().includes('plaid') || cat.toLowerCase().includes('brooch')) return 'PLD';
+  if (cat.toLowerCase().includes('tie') || cat.toLowerCase().includes('cravat')) return 'TIE';
+  if (cat.toLowerCase().includes('pin')) return 'PIN';
+  if (cat.toLowerCase().includes('hat') || cat.toLowerCase().includes('cap')) return 'HAT';
+
+  const clean = cat.replace(/[^a-zA-Z]/g, '').toUpperCase();
+  return clean.slice(0, 4) || 'MISC';
+};
+
 const DEFAULT_TARTANS = [
   'Royal Stewart',
   'Spirit of Scotland',
@@ -2745,15 +2766,7 @@ export default function KiltHireApp() {
 
     const count = Math.min(Math.max(1, Number(batchForm.count)), 100);
     const sizeTag = batchForm.sizeGroup === 'Kid' ? '-KID' : '';
-    const prefix = batchForm.category === 'Kilts' ? 'KILT' :
-                   batchForm.category === 'Jackets' ? 'JKT' :
-                   batchForm.category === 'Sporrans' ? 'SPO' :
-                   batchForm.category === 'Ghillie Brogues' ? 'SHO' :
-                   batchForm.category === 'Waistcoats' ? 'VST' :
-                   batchForm.category === 'Shirts' ? 'SHT' :
-                   batchForm.category === 'Socks & Garters' ? 'SOK' :
-                   batchForm.category === 'Belts & Buckles' ? 'BLT' :
-                   batchForm.category === 'Sgian-dubh (Knife)' ? 'KNF' : 'MISC';
+    const prefix = getCategoryPrefix(batchForm.category);
     
     // Collect all existing codes across entire database (all printed batches + all registered items)
     const existingCodes = new Set<string>();
@@ -8045,11 +8058,11 @@ export default function KiltHireApp() {
                           {/* ITEM CATEGORIES OVERVIEW */}
                           <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
                             <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                              <Package className="w-4 h-4 text-amber-600" /> Outfit Categories ({CATEGORIES.length} Categories)
+                              <Package className="w-4 h-4 text-amber-600" /> Outfit Categories ({Array.from(new Set([...pricingMatrix.map(pm => pm.category), ...CATEGORIES])).filter(Boolean).length} Categories)
                             </h4>
 
                             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                              {CATEGORIES.map(cat => {
+                              {Array.from(new Set([...pricingMatrix.map(pm => pm.category), ...CATEGORIES])).filter(Boolean).map(cat => {
                                 const count = items.filter(i => i.category === cat && i.status !== 'RETIRED' && !i.isOutsourcedDefault && !i.id.startsWith('EXT-')).length;
                                 return (
                                   <div key={cat} className="p-3.5 bg-amber-50/50 border border-amber-200 rounded-2xl text-xs space-y-1">
@@ -10778,7 +10791,7 @@ export default function KiltHireApp() {
                     onChange={e => setShowEditItemModal({...showEditItemModal, category: e.target.value as ItemCategory})}
                     className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 outline-none focus:border-amber-500 shadow-sm"
                   >
-                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    {Array.from(new Set([...pricingMatrix.map(pm => pm.category), ...CATEGORIES])).filter(Boolean).map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
 
@@ -11757,7 +11770,7 @@ export default function KiltHireApp() {
                             }}
                             className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-semibold outline-none focus:border-amber-500 shadow-sm"
                           >
-                            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                            {Array.from(new Set([...pricingMatrix.map(pm => pm.category), ...CATEGORIES])).filter(Boolean).map(c => <option key={c} value={c}>{c}</option>)}
                           </select>
                         )}
                       </div>
@@ -11865,78 +11878,164 @@ export default function KiltHireApp() {
         </div>
       )}
 
-      {showBatchModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <Printer className="w-5 h-5 text-amber-600" /> Generate QR Code Batch (1 to 100)
-              </h3>
-              <button onClick={() => setShowBatchModal(false)} className="text-slate-400 hover:text-slate-700">
-                <X className="w-5 h-5" />
-              </button>
+      {showBatchModal && (() => {
+        const allCategories = Array.from(new Set([...pricingMatrix.map(pm => pm.category), ...CATEGORIES])).filter(Boolean);
+        const dynamicPrefix = getCategoryPrefix(batchForm.category);
+        const sizeTag = batchForm.sizeGroup === 'Kid' ? '-KID' : '';
+        const sampleTag = `${dynamicPrefix}${sizeTag}-1001`;
+
+        return (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl">
+              
+              <div className="flex items-start justify-between border-b border-slate-100 pb-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 bg-amber-100 text-amber-900 text-[10px] font-extrabold rounded-full border border-amber-300">
+                      ⚡ Dynamic Live Matrix Sync ({allCategories.length} Categories)
+                    </span>
+                  </div>
+                  <h3 className="text-base sm:text-lg font-extrabold text-slate-900 mt-1 flex items-center gap-2">
+                    <Printer className="w-5 h-5 text-amber-600" /> Generate QR Code Batch (Up to 100)
+                  </h3>
+                </div>
+
+                <button 
+                  onClick={() => setShowBatchModal(false)} 
+                  className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateBatch} className="space-y-4 text-xs">
+                
+                {/* 1. CATEGORY & SIZING GROUP SELECTORS */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-700 font-extrabold mb-1">
+                      Product Category ({allCategories.length} Synced)
+                    </label>
+                    <select 
+                      value={batchForm.category}
+                      onChange={e => {
+                        const newCat = e.target.value as ItemCategory;
+                        setBatchForm(prev => ({
+                          ...prev,
+                          category: newCat,
+                          title: `${newCat} Batch`
+                        }));
+                      }}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-extrabold outline-none focus:border-amber-500 shadow-sm cursor-pointer"
+                    >
+                      {allCategories.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-extrabold mb-1">Demographic Group</label>
+                    <select 
+                      value={batchForm.sizeGroup}
+                      onChange={e => setBatchForm({...batchForm, sizeGroup: e.target.value as SizeGroup})}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-extrabold text-purple-900 outline-none focus:border-purple-500 shadow-sm cursor-pointer"
+                    >
+                      <option value="Adult">Adult Sizing</option>
+                      <option value="Kid">Kids Sizing</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* 2. BATCH TITLE INPUT */}
+                <div>
+                  <label className="block text-slate-700 font-extrabold mb-1">Batch Label Title</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={batchForm.title}
+                    onChange={e => setBatchForm({...batchForm, title: e.target.value})}
+                    placeholder="e.g. Prince Charlie Jackets 2026 Batch"
+                    className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-extrabold outline-none focus:border-amber-500 shadow-sm"
+                  />
+                </div>
+
+                {/* 3. BATCH SIZE QUANTITY INPUT & PRESET PILLS */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-slate-700 font-extrabold">Batch Size (1 to 100 QRs)</label>
+                    <span className="text-[11px] text-slate-500 font-semibold">Quick Pick:</span>
+                  </div>
+                  
+                  <div className="flex items-center gap-2 mb-2">
+                    <input 
+                      type="number" 
+                      min={1}
+                      max={100}
+                      required
+                      value={batchForm.count}
+                      onChange={e => setBatchForm({...batchForm, count: Math.min(100, Math.max(1, Number(e.target.value)))})}
+                      className="w-28 bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-mono font-extrabold text-sm text-amber-900 outline-none focus:border-amber-500 shadow-sm"
+                    />
+
+                    <div className="flex items-center gap-1.5 flex-1">
+                      {[10, 25, 50, 100].map(qty => (
+                        <button
+                          key={qty}
+                          type="button"
+                          onClick={() => setBatchForm({ ...batchForm, count: qty })}
+                          className={`flex-1 py-2 rounded-xl font-extrabold text-[11px] border transition cursor-pointer ${
+                            batchForm.count === qty
+                              ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm'
+                              : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                          }`}
+                        >
+                          {qty} QRs
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. LIVE QR CODE FORMAT & RANGE PREVIEW CARD */}
+                <div className="bg-amber-50/70 border border-amber-300/80 p-3.5 rounded-2xl space-y-1.5 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-extrabold text-amber-950 uppercase tracking-wider flex items-center gap-1">
+                      🏷️ Live Tag Format Preview:
+                    </span>
+                    <span className="font-mono font-extrabold bg-white border border-amber-400 px-2.5 py-0.5 rounded-lg text-amber-950 text-xs shadow-2xs">
+                      {sampleTag}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-amber-900 leading-snug">
+                    Will generate <strong>{batchForm.count}</strong> unique QR codes sequence for <strong className="text-amber-950">{batchForm.category}</strong> ({batchForm.sizeGroup}):
+                    <span className="block font-mono font-bold text-amber-950 mt-0.5">
+                      {dynamicPrefix}{sizeTag}-1001 ➔ {dynamicPrefix}{sizeTag}-{1000 + batchForm.count}
+                    </span>
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowBatchModal(false)}
+                    className="px-5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  
+                  <button
+                    type="submit"
+                    className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <PlusCircle className="w-4 h-4 text-slate-950" /> Generate {batchForm.count} QR Code Labels
+                  </button>
+                </div>
+              </form>
             </div>
-
-            <form onSubmit={handleCreateBatch} className="space-y-4 text-xs">
-              <div>
-                <label className="block text-slate-700 font-bold mb-1">Batch Title</label>
-                <input 
-                  type="text" 
-                  required
-                  value={batchForm.title}
-                  onChange={e => setBatchForm({...batchForm, title: e.target.value})}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 outline-none focus:border-amber-500 shadow-sm"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">Category</label>
-                  <select 
-                    value={batchForm.category}
-                    onChange={e => setBatchForm({...batchForm, category: e.target.value as ItemCategory})}
-                    className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 outline-none focus:border-amber-500 shadow-sm"
-                  >
-                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">Sizing Group</label>
-                  <select 
-                    value={batchForm.sizeGroup}
-                    onChange={e => setBatchForm({...batchForm, sizeGroup: e.target.value as SizeGroup})}
-                    className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-bold text-purple-900 outline-none focus:border-purple-500 shadow-sm"
-                  >
-                    <option value="Adult">Adult Sizing</option>
-                    <option value="Kid">Kids Sizing</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-slate-700 font-bold mb-1">Batch Size (1 to 100 QRs)</label>
-                <input 
-                  type="number" 
-                  min={1}
-                  max={100}
-                  required
-                  value={batchForm.count}
-                  onChange={e => setBatchForm({...batchForm, count: Number(e.target.value)})}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-mono font-bold text-amber-800 outline-none focus:border-amber-500 shadow-sm"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow transition"
-              >
-                Generate & Create Batch Labels
-              </button>
-            </form>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* CREATE PO MODAL WITH DYNAMIC FULL RIGOUT PRICE CAP BREAKDOWN & MULTI-OUTFIT WEDDING PARTY SCANNER */}
       {showCreatePoModal && (
@@ -12952,7 +13051,7 @@ export default function KiltHireApp() {
                       required
                       className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 outline-none focus:border-indigo-500"
                     >
-                      {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                      {Array.from(new Set([...pricingMatrix.map(pm => pm.category), ...CATEGORIES])).filter(Boolean).map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
                   <div>
@@ -13127,7 +13226,7 @@ export default function KiltHireApp() {
                       onChange={e => setEditOutsourcedItem(prev => prev ? { ...prev, category: e.target.value as KiltItem['category'] } : null)}
                       className="w-full border border-slate-300 rounded-xl px-3 py-2 font-bold text-slate-900 outline-none focus:border-indigo-500 bg-white"
                     >
-                      {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                      {Array.from(new Set([...pricingMatrix.map(pm => pm.category), ...CATEGORIES])).filter(Boolean).map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
                   <div>
