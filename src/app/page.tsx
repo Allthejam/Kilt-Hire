@@ -7269,7 +7269,7 @@ export default function KiltHireApp() {
 
                                     <div>
                                       <strong className="text-slate-900 text-xs block">{po.customerName}</strong>
-{po.customerEmail} • {po.customerPhone}
+                                      <span className="text-[11px] text-slate-500 block">{po.customerEmail} • {po.customerPhone}</span>
                                     </div>
 
                                     {/* FITTING MEASUREMENTS CARD */}
@@ -7283,6 +7283,10 @@ export default function KiltHireApp() {
                                         </div>
                                       </div>
                                     )}
+
+                                    <div className="text-[11px] font-bold text-slate-700 bg-slate-50 p-2 rounded-lg border">
+                                      Garments to Pick ({po.items.length}): {po.items.map(i => i.itemName).join(', ')}
+                                    </div>
 
                                     <div className="flex items-center gap-2 pt-1">
                                       <button
@@ -7301,17 +7305,6 @@ export default function KiltHireApp() {
                                         <CheckCircle2 className="w-4 h-4" /> Assembly &amp; Scan QRs
                                       </button>
                                     </div>
-
-                                    <div className="text-[11px] font-bold text-slate-700 bg-slate-50 p-2 rounded-lg border">
-                                      Garments to Pick ({po.items.length}): {po.items.map(i => i.itemName).join(', ')}
-                                    </div>
-
-                                    <button
-                                      onClick={() => handleMarkOrderReadyForCollection(po)}
-                                      className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5"
-                                    >
-                                      <CheckCircle2 className="w-4 h-4" /> Mark Assembled & Ready
-                                    </button>
                                   </div>
                                 ))}
                               </div>
@@ -9944,10 +9937,11 @@ export default function KiltHireApp() {
                                       📦 Due Picked on {pickDateStr}
                                     </span>
                                     <button
-                                      onClick={() => handleMarkOrderReadyForCollection(po)}
-                                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition flex items-center gap-1"
+                                      type="button"
+                                      onClick={() => openAssemblyModal(po)}
+                                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition flex items-center gap-1 cursor-pointer"
                                     >
-                                      <CheckCircle2 className="w-3.5 h-3.5" /> Mark Picked & Assembled
+                                      <CheckCircle2 className="w-3.5 h-3.5" /> Assembly &amp; Scan QRs
                                     </button>
                                     <button
                                       onClick={() => {
