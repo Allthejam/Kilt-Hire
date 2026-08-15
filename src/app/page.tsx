@@ -8870,9 +8870,10 @@ export default function KiltHireApp() {
                             onClick={() => {
                               const defaultPinPrice = pricingMatrix.find(pm => pm.category.toLowerCase().includes('pin')) || { adultHireRate: 5, adultDeposit: 5 };
                               setBulkBinForm({
+                                boxNumber: '1',
                                 category: 'Kilt Pins',
                                 sizeGroup: 'Adult',
-                                name: 'Polished Chrome Celtic Kilt Pins (Box Bin)',
+                                name: 'Polished Chrome Celtic Kilt Pins',
                                 bulkTotal: 50,
                                 hireRate: defaultPinPrice.adultHireRate || 5,
                                 depositAmount: defaultPinPrice.adultDeposit || 5,
@@ -8944,9 +8945,10 @@ export default function KiltHireApp() {
                               <button
                                 onClick={() => {
                                   setBulkBinForm({
+                                    boxNumber: '1',
                                     category: 'Kilt Pins',
                                     sizeGroup: 'Adult',
-                                    name: 'Polished Chrome Celtic Kilt Pins (Box Bin)',
+                                    name: 'Polished Chrome Celtic Kilt Pins',
                                     bulkTotal: 50,
                                     hireRate: 5,
                                     depositAmount: 5,
