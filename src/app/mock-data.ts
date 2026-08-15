@@ -16,16 +16,16 @@ export const INITIAL_INVITES: StaffInvite[] = [];
 
 // Master Pricing Matrix (Duplicated for Adults and Kids)
 export const DEFAULT_PRICING_MATRIX: CategoryPriceSetting[] = [
-  { category: 'Kilts', adultHireRate: 50, adultDeposit: 50, kidHireRate: 35, kidDeposit: 35 },
-  { category: 'Jackets', adultHireRate: 50, adultDeposit: 50, kidHireRate: 30, kidDeposit: 30 },
-  { category: 'Waistcoats', adultHireRate: 20, adultDeposit: 20, kidHireRate: 15, kidDeposit: 15 },
-  { category: 'Sporrans', adultHireRate: 15, adultDeposit: 15, kidHireRate: 10, kidDeposit: 10 },
-  { category: 'Ghillie Brogues', adultHireRate: 15, adultDeposit: 15, kidHireRate: 10, kidDeposit: 10 },
-  { category: 'Shirts', adultHireRate: 10, adultDeposit: 10, kidHireRate: 8, kidDeposit: 8 },
-  { category: 'Socks & Garters', adultHireRate: 8, adultDeposit: 8, kidHireRate: 5, kidDeposit: 5 },
-  { category: 'Belts & Buckles', adultHireRate: 8, adultDeposit: 8, kidHireRate: 5, kidDeposit: 5 },
-  { category: 'Sgian-dubh (Knife)', adultHireRate: 8, adultDeposit: 8, kidHireRate: 5, kidDeposit: 5 },
-  { category: 'Miscellaneous', adultHireRate: 10, adultDeposit: 10, kidHireRate: 5, kidDeposit: 5 }
+  { category: 'Kilts', adultHireRate: 50, adultDeposit: 50, kidHireRate: 35, kidDeposit: 35, allowAlterations: true },
+  { category: 'Jackets', adultHireRate: 50, adultDeposit: 50, kidHireRate: 30, kidDeposit: 30, allowAlterations: true },
+  { category: 'Waistcoats', adultHireRate: 20, adultDeposit: 20, kidHireRate: 15, kidDeposit: 15, allowAlterations: true },
+  { category: 'Sporrans', adultHireRate: 15, adultDeposit: 15, kidHireRate: 10, kidDeposit: 10, allowAlterations: false },
+  { category: 'Ghillie Brogues', adultHireRate: 15, adultDeposit: 15, kidHireRate: 10, kidDeposit: 10, allowAlterations: false },
+  { category: 'Shirts', adultHireRate: 10, adultDeposit: 10, kidHireRate: 8, kidDeposit: 8, allowAlterations: false },
+  { category: 'Socks & Garters', adultHireRate: 8, adultDeposit: 8, kidHireRate: 5, kidDeposit: 5, allowAlterations: false },
+  { category: 'Belts & Buckles', adultHireRate: 8, adultDeposit: 8, kidHireRate: 5, kidDeposit: 5, allowAlterations: false },
+  { category: 'Sgian-dubh (Knife)', adultHireRate: 8, adultDeposit: 8, kidHireRate: 5, kidDeposit: 5, allowAlterations: false },
+  { category: 'Miscellaneous', adultHireRate: 10, adultDeposit: 10, kidHireRate: 5, kidDeposit: 5, allowAlterations: false }
 ];
 
 export const INITIAL_ITEMS: KiltItem[] = [];

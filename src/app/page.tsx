@@ -25,6 +25,7 @@ import {
   deleteItem,
   getBatches,
   upsertBatch,
+  deleteBatchFS,
   getPurchaseOrders,
   upsertPurchaseOrder,
   deletePurchaseOrderFS,
@@ -70,7 +71,8 @@ import {
   sendBrevoEmail,
   generateCollectionReadyEmailHtml,
   generatePaymentReminderEmailHtml,
-  generateOverdueReturnEmailHtml
+  generateOverdueReturnEmailHtml,
+  generateBookingDepositInvoiceEmailHtml
 } from '../lib/brevo';
 import { 
   INITIAL_STAFF, 
@@ -99,7 +101,6 @@ import {
   Search, 
   FileText, 
   Sparkles, 
-  DollarSign, 
   RotateCcw, 
   Layers, 
   ShieldCheck, 
@@ -124,7 +125,6 @@ import {
   Edit3,
   Package,
   Calendar,
-  DollarSign as PriceTag,
   Users,
   Baby,
   User,
@@ -148,7 +148,13 @@ import {
   ShieldAlert,
   ZoomIn,
   ZoomOut,
-  Maximize2
+  Maximize2,
+  LayoutGrid,
+  Grid,
+  Table as TableIcon,
+  List,
+  Target,
+  Scissors
 } from 'lucide-react';
 
 const CATEGORIES: ItemCategory[] = [
@@ -195,6 +201,24 @@ const DEFAULT_TARTANS = [
   'Grey Granite',
   'Lovat Blue'
 ];
+
+// British Pound (£) Vector Icon
+const PoundIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
+  <svg 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2.5" 
+    strokeLinecap="round" 
+    strokeLinejoin="round" 
+    className={className}
+  >
+    <path d="M18 7c0-3.5-2.2-5-5-5-3.3 0-5 2.2-5 5.5v11.5h10" />
+    <path d="M6 13h9" />
+    <path d="M6 19h12" />
+  </svg>
+);
+const PriceTag = PoundIcon;
 
 // Helper function to calculate Overdue Return Status and Color Badges (Blue -> Amber -> Red)
 const getOverdueStatus = (dueDateStr: string | undefined, isReturned: boolean = false) => {
@@ -263,9 +287,11 @@ export default function KiltHireApp() {
   const [staffList, setStaffList] = useState<StaffUser[]>(INITIAL_STAFF);
   const [invites, setInvites] = useState<StaffInvite[]>(INITIAL_INVITES);
   
-  // Full Rigout Price Cap Settings (Master Admin Configurable)
-  const [maxRigoutCapPrice, setMaxRigoutCapPrice] = useState<number>(120); // Adult Cap
-  const [kidMaxRigoutCapPrice, setKidMaxRigoutCapPrice] = useState<number>(80); // Kids Cap
+  // Full Rigout Price Cap & Security Deposit Cap Settings (Master Admin Configurable)
+  const [maxRigoutCapPrice, setMaxRigoutCapPrice] = useState<number>(120); // Adult Hire Fee Cap
+  const [kidMaxRigoutCapPrice, setKidMaxRigoutCapPrice] = useState<number>(80); // Kids Hire Fee Cap
+  const [adultMaxDepositCapPrice, setAdultMaxDepositCapPrice] = useState<number>(60); // Adult Security Deposit Cap
+  const [kidMaxDepositCapPrice, setKidMaxDepositCapPrice] = useState<number>(40); // Kids Security Deposit Cap
 
   // Category Pricing Matrix State (Duplicated for Adults and Kids)
   const [pricingMatrix, setPricingMatrix] = useState<CategoryPriceSetting[]>(DEFAULT_PRICING_MATRIX);
@@ -298,6 +324,7 @@ export default function KiltHireApp() {
   const [assistantSizeFilter, setAssistantSizeFilter] = useState<'ALL' | 'Adult' | 'Kid'>('ALL');
   const [assistantCategoryFilter, setAssistantCategoryFilter] = useState<string>('ALL');
   const [fittingCategoryFilter, setFittingCategoryFilter] = useState<string>('ALL');
+  const [fittingSizeMode, setFittingSizeMode] = useState<'MATCHED' | 'ALL_ALTERATION'>('MATCHED');
   const [assistantTartanFilter, setAssistantTartanFilter] = useState<string>('ALL');
 
   // Inventory tab demographic filter & Sub-Tabs in Admin
@@ -319,10 +346,7 @@ export default function KiltHireApp() {
   const [showAddCategoryModal, setShowAddCategoryModal] = useState<boolean>(false);
   const [newCategoryForm, setNewCategoryForm] = useState({
     category: '',
-    adultHireRate: 50,
-    adultDeposit: 50,
-    kidHireRate: 30,
-    kidDeposit: 30
+    allowAlterations: true
   });
   const [deleteCategoryConfirm, setDeleteCategoryConfirm] = useState<string | null>(null);
 
@@ -331,16 +355,10 @@ export default function KiltHireApp() {
     if (clean === '1234') return true;
     return staffList.some(s => (s.role === 'Master Admin' || s.role === 'Admin') && s.pin === clean);
   };
-  const [currentUser, setCurrentUser] = useState<StaffUser | null>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('kilt_current_user');
-        if (saved) return JSON.parse(saved);
-      } catch {}
-    }
-    return null;
-  });
+  const [mounted, setMounted] = useState<boolean>(false);
+  const [currentUser, setCurrentUser] = useState<StaffUser | null>(null);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [staffStockViewMode, setStaffStockViewMode] = useState<'cards' | 'compact' | 'table'>('cards');
   
   // Mobile sidebar toggle state
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -382,6 +400,7 @@ export default function KiltHireApp() {
 
   // Modals state
   const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [autoAddToActiveOrder, setAutoAddToActiveOrder] = useState<boolean>(true);
   const [scanActionItem, setScanActionItem] = useState<KiltItem | null>(null);
   const [showSendRepairModal, setShowSendRepairModal] = useState(false);
   
@@ -393,6 +412,15 @@ export default function KiltHireApp() {
   const [showCreatePoModal, setShowCreatePoModal] = useState(false);
   const [showEditPoModal, setShowEditPoModal] = useState<PurchaseOrder | null>(null);
   const [showInviteModal, setShowInviteModal] = useState(false);
+
+  // Customer PO Search, Filter, and Queue Sorting State
+  const [poSearchQuery, setPoSearchQuery] = useState<string>('');
+  const [poStageFilter, setPoStageFilter] = useState<'ALL' | 'AWAITING_PICK' | 'READY_FOR_COLLECTION' | 'OUT_ON_HIRE' | 'OVERDUE' | 'RETURNED_COMPLETED'>('ALL');
+  const [poSortOption, setPoSortOption] = useState<'ACTION_DATE_ASC' | 'HIRE_START_ASC' | 'HIRE_START_DESC' | 'EVENT_DATE_ASC' | 'RETURN_DUE_ASC' | 'PO_NEWEST'>('ACTION_DATE_ASC');
+  const [poDateRangeFilter, setPoDateRangeFilter] = useState<'ALL' | 'TODAY' | 'THIS_WEEK' | 'THIS_MONTH' | 'CUSTOM'>('ALL');
+  const [poCustomStartDate, setPoCustomStartDate] = useState<string>('');
+  const [poCustomEndDate, setPoCustomEndDate] = useState<string>('');
+  const [poCapFilter, setPoCapFilter] = useState<'ALL' | 'CAPPED_ONLY' | 'UNCAPPED'>('ALL');
 
   // MULTI-ITEM PO RETURN CHECKLIST MODAL STATE
   const [activeReturnPo, setActiveReturnPo] = useState<PurchaseOrder | null>(null);
@@ -493,6 +521,44 @@ export default function KiltHireApp() {
   const [showReprintPinModal, setShowReprintPinModal] = useState<boolean>(false);
   const [reprintPrintMode, setReprintPrintMode] = useState<boolean>(false);
   const [analyticsSearchQuery, setAnalyticsSearchQuery] = useState<string>('');
+
+  // Edit & Delete Batch State
+  const [editingBatch, setEditingBatch] = useState<QRBatch | null>(null);
+  const [editBatchForm, setEditBatchForm] = useState<{
+    title: string;
+    category: ItemCategory;
+    sizeGroup: SizeGroup;
+  }>({
+    title: '',
+    category: 'Kilts',
+    sizeGroup: 'Adult'
+  });
+
+  const [editingBulkBin, setEditingBulkBin] = useState<KiltItem | null>(null);
+  const [editBulkBinForm, setEditBulkBinForm] = useState<{
+    name: string;
+    boxNumber: string;
+    category: ItemCategory;
+    sizeGroup: SizeGroup;
+    tartanOrColour: string;
+    brandMake: string;
+    hireRate: number;
+    depositAmount: number;
+  }>({
+    name: '',
+    boxNumber: '1',
+    category: 'Kilt Pins',
+    sizeGroup: 'Adult',
+    tartanOrColour: '',
+    brandMake: '',
+    hireRate: 5,
+    depositAmount: 5
+  });
+
+  const [batchToDelete, setBatchToDelete] = useState<QRBatch | null>(null);
+  const [bulkBinToDelete, setBulkBinToDelete] = useState<KiltItem | null>(null);
+  const [deleteSafeguardPin, setDeleteSafeguardPin] = useState<string>('');
+  const [deleteSafeguardError, setDeleteSafeguardError] = useState<string>('');
 
   // Availability & Booking Calendar state (Shop Assistant Mode)
   const [calSelectedDate, setCalSelectedDate] = useState<string>(new Date().toISOString().slice(0, 10));
@@ -632,8 +698,23 @@ export default function KiltHireApp() {
 
   // ─── LOAD DATA & PWA SETUP ───────────────────────────────────────────────────
   useEffect(() => {
-    // Check if running in standalone mode (already installed)
+    setMounted(true);
     if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('kilt_current_user');
+        if (saved) {
+          setCurrentUser(JSON.parse(saved));
+        }
+      } catch {}
+
+      try {
+        const savedView = localStorage.getItem('kilt_stock_view_mode');
+        if (savedView === 'cards' || savedView === 'compact' || savedView === 'table') {
+          setStaffStockViewMode(savedView);
+        }
+      } catch {}
+
+      // Check if running in standalone mode (already installed)
       const isStandaloneMode = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone === true;
       setIsStandalone(isStandaloneMode);
       const dismissed = localStorage.getItem('kilt_pwa_dismissed');
@@ -731,8 +812,12 @@ export default function KiltHireApp() {
     if (savedMode === 'shop_assistant' || savedMode === 'admin_portal') setInterfaceMode(savedMode);
     const savedCap = localStorage.getItem('kilt_max_rigout_cap');
     const savedKidCap = localStorage.getItem('kilt_kid_max_rigout_cap');
+    const savedDepCap = localStorage.getItem('kilt_adult_max_deposit_cap');
+    const savedKidDepCap = localStorage.getItem('kilt_kid_max_deposit_cap');
     if (savedCap) setMaxRigoutCapPrice(Number(savedCap));
     if (savedKidCap) setKidMaxRigoutCapPrice(Number(savedKidCap));
+    if (savedDepCap) setAdultMaxDepositCapPrice(Number(savedDepCap));
+    if (savedKidDepCap) setKidMaxDepositCapPrice(Number(savedKidDepCap));
     let unsubItems: (() => void) | null = null;
     let unsubPOs: (() => void) | null = null;
     let unsubBatches: (() => void) | null = null;
@@ -874,9 +959,11 @@ export default function KiltHireApp() {
           if (fsPricing.matrix) setPricingMatrix(fsPricing.matrix);
           if (fsPricing.maxRigoutCapPrice) setMaxRigoutCapPrice(fsPricing.maxRigoutCapPrice);
           if (fsPricing.kidMaxRigoutCapPrice) setKidMaxRigoutCapPrice(fsPricing.kidMaxRigoutCapPrice);
+          if (fsPricing.adultMaxDepositCapPrice) setAdultMaxDepositCapPrice(fsPricing.adultMaxDepositCapPrice);
+          if (fsPricing.kidMaxDepositCapPrice) setKidMaxDepositCapPrice(fsPricing.kidMaxDepositCapPrice);
         } else {
           setPricingMatrix(DEFAULT_PRICING_MATRIX);
-          savePricing(DEFAULT_PRICING_MATRIX, 120, 65).catch(err => console.warn('Failed to seed pricing:', err));
+          savePricing(DEFAULT_PRICING_MATRIX, 120, 80, DEFAULT_TARTANS, 60, 40).catch(err => console.warn('Failed to seed pricing:', err));
         }
 
         // Subscribe to real-time Cloud Firestore updates (LIVE INSTANT SYNC across all tablets)
@@ -901,6 +988,8 @@ export default function KiltHireApp() {
             if (livePricing.matrix) setPricingMatrix(livePricing.matrix);
             if (livePricing.maxRigoutCapPrice) setMaxRigoutCapPrice(livePricing.maxRigoutCapPrice);
             if (livePricing.kidMaxRigoutCapPrice) setKidMaxRigoutCapPrice(livePricing.kidMaxRigoutCapPrice);
+            if (livePricing.adultMaxDepositCapPrice) setAdultMaxDepositCapPrice(livePricing.adultMaxDepositCapPrice);
+            if (livePricing.kidMaxDepositCapPrice) setKidMaxDepositCapPrice(livePricing.kidMaxDepositCapPrice);
             if (livePricing.tartanList && livePricing.tartanList.length > 0) setTartanList(livePricing.tartanList);
           }
         });
@@ -1577,6 +1666,40 @@ export default function KiltHireApp() {
       return;
     }
 
+    // MANDATORY WEARER CONTACT VALIDATIONS
+    if (fittingForm.billingMode === 'SINGLE_PRINCIPLE') {
+      // Single Master Bill (Lead Customer Pays Group Order):
+      // Each outfit MUST have a Wearer Full Name for tagging & garment bags.
+      for (let idx = 0; idx < fittingForm.outfits.length; idx++) {
+        const out = fittingForm.outfits[idx];
+        const wName = (out.wearerName || (idx === 0 ? fittingForm.customerName : '')).trim();
+        if (!wName) {
+          showToast(`⚠️ Wearer Full Name is mandatory for Outfit #${idx + 1} (${out.roleLabel}).`, 'warning');
+          setFittingForm(prev => ({ ...prev, activeOutfitIndex: idx }));
+          return;
+        }
+      }
+    } else if (fittingForm.billingMode === 'SPLIT_INDIVIDUAL') {
+      // Individual Invoices (Paid Separately):
+      // Wearer Full Name and Email Address are strictly mandatory for Brevo invoice delivery!
+      for (let idx = 0; idx < fittingForm.outfits.length; idx++) {
+        const out = fittingForm.outfits[idx];
+        const wName = (out.wearerName || (idx === 0 ? fittingForm.customerName : '')).trim();
+        const wEmail = (out.wearerEmail || (idx === 0 ? fittingForm.customerEmail : '')).trim();
+
+        if (!wName) {
+          showToast(`⚠️ Individual Invoicing requires Wearer Full Name for Outfit #${idx + 1} (${out.roleLabel}).`, 'warning');
+          setFittingForm(prev => ({ ...prev, activeOutfitIndex: idx }));
+          return;
+        }
+        if (!wEmail || !wEmail.includes('@')) {
+          showToast(`⚠️ Individual Invoicing requires a valid Wearer Email Address for Outfit #${idx + 1} (${wName}) so their separate Brevo invoice can be sent.`, 'warning');
+          setFittingForm(prev => ({ ...prev, activeOutfitIndex: idx }));
+          return;
+        }
+      }
+    }
+
     // Validate that each outfit has at least 1 garment item
     for (let idx = 0; idx < fittingForm.outfits.length; idx++) {
       const out = fittingForm.outfits[idx];
@@ -1615,12 +1738,17 @@ export default function KiltHireApp() {
           }));
 
           const rawSubtotal = lineItems.reduce((acc, it) => acc + it.hireRate, 0);
+          const rawDeposit = lineItems.reduce((acc, it) => acc + it.depositAmount, 0);
+          const isKid = lineItems.some(it => it.sizeGroup === 'Kid');
+          const feeCap = isKid ? kidMaxRigoutCapPrice : maxRigoutCapPrice;
+          const depCap = isKid ? kidMaxDepositCapPrice : adultMaxDepositCapPrice;
+
           const hasKilt = lineItems.some(it => it.category === 'Kilts');
           const hasJacket = lineItems.some(it => it.category === 'Jackets');
-          const fullRigoutCapApplied = hasKilt && hasJacket && rawSubtotal > 120;
-          const totalHireFee = fullRigoutCapApplied ? 120 : rawSubtotal;
-          const fullRigoutDiscount = fullRigoutCapApplied ? rawSubtotal - 120 : 0;
-          const totalDepositHeld = isLegacyPaper ? 0 : 60;
+          const fullRigoutCapApplied = (hasKilt && hasJacket && rawSubtotal > feeCap) || rawSubtotal > feeCap;
+          const totalHireFee = fullRigoutCapApplied ? feeCap : rawSubtotal;
+          const fullRigoutDiscount = fullRigoutCapApplied ? rawSubtotal - feeCap : 0;
+          const totalDepositHeld = isLegacyPaper ? 0 : Math.min(rawDeposit, depCap);
 
           const poId = `PO-2026-${Math.floor(1000 + Math.random() * 9000)}`;
           const po: PurchaseOrder = {
@@ -1665,6 +1793,7 @@ export default function KiltHireApp() {
         const allLineItems: POLineItem[] = [];
         let grandSubtotal = 0;
         let grandDiscount = 0;
+        let grandDeposit = 0;
 
         fittingForm.outfits.forEach((outfit) => {
           const outfitItems = items.filter(it => outfit.selectedItemIds.includes(it.id));
@@ -1680,18 +1809,25 @@ export default function KiltHireApp() {
           }));
 
           const rawSubtotal = lines.reduce((acc, it) => acc + it.hireRate, 0);
+          const rawDeposit = lines.reduce((acc, it) => acc + it.depositAmount, 0);
+          const isKid = lines.some(it => it.sizeGroup === 'Kid');
+          const feeCap = isKid ? kidMaxRigoutCapPrice : maxRigoutCapPrice;
+          const depCap = isKid ? kidMaxDepositCapPrice : adultMaxDepositCapPrice;
+
           const hasKilt = lines.some(it => it.category === 'Kilts');
           const hasJacket = lines.some(it => it.category === 'Jackets');
-          const capApplied = hasKilt && hasJacket && rawSubtotal > 120;
-          const outfitHireFee = capApplied ? 120 : rawSubtotal;
+          const capApplied = (hasKilt && hasJacket && rawSubtotal > feeCap) || rawSubtotal > feeCap;
+          const outfitHireFee = capApplied ? feeCap : rawSubtotal;
+          const outfitDeposit = isLegacyPaper ? 0 : Math.min(rawDeposit, depCap);
           
           grandSubtotal += outfitHireFee;
-          if (capApplied) grandDiscount += (rawSubtotal - 120);
+          grandDeposit += outfitDeposit;
+          if (capApplied) grandDiscount += (rawSubtotal - feeCap);
 
           allLineItems.push(...lines);
         });
 
-        const totalDepositHeld = isLegacyPaper ? 0 : fittingForm.outfits.length * 60;
+        const totalDepositHeld = grandDeposit;
         const poId = `PO-2026-${Math.floor(1000 + Math.random() * 9000)}`;
 
         const po: PurchaseOrder = {
@@ -1753,6 +1889,36 @@ export default function KiltHireApp() {
       setItems(updatedItemsList);
       setPos(prev => [...createdPos, ...prev]);
       addAuditLog('CREATED_FITTING_ORDER', `Created fitting order for ${fittingForm.customerName} (${fittingForm.outfits.length} outfit(s), Billing: ${fittingForm.billingMode})`);
+
+      // Asynchronously dispatch Brevo confirmation & PayPal deposit invoices to all wearers/customers
+      createdPos.forEach((createdPo) => {
+        if (createdPo.customerEmail && createdPo.depositPaymentMethod !== 'PAPER_DIARY_LEGACY') {
+          const itemsSummary = createdPo.items.map(it => `${it.itemName} (${it.size})`).join(', ');
+          const htmlContent = generateBookingDepositInvoiceEmailHtml({
+            customerName: createdPo.customerName,
+            poId: createdPo.id,
+            eventDate: createdPo.eventDate,
+            collectionDate: createdPo.hireStartDate,
+            returnDate: createdPo.hireEndDate,
+            totalHireFee: createdPo.totalHireFee,
+            totalDepositHeld: createdPo.totalDepositHeld,
+            itemsList: itemsSummary,
+            isPaidOnline: createdPo.depositPaymentMethod === 'PAYPAL_ONLINE',
+            leadCustomerName: isSplitBilling && createdPo.customerName !== fittingForm.customerName ? fittingForm.customerName : undefined
+          });
+
+          sendBrevoEmail({
+            toEmail: createdPo.customerEmail,
+            toName: createdPo.customerName,
+            subject: `🏴󠁧󠁢󠁳󠁣󠁴󠁿 Highland Kilt Hire: Order ${createdPo.id} Booking Confirmation & PayPal Invoice`,
+            htmlContent
+          }).then(res => {
+            if (res.success) {
+              addAuditLog('SENT_BREVO_BOOKING_EMAIL', `Dispatched booking & invoice email to ${createdPo.customerEmail} for ${createdPo.id}`, createdPo.id);
+            }
+          }).catch(err => console.warn('Brevo booking email error:', err));
+        }
+      });
 
       // Reset fitting form cleanly so station is 100% ready for next order
       setFittingForm({
@@ -1971,16 +2137,20 @@ export default function KiltHireApp() {
         }
         return p;
       });
-      savePricing(updated, maxRigoutCapPrice, kidMaxRigoutCapPrice).catch(err => console.warn('Failed to auto-save pricing:', err));
+      savePricing(updated, maxRigoutCapPrice, kidMaxRigoutCapPrice, tartanList, adultMaxDepositCapPrice, kidMaxDepositCapPrice).catch(err => console.warn('Failed to auto-save pricing:', err));
       return updated;
     });
   };
 
   const handleSavePricingToFirestore = async () => {
     try {
-      await savePricing(pricingMatrix, maxRigoutCapPrice, kidMaxRigoutCapPrice, tartanList);
-      addAuditLog('UPDATED_PRICING_MATRIX', `Saved live store pricing matrix & rigout caps (Adult £${maxRigoutCapPrice}, Kid £${kidMaxRigoutCapPrice}) across all devices.`);
-      showToast('🎉 Pricing Matrix & Rigout Caps successfully saved to Cloud Firestore Database across all devices!', 'success');
+      localStorage.setItem('kilt_max_rigout_cap', String(maxRigoutCapPrice));
+      localStorage.setItem('kilt_kid_max_rigout_cap', String(kidMaxRigoutCapPrice));
+      localStorage.setItem('kilt_adult_max_deposit_cap', String(adultMaxDepositCapPrice));
+      localStorage.setItem('kilt_kid_max_deposit_cap', String(kidMaxDepositCapPrice));
+      await savePricing(pricingMatrix, maxRigoutCapPrice, kidMaxRigoutCapPrice, tartanList, adultMaxDepositCapPrice, kidMaxDepositCapPrice);
+      addAuditLog('UPDATED_PRICING_MATRIX', `Saved live store pricing matrix & caps (Adult Hire £${maxRigoutCapPrice} / Dep £${adultMaxDepositCapPrice}, Kid Hire £${kidMaxRigoutCapPrice} / Dep £${kidMaxDepositCapPrice}) across all devices.`);
+      showToast('🎉 Pricing Matrix, Rigout Caps & Deposit Caps successfully saved to Cloud Firestore Database!', 'success');
     } catch (err: any) {
       showToast(`Failed to save pricing to database: ${err.message}`, 'warning');
     }
@@ -2448,10 +2618,47 @@ export default function KiltHireApp() {
     upsertItem(newItem).catch(err => console.warn('Failed to save item to Firestore:', err));
     addAuditLog('REGISTERED_ITEM', `Registered new ${newItem.sizeGroup} item ${newItem.name} (${newItem.id}) under ${newItem.category} (Hire £${newItem.hireRate} / Dep £${newItem.depositAmount})`, newItem.id);
     
-    // Close registration modal and AUTOMATICALLY OPEN GARMENT ACTION POPUP MODAL!
+    // Check if an order is currently in progress
+    const isOpenPoModal = showCreatePoModal;
+    const isFittingActive = (assistantTab === 'start_fitting' || activeTab === 'start_fitting');
+    const hasDraftPoItems = newPoForm.selectedItemIds.length > 0;
+
+    if ((isOpenPoModal || hasDraftPoItems) && autoAddToActiveOrder) {
+      setNewPoForm(prev => ({
+        ...prev,
+        selectedItemIds: prev.selectedItemIds.includes(newItem.id) ? prev.selectedItemIds : [...prev.selectedItemIds, newItem.id]
+      }));
+      setShowRegisterModal(false);
+      setShowCreatePoModal(true);
+      setScanActionItem(null);
+      showToast(`✅ Registered ${newItem.id} into stock & added directly to your active Order (PO)!`, 'success');
+      return;
+    }
+
+    if (isFittingActive && autoAddToActiveOrder) {
+      setFittingForm(prev => {
+        const updatedOutfits = [...prev.outfits];
+        if (updatedOutfits.length > 0) {
+          const first = updatedOutfits[0];
+          if (!first.selectedItemIds.includes(newItem.id)) {
+            updatedOutfits[0] = {
+              ...first,
+              selectedItemIds: [...first.selectedItemIds, newItem.id]
+            };
+          }
+        }
+        return { ...prev, outfits: updatedOutfits };
+      });
+      setShowRegisterModal(false);
+      setScanActionItem(null);
+      showToast(`✅ Registered ${newItem.id} into stock & added directly to Customer Fitting Outfit!`, 'success');
+      return;
+    }
+
+    // Close registration modal and open action popup if no order was open
     setShowRegisterModal(false);
     setScanActionItem(newItem);
-    showToast(`✅ ${newItem.sizeGroup} garment ${newItem.id} saved into Stock Database! Select next action below.`, 'success');
+    showToast(`✅ ${newItem.sizeGroup} garment ${newItem.id} saved into Stock Database!`, 'success');
   };
 
   // EDIT ITEM DETAILS HANDLER
@@ -2695,7 +2902,7 @@ export default function KiltHireApp() {
     const updated = [...tartanList, cleanName];
     setTartanList(updated);
     setNewTartanInput('');
-    savePricing(pricingMatrix, maxRigoutCapPrice, kidMaxRigoutCapPrice, updated).catch(err => console.warn(err));
+    savePricing(pricingMatrix, maxRigoutCapPrice, kidMaxRigoutCapPrice, updated, adultMaxDepositCapPrice, kidMaxDepositCapPrice).catch(err => console.warn(err));
     addAuditLog('ADDED_TARTAN', `Added new custom Tartan/Colour "${cleanName}" to product catalog.`);
     showToast(`✨ Added "${cleanName}" to Tartan & Colour Catalog!`, 'success');
   };
@@ -2708,7 +2915,7 @@ export default function KiltHireApp() {
     }
     const updated = tartanList.filter(t => t !== tartanName);
     setTartanList(updated);
-    savePricing(pricingMatrix, maxRigoutCapPrice, kidMaxRigoutCapPrice, updated).catch(err => console.warn(err));
+    savePricing(pricingMatrix, maxRigoutCapPrice, kidMaxRigoutCapPrice, updated, adultMaxDepositCapPrice, kidMaxDepositCapPrice).catch(err => console.warn(err));
     addAuditLog('DELETED_TARTAN', `Removed Tartan/Colour "${tartanName}" from product catalog.`);
     showToast(`Deleted "${tartanName}" from catalog.`, 'info');
   };
@@ -2894,16 +3101,19 @@ export default function KiltHireApp() {
     // Calculate Late Return Retention Fee
     let retainedLateFee = 0;
     if (lateFeeOption === 'CUSTOM') {
-      retainedLateFee = Math.min(totalRefundedDeposit, Math.max(0, customLateFeeAmount));
+      retainedLateFee = Math.max(0, customLateFeeAmount);
     } else if (lateFeeOption === 'FULL_DEPOSIT') {
-      retainedLateFee = totalRefundedDeposit;
+      retainedLateFee = activeReturnPo.totalDepositHeld;
     }
 
-    const netRefundToCustomer = Math.max(0, totalRefundedDeposit - retainedLateFee);
+    const totalRetainedPenalties = totalHeldDepositForRepair + totalHeldDepositForMissing + retainedLateFee;
+    const is100PercentRetained = totalRetainedPenalties >= activeReturnPo.totalDepositHeld || lateFeeOption === 'FULL_DEPOSIT';
+    const totalDepositActuallyRetained = is100PercentRetained ? activeReturnPo.totalDepositHeld : totalRetainedPenalties;
+    const netRefundToCustomer = is100PercentRetained ? 0 : Math.max(0, activeReturnPo.totalDepositHeld - totalRetainedPenalties);
     const allReturned = updatedPoItems.every(li => li.returned);
     
     let newPaymentStatus: 'FULLY_REFUNDED' | 'DEPOSIT_PARTIALLY_REFUNDED' | 'PAID_WITH_DEPOSIT' = 'FULLY_REFUNDED';
-    if (!allReturned || retainedLateFee > 0 || totalHeldDepositForRepair > 0 || totalHeldDepositForMissing > 0) {
+    if (!allReturned || totalDepositActuallyRetained > 0) {
       newPaymentStatus = 'DEPOSIT_PARTIALLY_REFUNDED';
     }
 
@@ -3163,6 +3373,206 @@ export default function KiltHireApp() {
     }, 300);
   };
 
+  // EDIT BATCH DETAILS SUBMIT (Correct spelling, change title, category, size group)
+  const handleEditBatchSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingBatch || !editBatchForm.title.trim()) return;
+
+    const updatedBatch: QRBatch = {
+      ...editingBatch,
+      title: editBatchForm.title.trim(),
+      category: editBatchForm.category,
+      sizeGroup: editBatchForm.sizeGroup
+    };
+
+    setBatches(prev => prev.map(b => b.id === updatedBatch.id ? updatedBatch : b));
+    if (selectedBatchForPrint?.id === updatedBatch.id) {
+      setSelectedBatchForPrint(updatedBatch);
+    }
+    await upsertBatch(updatedBatch);
+
+    addAuditLog('EDITED_QR_BATCH', `Updated QR batch ${updatedBatch.id} details: "${updatedBatch.title}" (${updatedBatch.category}, ${updatedBatch.sizeGroup}).`, updatedBatch.id);
+    showToast(`✨ Batch ${updatedBatch.id} details updated successfully!`, 'success');
+    setEditingBatch(null);
+  };
+
+  // EDIT BULK STORAGE BOX BIN SUBMIT
+  const handleEditBulkBinSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingBulkBin || !editBulkBinForm.name.trim()) return;
+
+    const boxNumClean = editBulkBinForm.boxNumber.trim().replace(/^Box\s*/i, '');
+    const updatedBin: KiltItem = {
+      ...editingBulkBin,
+      name: editBulkBinForm.name.trim(),
+      boxNumber: boxNumClean ? `Box ${boxNumClean}` : 'Box 1',
+      category: editBulkBinForm.category,
+      sizeGroup: editBulkBinForm.sizeGroup,
+      tartanOrColour: editBulkBinForm.tartanOrColour.trim() || 'Standard Finish',
+      brandMake: editBulkBinForm.brandMake.trim() || 'Highland Craftsmen',
+      hireRate: editBulkBinForm.hireRate,
+      depositAmount: editBulkBinForm.depositAmount
+    };
+
+    setItems(prev => prev.map(i => i.id === updatedBin.id ? updatedBin : i));
+    if (selectedBulkBinForPrint?.id === updatedBin.id) {
+      setSelectedBulkBinForPrint(updatedBin);
+    }
+    await upsertItem(updatedBin);
+
+    // Also update matching batch if one exists
+    const matchingBatch = batches.find(b => b.bulkBinId === updatedBin.id || b.id === updatedBin.id);
+    if (matchingBatch) {
+      const updatedBatch: QRBatch = {
+        ...matchingBatch,
+        title: `${updatedBin.name} (${updatedBin.boxNumber || 'Box 1'})`,
+        category: updatedBin.category,
+        sizeGroup: updatedBin.sizeGroup
+      };
+      setBatches(prev => prev.map(b => b.id === updatedBatch.id ? updatedBatch : b));
+      await upsertBatch(updatedBatch);
+    }
+
+    addAuditLog('EDITED_BULK_BIN', `Updated bulk storage bin ${updatedBin.id} (${updatedBin.name}, ${updatedBin.boxNumber}).`, updatedBin.id);
+    showToast(`✨ Storage Box ${updatedBin.boxNumber || updatedBin.id} updated successfully!`, 'success');
+    setEditingBulkBin(null);
+  };
+
+  // REQUEST DELETE BATCH (Safeguard check: cannot delete if printed or in stock)
+  const handleRequestDeleteBatch = (batch: QRBatch) => {
+    // Check condition 1: Has it been printed?
+    if (batch.isPrinted) {
+      showToast(`🔒 Cannot delete batch ${batch.id}: It has already been printed. Printed batches must be retained for audit trail integrity.`, 'warning');
+      return;
+    }
+
+    // Check condition 2: Are items from this batch currently in stock?
+    const inStockItems = items.filter(i => (batch.qrCodes && batch.qrCodes.includes(i.id)) || (batch.bulkBinId && i.id === batch.bulkBinId));
+    if (inStockItems.length > 0) {
+      showToast(`⚠️ Cannot delete batch ${batch.id}: ${inStockItems.length} item(s) from this batch are currently registered in inventory/stock. Decommission or retire the items first.`, 'warning');
+      return;
+    }
+
+    // Pass: Open Admin PIN Safeguard Modal
+    setBatchToDelete(batch);
+    setBulkBinToDelete(null);
+    setDeleteSafeguardPin('');
+    setDeleteSafeguardError('');
+  };
+
+  // CONFIRM DELETE BATCH SUBMIT
+  const handleConfirmDeleteBatch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!batchToDelete) return;
+
+    if (!validateAdminPin(deleteSafeguardPin)) {
+      setDeleteSafeguardError('❌ Incorrect Admin PIN. Only authorized managers can delete unprinted batches.');
+      return;
+    }
+
+    const batchId = batchToDelete.id;
+    const batchTitle = batchToDelete.title;
+
+    await deleteBatchFS(batchId);
+    setBatches(prev => prev.filter(b => b.id !== batchId));
+    if (selectedBatchForPrint?.id === batchId) {
+      setSelectedBatchForPrint(null);
+    }
+
+    addAuditLog('DELETED_UNPRINTED_BATCH', `Admin ${currentUser?.name || 'Allan'} authorized deletion of unprinted QR batch ${batchId} ("${batchTitle}").`, batchId);
+    showToast(`🗑️ Unprinted QR batch ${batchId} deleted successfully.`, 'info');
+    setBatchToDelete(null);
+  };
+
+  // PRINT BULK STORAGE BOX SIDE LABEL (Sets isPrinted: true and triggers print)
+  const handlePrintBulkBinLabel = async (bin: KiltItem) => {
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const updatedBin: KiltItem = {
+      ...bin,
+      isPrinted: true,
+      printedAt: now,
+      printedBy: currentUser?.name || 'Allan'
+    };
+
+    setItems(prev => prev.map(i => i.id === bin.id ? updatedBin : i));
+    setSelectedBulkBinForPrint(updatedBin);
+    await upsertItem(updatedBin);
+
+    // Also update associated batch in batches collection
+    const matchingBatch = batches.find(b => b.bulkBinId === bin.id || b.id === bin.id);
+    if (matchingBatch) {
+      const updatedBatch: QRBatch = {
+        ...matchingBatch,
+        isPrinted: true,
+        printedAt: now,
+        printedBy: currentUser?.name || 'Allan'
+      };
+      setBatches(prev => prev.map(b => b.id === matchingBatch.id ? updatedBatch : b));
+      await upsertBatch(updatedBatch);
+    }
+
+    addAuditLog('PRINTED_BULK_BIN_LABEL', `Staff ${currentUser?.name || 'Allan'} printed side label for storage container ${bin.boxNumber || bin.id} (${bin.name}).`, bin.id);
+    showToast(`🖨️ Side label printed for ${bin.boxNumber || bin.id}! Label is now locked against deletion.`, 'success');
+
+    setTimeout(() => {
+      window.print();
+    }, 300);
+  };
+
+  // REQUEST DELETE BULK BOX BIN (Safeguard check: cannot delete if printed or out on hire)
+  const handleRequestDeleteBulkBin = (bin: KiltItem) => {
+    // Check condition 1: Has this bulk bin label been printed?
+    const isBinPrinted = Boolean(bin.isPrinted || batches.some(b => (b.bulkBinId === bin.id || b.id === bin.id) && b.isPrinted));
+    if (isBinPrinted) {
+      showToast(`🔒 Cannot delete ${bin.boxNumber || bin.id}: This storage box label has already been printed. Printed bins must be retained for QR audit trail integrity.`, 'warning');
+      return;
+    }
+
+    // Check condition 2: Are items from this box currently out on hire?
+    const outOnHire = (bin.bulkTotal || 0) - (bin.bulkQuantity || 0);
+    if (outOnHire > 0) {
+      showToast(`⚠️ Cannot delete ${bin.boxNumber || bin.id}: ${outOnHire} item(s) from this box are currently out on hire. Return all items before deleting the box.`, 'warning');
+      return;
+    }
+
+    setBulkBinToDelete(bin);
+    setBatchToDelete(null);
+    setDeleteSafeguardPin('');
+    setDeleteSafeguardError('');
+  };
+
+  // CONFIRM DELETE BULK BOX BIN SUBMIT
+  const handleConfirmDeleteBulkBin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bulkBinToDelete) return;
+
+    if (!validateAdminPin(deleteSafeguardPin)) {
+      setDeleteSafeguardError('❌ Incorrect Admin PIN. Only authorized managers can delete storage containers.');
+      return;
+    }
+
+    const binId = bulkBinToDelete.id;
+    const binName = bulkBinToDelete.name;
+    const boxNum = bulkBinToDelete.boxNumber || 'Box';
+
+    await deleteItem(binId);
+    setItems(prev => prev.filter(i => i.id !== binId));
+
+    const matchingBatch = batches.find(b => b.bulkBinId === binId || b.id === binId);
+    if (matchingBatch) {
+      await deleteBatchFS(matchingBatch.id);
+      setBatches(prev => prev.filter(b => b.id !== matchingBatch.id));
+    }
+
+    if (selectedBulkBinForPrint?.id === binId) {
+      setSelectedBulkBinForPrint(null);
+    }
+
+    addAuditLog('DELETED_BULK_BIN', `Admin ${currentUser?.name || 'Allan'} deleted storage box ${boxNum} (${binName}, ${binId}).`, binId);
+    showToast(`🗑️ Storage container ${boxNum} deleted from inventory.`, 'info');
+    setBulkBinToDelete(null);
+  };
+
   // Create Purchase Order (Hire Out) with Dynamic Full Rigout Price Cap Calculation!
   const handleCreatePoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -3174,16 +3584,20 @@ export default function KiltHireApp() {
 
     const selectedItemsList = items.filter(i => newPoForm.selectedItemIds.includes(i.id));
     const itemizedSubtotal = selectedItemsList.reduce((acc, curr) => acc + curr.hireRate, 0);
-    const totalDep = selectedItemsList.reduce((acc, curr) => acc + curr.depositAmount, 0);
+    const itemizedDepositSubtotal = selectedItemsList.reduce((acc, curr) => acc + curr.depositAmount, 0);
 
     // Determine if order is mostly Kids vs Adults
     const hasKidsItems = selectedItemsList.some(i => i.sizeGroup === 'Kid');
     const applicableCap = hasKidsItems ? kidMaxRigoutCapPrice : maxRigoutCapPrice;
+    const applicableDepositCap = hasKidsItems ? kidMaxDepositCapPrice : adultMaxDepositCapPrice;
 
     // Apply Full Rigout Pricing Cap Logic
     const fullRigoutCapApplied = itemizedSubtotal > applicableCap;
     const fullRigoutDiscount = fullRigoutCapApplied ? itemizedSubtotal - applicableCap : 0;
     const totalHireFee = fullRigoutCapApplied ? applicableCap : itemizedSubtotal;
+
+    // Apply Full Rigout Security Deposit Cap Logic
+    const totalDepositHeld = Math.min(itemizedDepositSubtotal, applicableDepositCap);
 
     const poId = `PO-2026-${Math.floor(1000 + Math.random() * 9000)}`;
     const paypalTxId = `PAYPAL-TX-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
@@ -3212,7 +3626,7 @@ export default function KiltHireApp() {
       fullRigoutCapApplied,
       fullRigoutDiscount,
       totalHireFee,
-      totalDepositHeld: totalDep,
+      totalDepositHeld,
       paypalTransactionId: paypalTxId,
       paymentStatus: 'PAID_WITH_DEPOSIT',
       orderStatus: 'OUT_ON_HIRE',
@@ -3238,7 +3652,7 @@ export default function KiltHireApp() {
     // here caused duplicate POs to appear (one from local state + one from listener).
     addAuditLog(
       'CREATED_PO_PAYPAL', 
-      `Created Hire PO ${poId} for ${newPo.customerName}. Subtotal £${itemizedSubtotal}${fullRigoutCapApplied ? ` capped at £${applicableCap} (Discount -£${fullRigoutDiscount})` : ''} + £${totalDep} deposit. PayPal (${paypalTxId})`
+      `Created Hire PO ${poId} for ${newPo.customerName}. Subtotal £${itemizedSubtotal}${fullRigoutCapApplied ? ` capped at £${applicableCap} (Discount -£${fullRigoutDiscount})` : ''} + £${totalDepositHeld} deposit. PayPal (${paypalTxId})`
     );
 
     setShowCreatePoModal(false);
@@ -3367,7 +3781,7 @@ export default function KiltHireApp() {
   const scItem = items.find(i => i.id === scannedCode);
   const isMasterAdmin = currentUser?.role === 'Master Admin';
 
-  const availableItems = items.filter(i => i.status === 'AVAILABLE' && !i.isOutsourcedDefault && !i.id.startsWith('EXT-'));
+  const availableItems = items.filter(i => (i.status === 'AVAILABLE' || (i.isBulkPool && (i.bulkQuantity ?? 0) > 0)) && !i.isOutsourcedDefault && !i.id.startsWith('EXT-'));
   const onHireItems = items.filter(i => i.status === 'ON_HIRE' && !i.isOutsourcedDefault && !i.id.startsWith('EXT-'));
   const inRepairItems = items.filter(i => i.status === 'IN_REPAIR' && !i.isOutsourcedDefault && !i.id.startsWith('EXT-'));
   const retiredItems = items.filter(i => i.status === 'RETIRED');
@@ -3418,6 +3832,21 @@ export default function KiltHireApp() {
     { id: 'analytics', label: 'Master Admin Analytics', icon: BarChart3, badge: 'ROI & Revenue', restricted: !isMasterAdmin },
     { id: 'admin', label: 'Master Admin & Invites', icon: ShieldCheck, badge: invites.filter(i=>i.status==='PENDING').length ? `${invites.filter(i=>i.status==='PENDING').length} Invites` : null, restricted: false },
   ];
+
+  // ─── HYDRATION SAFEGUARD: LOADING SKELETON BEFORE CLIENT MOUNT ────────────────
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="text-center space-y-4">
+          <div className="w-16 h-16 mx-auto rounded-2xl overflow-hidden shadow-xl border-2 border-amber-500/40 animate-pulse">
+            <img src="/logo.png" alt="Highland Kilt Hire" className="w-full h-full object-cover" />
+          </div>
+          <h2 className="text-base font-extrabold text-white tracking-tight">Highland Kilt &amp; Clothing Hire</h2>
+          <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto" />
+        </div>
+      </div>
+    );
+  }
 
   // =========================================================================
   // LOGGED OUT / REGISTER AUTHENTICATION OVERLAY
@@ -4233,95 +4662,42 @@ export default function KiltHireApp() {
               {/* FLOOR SCANNER TAB */}
               {assistantTab === 'scanner' && (
                 <div className="space-y-6">
-                  {/* DUAL-MODE SMART SCANNER BANNER */}
-                  <div className="bg-gradient-to-r from-emerald-700 via-slate-900 to-amber-900 text-white rounded-3xl p-6 shadow-xl space-y-4">
+                  {/* SMART SCANNER BANNER */}
+                  <div className="bg-gradient-to-r from-emerald-800 via-slate-900 to-amber-900 text-white rounded-3xl p-6 shadow-xl space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-4">
                       <div className="space-y-1">
                         <span className="px-3 py-1 bg-white/20 backdrop-blur rounded-full text-[11px] font-extrabold uppercase tracking-wider text-amber-300 inline-flex items-center gap-1">
-                          <Zap className="w-3.5 h-3.5" /> Zero-Friction Multi-Mode Smart Scanner
+                          <Zap className="w-3.5 h-3.5" /> Instant Smart Iron-On QR Scanner
                         </span>
-                        <h2 className="text-xl font-extrabold tracking-tight">Zero-Friction Smart QR Scanner — Outgoing Hires & Returns</h2>
+                        <h2 className="text-xl font-extrabold tracking-tight">Shop Floor QR Scanner — Inventory, Assembly &amp; Returns</h2>
                         <p className="text-xs text-emerald-100 max-w-2xl leading-relaxed">
-                          Handles <strong>BOTH Outgoing Customer Hires</strong> (Scan items to build bag, then enter customer details) and <strong>Customer Bag Returns</strong>!
+                          Scan any garment's iron-on QR label using your device camera or barcode gun. The system automatically identifies garment status, fits, active hires, and returns!
                         </p>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2.5">
                         <button
-                          onClick={() => {
-                            setIsAssemblyMode(true);
-                            setNewPoForm({
-                              customerName: '',
-                              customerEmail: '',
-                              customerPhone: '',
-                              eventDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
-                              hireStartDate: new Date().toISOString().split('T')[0],
-                              hireEndDate: new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0],
-                              notes: '',
-                              selectedItemIds: []
-                            });
-                            if (!activeCamera) toggleCamera();
-                            showToast(`⚡ Started New Order Bag Assembly! Aim camera & scan garments...`, 'info');
-                          }}
-                          className="px-5 py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-lg transition flex items-center gap-2"
+                          type="button"
+                          onClick={() => setAssistantTab('start_fitting')}
+                          className="px-4 py-3 bg-white/10 hover:bg-white/20 text-white font-extrabold text-xs rounded-xl border border-white/30 shadow transition flex items-center gap-2 cursor-pointer"
                         >
-                          <PlusCircle className="w-4 h-4" /> Start New Order (Scan ➔ Details)
+                          <PlusCircle className="w-4 h-4 text-emerald-400" /> Start New Fitting &amp; Order
                         </button>
 
                         <button
+                          type="button"
                           onClick={toggleCamera}
-                          className="px-4 py-3 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs rounded-xl shadow flex items-center gap-1.5 transition"
+                          className={`px-5 py-3 rounded-xl font-black text-xs shadow-lg flex items-center gap-2 transition cursor-pointer ring-2 ${
+                            activeCamera
+                              ? 'bg-rose-600 hover:bg-rose-700 text-white ring-rose-400/50 animate-pulse'
+                              : 'bg-amber-400 hover:bg-amber-300 text-slate-950 ring-amber-300/60'
+                          }`}
                         >
                           <Camera className="w-4 h-4" />
-                          {activeCamera ? 'Stop Camera' : 'Launch Camera'}
+                          {activeCamera ? '🛑 Stop Camera Scanner' : '📷 Launch Camera Scanner'}
                         </button>
                       </div>
                     </div>
-
-                    {/* LIVE EXPRESS BAG ASSEMBLY BAR */}
-                    {(isAssemblyMode || newPoForm.selectedItemIds.length > 0) && (
-                      <div className="bg-white/10 backdrop-blur border border-white/20 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-4 mt-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-emerald-400 rounded-xl flex items-center justify-center text-slate-950 font-extrabold text-lg shadow-sm">
-                            {newPoForm.selectedItemIds.length}
-                          </div>
-                          <div>
-                            <span className="font-extrabold text-amber-300 text-xs block">⚡ Express Bag Assembly Active</span>
-                            <span className="text-[11px] text-emerald-100 font-semibold block">
-                              {newPoForm.selectedItemIds.length === 0 ? 'Aim camera to scan first garment...' : `${newPoForm.selectedItemIds.length} Item(s) Scanned into Bag (${newPoForm.selectedItemIds.join(', ')})`}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => {
-                              if (newPoForm.selectedItemIds.length === 0) {
-                                showToast(`⚠️ Please scan at least 1 item into the bag first.`, 'warning');
-                                return;
-                              }
-                              setIsAssemblyMode(false);
-                              if (activeCamera) toggleCamera();
-                              setShowCreatePoModal(true);
-                            }}
-                            className="px-5 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5"
-                          >
-                            <CheckCircle2 className="w-4 h-4 text-emerald-800" /> Finish Scanning & Enter Customer Details
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              setIsAssemblyMode(false);
-                              setNewPoForm(prev => ({ ...prev, selectedItemIds: [] }));
-                              showToast(`Cancelled bag assembly.`, 'info');
-                            }}
-                            className="px-3 py-2.5 bg-white/20 hover:bg-white/30 text-white font-bold text-xs rounded-xl transition"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    )}
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -4478,14 +4854,29 @@ export default function KiltHireApp() {
                               </h3>
                             </div>
 
-                            <span className={`px-3 py-1 text-xs font-extrabold rounded-full border ${
-                              !scItem ? 'bg-amber-100 text-amber-900 border-amber-300' :
-                              scItem.status === 'AVAILABLE' ? 'bg-emerald-100 text-emerald-900 border-emerald-300' :
-                              scItem.status === 'ON_HIRE' ? 'bg-blue-100 text-blue-900 border-blue-300' :
-                              'bg-rose-100 text-rose-900 border-rose-300'
-                            }`}>
-                              {!scItem ? '✨ Auto-Register Pending' : scItem.status}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className={`px-3 py-1 text-xs font-extrabold rounded-full border ${
+                                !scItem ? 'bg-amber-100 text-amber-900 border-amber-300' :
+                                scItem.status === 'AVAILABLE' ? 'bg-emerald-100 text-emerald-900 border-emerald-300' :
+                                scItem.status === 'ON_HIRE' ? 'bg-blue-100 text-blue-900 border-blue-300' :
+                                'bg-rose-100 text-rose-900 border-rose-300'
+                              }`}>
+                                {!scItem ? '✨ Auto-Register Pending' : scItem.status}
+                              </span>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setScannedCode('');
+                                  setSimulatedInput('');
+                                  showToast('Scan dismissed / cleared.', 'info');
+                                }}
+                                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                                title="Cancel / Clear this scan"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
                           </div>
 
                           {!scItem && (
@@ -4493,12 +4884,26 @@ export default function KiltHireApp() {
                               <p className="text-xs text-amber-900 font-bold">
                                 ⚡ Auto-detected unregistered QR! Click below to enter description & Adult/Kid sizing:
                               </p>
-                              <button
-                                onClick={() => setShowRegisterModal(true)}
-                                className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow transition flex items-center justify-center gap-2"
-                              >
-                                <PlusCircle className="w-4 h-4" /> Save Garment Description into Stock
-                              </button>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setShowRegisterModal(true)}
+                                  className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow transition flex items-center justify-center gap-2 cursor-pointer"
+                                >
+                                  <PlusCircle className="w-4 h-4" /> Save Garment Description into Stock
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setScannedCode('');
+                                    setSimulatedInput('');
+                                    showToast('Scan cancelled and cleared.', 'info');
+                                  }}
+                                  className="px-4 py-3 bg-white hover:bg-rose-50 border border-slate-300 hover:border-rose-300 text-slate-700 hover:text-rose-700 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
+                                >
+                                  <X className="w-4 h-4" /> Cancel Scan
+                                </button>
+                              </div>
                             </div>
                           )}
 
@@ -5125,9 +5530,9 @@ export default function KiltHireApp() {
                                         key={role}
                                         type="button"
                                         onClick={() => updateCurrentOutfit({ roleLabel: role })}
-                                        className={`px-2.5 py-1 text-[10px] font-extrabold rounded-lg transition border ${
+                                        className={`px-2.5 py-1 text-[10px] font-extrabold rounded-lg transition border cursor-pointer ${
                                           currentOutfit.roleLabel === role
-                                            ? 'bg-purple-600 text-white border-purple-700'
+                                            ? 'bg-purple-600 text-white border-purple-700 shadow-2xs'
                                             : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
                                         }`}
                                       >
@@ -5137,50 +5542,70 @@ export default function KiltHireApp() {
                                   })()}
                                 </div>
                               </div>
-
-                              {/* INDIVIDUAL INVOICE CHECKBOX */}
-                              <label className="flex items-center gap-2 text-xs font-bold text-purple-900 bg-purple-50 px-3 py-1.5 rounded-xl border border-purple-200 cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={currentOutfit.paidSeparately}
-                                  onChange={(e) => updateCurrentOutfit({ paidSeparately: e.target.checked })}
-                                  className="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500"
-                                />
-                                <span>☑️ Order paid separately (send own invoice)</span>
-                              </label>
                             </div>
 
-                            {/* WEARER CONTACT INFO */}
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                              <div>
-                                <label className="block text-slate-700 font-extrabold text-[11px] mb-1">Wearer Full Name</label>
-                                <input
-                                  type="text"
-                                  placeholder={activeIndex === 0 ? fittingForm.customerName || 'e.g. Gordon MacLeod' : 'e.g. James MacLeod'}
-                                  value={currentOutfit.wearerName}
-                                  onChange={(e) => updateCurrentOutfit({ wearerName: e.target.value })}
-                                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-bold text-slate-900 outline-none focus:border-amber-500"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-slate-700 font-extrabold text-[11px] mb-1">Wearer Email Address</label>
-                                <input
-                                  type="email"
-                                  placeholder={activeIndex === 0 ? fittingForm.customerEmail || 'e.g. wearer@example.com' : 'e.g. james@example.com'}
-                                  value={currentOutfit.wearerEmail}
-                                  onChange={(e) => updateCurrentOutfit({ wearerEmail: e.target.value })}
-                                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-bold text-slate-900 outline-none focus:border-amber-500"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-slate-700 font-extrabold text-[11px] mb-1">Wearer Mobile Phone</label>
-                                <input
-                                  type="text"
-                                  placeholder={activeIndex === 0 ? fittingForm.customerPhone || 'e.g. 07700 900123' : 'e.g. 07700 900456'}
-                                  value={currentOutfit.wearerPhone}
-                                  onChange={(e) => updateCurrentOutfit({ wearerPhone: e.target.value })}
-                                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-bold text-slate-900 outline-none focus:border-amber-500"
-                                />
+                            {/* WEARER CONTACT INFO WITH DYNAMIC MANDATORY RULES */}
+                            <div className="space-y-2">
+                              {fittingForm.billingMode === 'SPLIT_INDIVIDUAL' && (
+                                <div className="p-2.5 bg-purple-100/70 border border-purple-300 rounded-xl text-[11px] font-bold text-purple-950 flex items-center gap-1.5">
+                                  <CreditCard className="w-4 h-4 text-purple-700 shrink-0" />
+                                  <span>
+                                    <strong>Individual Invoicing (Brevo):</strong> Full Name and Email Address are <u>mandatory</u> for each wearer so individual PayPal invoice links and order confirmations are emailed directly to them.
+                                  </span>
+                                </div>
+                              )}
+
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div>
+                                  <label className="block text-slate-700 font-extrabold text-[11px] mb-1">
+                                    Wearer Full Name <span className="text-rose-600 font-black">*</span>
+                                  </label>
+                                  <input
+                                    type="text"
+                                    required
+                                    placeholder={activeIndex === 0 ? fittingForm.customerName || 'e.g. Gordon MacLeod' : 'e.g. James MacLeod'}
+                                    value={currentOutfit.wearerName}
+                                    onChange={(e) => updateCurrentOutfit({ wearerName: e.target.value })}
+                                    className={`w-full bg-slate-50 border rounded-xl p-2.5 text-xs font-bold text-slate-900 outline-none ${
+                                      !currentOutfit.wearerName ? 'border-amber-300 focus:border-amber-500' : 'border-slate-300 focus:border-amber-500'
+                                    }`}
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-slate-700 font-extrabold text-[11px] mb-1">
+                                    Wearer Email Address {fittingForm.billingMode === 'SPLIT_INDIVIDUAL' ? (
+                                      <span className="text-rose-600 font-black">* (Required for Brevo Invoice)</span>
+                                    ) : (
+                                      <span className="text-slate-400 font-normal text-[10px]">(Optional)</span>
+                                    )}
+                                  </label>
+                                  <input
+                                    type="email"
+                                    required={fittingForm.billingMode === 'SPLIT_INDIVIDUAL'}
+                                    placeholder={activeIndex === 0 ? fittingForm.customerEmail || 'e.g. wearer@example.com' : 'e.g. james@example.com'}
+                                    value={currentOutfit.wearerEmail}
+                                    onChange={(e) => updateCurrentOutfit({ wearerEmail: e.target.value })}
+                                    className={`w-full rounded-xl p-2.5 text-xs font-bold outline-none ${
+                                      fittingForm.billingMode === 'SPLIT_INDIVIDUAL'
+                                        ? !currentOutfit.wearerEmail || !currentOutfit.wearerEmail.includes('@')
+                                          ? 'bg-purple-50/70 border-2 border-purple-400 text-purple-950 focus:border-purple-600'
+                                          : 'bg-white border-2 border-purple-300 text-slate-900 focus:border-purple-600'
+                                        : 'bg-slate-50 border border-slate-300 text-slate-900 focus:border-amber-500'
+                                    }`}
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-slate-700 font-extrabold text-[11px] mb-1">
+                                    Wearer Mobile Phone <span className="text-slate-400 font-normal text-[10px]">(Optional)</span>
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder={activeIndex === 0 ? fittingForm.customerPhone || 'e.g. 07700 900123' : 'e.g. 07700 900456'}
+                                    value={currentOutfit.wearerPhone}
+                                    onChange={(e) => updateCurrentOutfit({ wearerPhone: e.target.value })}
+                                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-bold text-slate-900 outline-none focus:border-amber-500"
+                                  />
+                                </div>
                               </div>
                             </div>
 
@@ -5250,6 +5675,131 @@ export default function KiltHireApp() {
                             {/* FIT-MATCHED STORE INVENTORY PICKER FOR CURRENT OUTFIT */}
                             <div className="space-y-2 pt-2 border-t border-slate-100">
                               {(() => {
+                                const isDatesConfirmed = Boolean(
+                                  fittingForm.collectionDate && 
+                                  fittingForm.returnDate && 
+                                  fittingForm.collectionDate <= fittingForm.returnDate
+                                );
+
+                                if (!isDatesConfirmed) {
+                                  return (
+                                    <div className="bg-slate-900 border-2 border-amber-500/70 rounded-3xl p-8 text-center space-y-4 shadow-xl my-2">
+                                      <div className="w-14 h-14 bg-amber-500/20 text-amber-400 rounded-2xl flex items-center justify-center mx-auto border border-amber-400/40 shadow-inner">
+                                        <Calendar className="w-7 h-7" />
+                                      </div>
+                                      <div className="space-y-1.5 max-w-md mx-auto">
+                                        <span className="px-3 py-1 bg-amber-500/20 text-amber-300 font-extrabold text-[11px] rounded-full border border-amber-400/40 inline-block">
+                                          🔒 Step 3 Inventory Locked
+                                        </span>
+                                        <h4 className="font-extrabold text-white text-base">Confirm Hire Dates in Step 1 to View Available Stock</h4>
+                                        <p className="text-xs text-slate-300 leading-relaxed">
+                                          To ensure zero double-bookings, store inventory and available bulk box quantities will dynamically unlock as soon as you select your <strong>Collection Date</strong> and <strong>Return Date</strong> above.
+                                        </p>
+                                      </div>
+                                      <div className="inline-flex items-center gap-2.5 bg-slate-800/90 text-amber-300 px-4 py-2.5 rounded-2xl text-xs font-bold border border-slate-700 shadow-sm">
+                                        <span className="text-slate-400">Step 1 Required Dates:</span>
+                                        <span className="font-mono text-white">
+                                          {fittingForm.collectionDate ? `Collection: ${fittingForm.collectionDate}` : 'Collection: [Not Set]'} • {fittingForm.returnDate ? `Return: ${fittingForm.returnDate}` : 'Return: [Not Set]'}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                }
+
+                                // Helper: Calculate item availability and remaining quantity on the confirmed hire dates
+                                const getItemAvailability = (item: KiltItem) => {
+                                  if (item.isOutsourcedDefault || item.id.startsWith('EXT-')) {
+                                    return { available: true, count: 999, total: 999, isBulk: false };
+                                  }
+
+                                  if (item.status === 'RETIRED' || item.status === 'NEEDS_CLEANING' || item.status === 'IN_REPAIR') {
+                                    return { available: false, count: 0, total: item.bulkTotal || 1, isBulk: !!item.isBulkPool };
+                                  }
+
+                                  if (item.isBulkPool) {
+                                    const bookedOnDates = pos.reduce((acc, p) => {
+                                      if (p.orderStatus === 'RETURNED_COMPLETED' || p.orderStatus === 'CANCELLED') return acc;
+                                      const pStart = p.hireStartDate || '';
+                                      const pEnd = p.hireEndDate || '';
+                                      if (!pStart || !pEnd) return acc;
+                                      if (pStart <= fittingForm.returnDate && pEnd >= fittingForm.collectionDate) {
+                                        return acc + (p.items || []).filter(it => it.qrCodeId === item.id).length;
+                                      }
+                                      return acc;
+                                    }, 0);
+
+                                    const pickedInOtherOutfits = fittingForm.outfits.reduce((acc, o, idx) => {
+                                      if (idx === activeIndex) return acc;
+                                      return acc + (o.selectedItemIds || []).filter(id => id === item.id).length;
+                                    }, 0);
+
+                                    const totalPool = item.bulkTotal || item.bulkQuantity || 1;
+                                    const remaining = Math.max(0, totalPool - bookedOnDates - pickedInOtherOutfits);
+                                    return { available: remaining > 0, count: remaining, total: totalPool, isBulk: true };
+                                  }
+
+                                  // Serialized single garment
+                                  const isBooked = pos.some(p => {
+                                    if (p.orderStatus === 'RETURNED_COMPLETED' || p.orderStatus === 'CANCELLED') return false;
+                                    if (!p.items || !Array.isArray(p.items)) return false;
+                                    if (!p.items.some(it => it.qrCodeId === item.id)) return false;
+                                    const pStart = p.hireStartDate || '';
+                                    const pEnd = p.hireEndDate || '';
+                                    if (!pStart || !pEnd) return false;
+                                    return pStart <= fittingForm.returnDate && pEnd >= fittingForm.collectionDate;
+                                  });
+
+                                  const isPickedInOtherOutfit = fittingForm.outfits.some((o, idx) => idx !== activeIndex && (o.selectedItemIds || []).includes(item.id));
+
+                                  const isAvailable = !isBooked && !isPickedInOtherOutfit;
+                                  return { available: isAvailable, count: isAvailable ? 1 : 0, total: 1, isBulk: false };
+                                };
+
+                                // Helper: Sizing fit evaluation against current outfit wearer measurements
+                                const getFitStatus = (item: KiltItem) => {
+                                  if (item.isOutsourcedDefault || item.id.startsWith('EXT-') || item.isBulkPool) {
+                                    return { isMatch: true, label: 'Standard Fit', diffText: '' };
+                                  }
+
+                                  const setting = pricingMatrix.find(p => (p.category || '').toLowerCase() === (item.category || '').toLowerCase());
+                                  const isAlterable = setting ? (setting.allowAlterations ?? (item.category === 'Kilts' || item.category === 'Jackets' || item.category === 'Waistcoats')) : (item.category === 'Kilts' || item.category === 'Jackets' || item.category === 'Waistcoats');
+
+                                  if (!isAlterable) {
+                                    return { isMatch: true, label: item.size || 'Standard Size', diffText: '' };
+                                  }
+
+                                  const sizeStr = (item.size || '').toUpperCase();
+                                  const cat = (item.category || '').toLowerCase();
+
+                                  if (cat.includes('kilt')) {
+                                    const match = sizeStr.match(/(\d{2})/);
+                                    if (match) {
+                                      const garmentWaist = parseInt(match[1]);
+                                      const userWaist = currentOutfit.waistInches;
+                                      if (!userWaist) return { isMatch: true, label: `Waist ${garmentWaist}"`, diffText: '' };
+                                      const diff = garmentWaist - userWaist;
+                                      if (diff === 0) return { isMatch: true, label: `Exact Waist ${garmentWaist}"`, diffText: 'Exact Fit' };
+                                      if (Math.abs(diff) <= 2) return { isMatch: true, label: `Near Fit ${garmentWaist}" (±${Math.abs(diff)}")`, diffText: `${diff > 0 ? '+' : ''}${diff}"` };
+                                      return { isMatch: false, label: `Waist ${garmentWaist}" (${diff > 0 ? '+' : ''}${diff}")`, diffText: `Needs Alteration (${diff > 0 ? '+' : ''}${diff}")` };
+                                    }
+                                  }
+
+                                  if (cat.includes('jacket') || cat.includes('waistcoat')) {
+                                    const match = sizeStr.match(/(\d{2})/);
+                                    if (match) {
+                                      const garmentChest = parseInt(match[1]);
+                                      const userChest = currentOutfit.chestInches;
+                                      if (!userChest) return { isMatch: true, label: `Chest ${garmentChest}"`, diffText: '' };
+                                      const diff = garmentChest - userChest;
+                                      if (diff === 0) return { isMatch: true, label: `Exact Chest ${garmentChest}"`, diffText: 'Exact Fit' };
+                                      if (Math.abs(diff) <= 2) return { isMatch: true, label: `Near Fit ${garmentChest}" (±${Math.abs(diff)}")`, diffText: `${diff > 0 ? '+' : ''}${diff}"` };
+                                      return { isMatch: false, label: `Chest ${garmentChest}" (${diff > 0 ? '+' : ''}${diff}")`, diffText: `Needs Alteration (${diff > 0 ? '+' : ''}${diff}")` };
+                                    }
+                                  }
+
+                                  return { isMatch: true, label: item.size || 'Standard Size', diffText: '' };
+                                };
+
                                 // Extract all available categories from Master Pricing Matrix + stock
                                 const availableCategoryOptions = Array.from(
                                   new Set([
@@ -5257,6 +5807,26 @@ export default function KiltHireApp() {
                                     ...items.map(it => it.category)
                                   ])
                                 ).filter(Boolean);
+
+                                // Base stock available on dates
+                                const allDateAvailableItems = items.filter(item => {
+                                  if (item.status === 'RETIRED') return false;
+                                  const isOutsourced = !!(item.isOutsourcedDefault || item.id.startsWith('EXT-'));
+                                  if (isOutsourced) return false;
+                                  const avail = getItemAvailability(item);
+                                  return avail.available;
+                                });
+
+                                const totalMatchedAvailableQuantity = allDateAvailableItems.reduce((acc, item) => {
+                                  if (!getFitStatus(item).isMatch) return acc;
+                                  const avail = getItemAvailability(item);
+                                  return acc + (avail.isBulk ? avail.count : 1);
+                                }, 0);
+
+                                const totalAllAvailableQuantity = allDateAvailableItems.reduce((acc, item) => {
+                                  const avail = getItemAvailability(item);
+                                  return acc + (avail.isBulk ? avail.count : 1);
+                                }, 0);
 
                                 const visibleItems = items.filter(item => {
                                   if (item.status === 'RETIRED') return false;
@@ -5270,49 +5840,82 @@ export default function KiltHireApp() {
 
                                   // ── REGULAR / ALL FILTER MODES ─────────────────────────────────
                                   // Always keep items selected for THIS outfit so staff can view/unpick
-                                  const isSelectedForThisOutfit = currentOutfit.selectedItemIds.includes(item.id);
+                                  const isSelectedForThisOutfit = (currentOutfit.selectedItemIds || []).includes(item.id);
                                   if (isSelectedForThisOutfit) return true;
 
                                   // Outsourced items only visible in OUTSOURCED filter mode
                                   if (isOutsourced) return false;
 
-                                  // Master Category Pricing Matrix Filter Dropdown
-                                  if (fittingCategoryFilter !== 'ALL' && item.category !== fittingCategoryFilter) {
+                                  // Master Category Pricing Matrix Filter Dropdown (Case-insensitive comparison)
+                                  if (fittingCategoryFilter !== 'ALL' && (item.category || '').trim().toLowerCase() !== fittingCategoryFilter.trim().toLowerCase()) {
                                     return false;
                                   }
 
-                                  // Hide items picked by another outfit in this same fitting order
-                                  const pickedByOtherOutfit = fittingForm.outfits.some((o, idx) => idx !== activeIndex && o.selectedItemIds.includes(item.id));
-                                  if (pickedByOtherOutfit) return false;
+                                  const avail = getItemAvailability(item);
+                                  if (!avail.available) return false;
 
-                                  // Hide items in laundry cleaning or repair workshop
-                                  if (item.status === 'NEEDS_CLEANING' || item.status === 'IN_REPAIR') return false;
-
-                                  // Hide items booked on another active Purchase Order for an overlapping date range
-                                  const hasDateConflict = pos.some(p => {
-                                    if (p.orderStatus === 'RETURNED_COMPLETED' || p.orderStatus === 'CANCELLED') return false;
-                                    const hasItem = p.items.some(it => it.qrCodeId === item.id);
-                                    if (!hasItem) return false;
-                                    const colDate = fittingForm.collectionDate;
-                                    const retDate = fittingForm.returnDate;
-                                    if (!colDate || !retDate) return false;
-                                    return p.hireStartDate <= retDate && p.hireEndDate >= colDate;
-                                  });
-
-                                  if (hasDateConflict) return false;
+                                  // Sizing filter mode (Matched vs All Alteration Override)
+                                  if (fittingSizeMode === 'MATCHED') {
+                                    const fit = getFitStatus(item);
+                                    if (!fit.isMatch) return false;
+                                  }
 
                                   return true;
                                 });
 
+                                const totalVisibleGarmentsCount = visibleItems.reduce((acc, item) => {
+                                  if (item.isOutsourcedDefault || item.id.startsWith('EXT-')) return acc + 1;
+                                  const avail = getItemAvailability(item);
+                                  return acc + (avail.isBulk ? avail.count : 1);
+                                }, 0);
+
                                 return (
                                   <>
-                                    <div className="flex flex-wrap items-center justify-between gap-2.5 bg-slate-900 text-white p-3 rounded-2xl shadow-md">
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="font-extrabold text-xs text-amber-400 flex items-center gap-1.5 shrink-0">
-                                          <Package className="w-4 h-4 text-emerald-400" /> Step 3: Garments for {currentOutfit.roleLabel}
-                                        </span>
+                                    <div className="space-y-3 bg-slate-900 text-white p-4 rounded-3xl shadow-xl">
+                                      {/* TOP BAR: STEP 3 TITLE + SIZING OVERRIDE TABS */}
+                                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <span className="font-extrabold text-sm text-amber-400 flex items-center gap-1.5 shrink-0">
+                                            <Package className="w-4 h-4 text-emerald-400" /> Step 3: Garments for {currentOutfit.roleLabel}
+                                          </span>
+                                          <span className="text-[11px] font-bold text-slate-400">
+                                            ({currentOutfit.wearerName || 'Party Member'} • Waist {currentOutfit.waistInches}" / Chest {currentOutfit.chestInches}")
+                                          </span>
+                                        </div>
 
-                                        {/* GARMENT CATEGORY SELECT DROPDOWN FROM MASTER PRICING MATRIX */}
+                                        {/* SIZING MATCH VS ALTERATIONS OVERRIDE TAB SWITCHER */}
+                                        <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                                          <button
+                                            type="button"
+                                            onClick={() => setFittingSizeMode('MATCHED')}
+                                            className={`px-3 py-1.5 rounded-lg font-extrabold text-xs transition flex items-center gap-1.5 cursor-pointer ${
+                                              fittingSizeMode === 'MATCHED'
+                                                ? 'bg-amber-400 text-slate-950 shadow-sm'
+                                                : 'text-slate-400 hover:text-slate-200'
+                                            }`}
+                                            title="Show items matching wearer measurements plus all one-size accessories"
+                                          >
+                                            <Target className="w-3.5 h-3.5" />
+                                            <span>🎯 Fit-Matched Sizing</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setFittingSizeMode('ALL_ALTERATION')}
+                                            className={`px-3 py-1.5 rounded-lg font-extrabold text-xs transition flex items-center gap-1.5 cursor-pointer ${
+                                              fittingSizeMode === 'ALL_ALTERATION'
+                                                ? 'bg-purple-600 text-white shadow-sm ring-1 ring-purple-400'
+                                                : 'text-purple-300 hover:text-white hover:bg-purple-900/30'
+                                            }`}
+                                            title="Override dimension filters to view and pick any stock item for in-house alterations"
+                                          >
+                                            <Scissors className="w-3.5 h-3.5 text-purple-300" />
+                                            <span>✂️ All Sizes / Custom Alterations</span>
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      {/* SECOND ROW: CATEGORY FILTER DROPDOWN + OUTFIT PICKS COUNTER */}
+                                      <div className="flex flex-wrap items-center justify-between gap-2.5">
                                         <div className="flex items-center gap-1.5 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700">
                                           <label className="text-[11px] font-extrabold text-amber-300 whitespace-nowrap">Filter Category:</label>
                                           <select
@@ -5327,63 +5930,90 @@ export default function KiltHireApp() {
                                             }}
                                             className="bg-slate-950 text-white font-extrabold text-xs px-3 py-1 rounded-lg border border-amber-400/50 outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer"
                                           >
-                                            <option value="ALL">✨ ALL Categories ({availableCategoryOptions.length} Matrix Types)</option>
+                                            <option value="ALL">✨ ALL Categories ({availableCategoryOptions.length} Types)</option>
                                             <option value="OUTSOURCED">🏬 Outsourced &amp; Sub-Hire Defaults ({items.filter(i => !!(i.isOutsourcedDefault || i.id.startsWith('EXT-'))).length} Always Available)</option>
                                             {availableCategoryOptions.map(catName => {
-                                              const availableInCat = items.filter(i => {
-                                                if (i.category !== catName || i.status === 'RETIRED' || i.status === 'NEEDS_CLEANING' || i.status === 'IN_REPAIR') return false;
+                                              const availableInCatQuantity = items.filter(i => {
+                                                if ((i.category || '').trim().toLowerCase() !== catName.trim().toLowerCase() || i.status === 'RETIRED') return false;
                                                 if (!!(i.isOutsourcedDefault || i.id.startsWith('EXT-'))) return false;
-                                                const hasConflict = pos.some(p => {
-                                                  if (p.orderStatus === 'RETURNED_COMPLETED' || p.orderStatus === 'CANCELLED') return false;
-                                                  if (!p.items.some(it => it.qrCodeId === i.id)) return false;
-                                                  return p.hireStartDate <= fittingForm.returnDate && p.hireEndDate >= fittingForm.collectionDate;
-                                                });
-                                                return !hasConflict;
-                                              }).length;
+                                                return true;
+                                              }).reduce((acc, i) => {
+                                                const avail = getItemAvailability(i);
+                                                if (!avail.available) return acc;
+                                                return acc + (avail.isBulk ? avail.count : 1);
+                                              }, 0);
 
                                               return (
                                                 <option key={catName} value={catName}>
-                                                  {catName} ({availableInCat} Available)
+                                                  {catName} ({availableInCatQuantity} available on dates)
                                                 </option>
                                               );
                                             })}
                                           </select>
                                         </div>
+
+                                        <div className="flex items-center gap-2 shrink-0">
+                                          <span className="text-xs font-extrabold text-amber-950 bg-amber-400 px-3.5 py-1.5 rounded-full border border-amber-300 shadow-sm flex items-center gap-1.5">
+                                            <CheckCircle className="w-3.5 h-3.5 text-amber-950" />
+                                            {currentOutfit.selectedItemIds.length} Garments Added to Outfit
+                                          </span>
+                                        </div>
                                       </div>
 
-                                      <div className="flex items-center gap-2 shrink-0">
-                                        <span className="text-[11px] font-extrabold text-emerald-300 bg-emerald-950/90 px-3 py-1 rounded-full border border-emerald-500/50">
-                                          {fittingCategoryFilter === 'OUTSOURCED'
-                                            ? `${visibleItems.length} Always Available (Sub-Hire)`
-                                            : `${visibleItems.length} Available ${fittingCategoryFilter === 'ALL' ? 'Overall' : `in ${fittingCategoryFilter}`}`
-                                          }
-                                        </span>
-                                        <span className="text-xs font-extrabold text-amber-950 bg-amber-400 px-3 py-1 rounded-full border border-amber-300 shadow-sm">
-                                          {currentOutfit.selectedItemIds.length} Added to Order
-                                        </span>
-                                      </div>
+                                      {/* ALTERATION OVERRIDE BANNER NOTIFICATION */}
+                                      {fittingSizeMode === 'ALL_ALTERATION' && (
+                                        <div className="bg-purple-950/50 border border-purple-500/40 p-2.5 rounded-2xl flex items-center justify-between text-xs text-purple-200">
+                                          <div className="flex items-center gap-2">
+                                            <Scissors className="w-4 h-4 text-purple-400 shrink-0" />
+                                            <span>
+                                              <strong>Custom Alteration &amp; Dimension Override Active:</strong> Displaying all available stock regardless of wearer measurements ({currentOutfit.waistInches}" waist / {currentOutfit.chestInches}" chest). You can select any garment for in-house tailoring or buckle adjustments.
+                                            </span>
+                                          </div>
+                                          <span className="text-[10px] bg-purple-900 text-purple-200 border border-purple-400/50 px-2 py-0.5 rounded-md font-extrabold uppercase shrink-0">
+                                            Override ON
+                                          </span>
+                                        </div>
+                                      )}
                                     </div>
 
                                     {visibleItems.length === 0 ? (
-                                      <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-4 text-center space-y-1">
-                                        <p className="font-extrabold text-amber-900 text-xs">
+                                      <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-5 text-center space-y-2">
+                                        <p className="font-extrabold text-amber-900 text-sm">
                                           {fittingCategoryFilter === 'OUTSOURCED'
                                             ? '🏬 No Outsourced Sub-Hire Items Set Up Yet'
-                                            : `⚠️ No Available Garments in ${fittingCategoryFilter === 'ALL' ? 'Stock' : fittingCategoryFilter} for Selected Hire Period`
+                                            : fittingSizeMode === 'MATCHED'
+                                              ? `⚠️ No Exact / Near Size Match in ${fittingCategoryFilter === 'ALL' ? 'Stock' : fittingCategoryFilter} for ${currentOutfit.waistInches}" Waist / ${currentOutfit.chestInches}" Chest`
+                                              : `⚠️ No Available Garments in ${fittingCategoryFilter === 'ALL' ? 'Stock' : fittingCategoryFilter} for Selected Hire Period`
                                           }
                                         </p>
-                                        <p className="text-[11px] text-amber-800">
-                                          {fittingCategoryFilter === 'OUTSOURCED'
-                                            ? 'Go to Stock Inventory → Outsourced & Sub-Hire Defaults tab to add your first fallback item.'
-                                            : <>All stock in <strong>{fittingCategoryFilter === 'ALL' ? 'all categories' : fittingCategoryFilter}</strong> is currently on hire or reserved between <strong>{fittingForm.collectionDate}</strong> and <strong>{fittingForm.returnDate}</strong>. Select a different category or adjust the hire dates.</>
-                                          }
+                                        <p className="text-xs text-amber-800 max-w-lg mx-auto leading-relaxed">
+                                          {fittingCategoryFilter === 'OUTSOURCED' ? (
+                                            'Go to Stock Inventory → Outsourced & Sub-Hire Defaults tab to add your first fallback item.'
+                                          ) : fittingSizeMode === 'MATCHED' ? (
+                                            <>
+                                              Switch to the <strong className="text-purple-900 bg-purple-100 px-1.5 py-0.5 rounded">✂️ All Sizes / Alterations</strong> tab above to view other sizes you can tailor or alter for this customer, or select Outsourced Sub-Hire.
+                                            </>
+                                          ) : (
+                                            <>All stock in <strong>{fittingCategoryFilter === 'ALL' ? 'all categories' : fittingCategoryFilter}</strong> is currently on hire or reserved between <strong>{fittingForm.collectionDate}</strong> and <strong>{fittingForm.returnDate}</strong>. Select a different category or adjust the hire dates.</>
+                                          )}
                                         </p>
+                                        {fittingSizeMode === 'MATCHED' && (
+                                          <button
+                                            type="button"
+                                            onClick={() => setFittingSizeMode('ALL_ALTERATION')}
+                                            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-xs rounded-xl shadow transition inline-flex items-center gap-1.5 cursor-pointer"
+                                          >
+                                            <Scissors className="w-4 h-4" /> Switch to All Sizes / Alterations Mode
+                                          </button>
+                                        )}
                                       </div>
                                     ) : (
                                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-[540px] min-h-[380px] overflow-y-auto p-1.5 border border-slate-200 rounded-2xl bg-slate-50/50">
                                         {visibleItems.map((item) => {
                                           const isSelected = currentOutfit.selectedItemIds.includes(item.id);
                                           const isItemOutsourced = !!(item.isOutsourcedDefault || item.id.startsWith('EXT-'));
+                                          const avail = getItemAvailability(item);
+                                          const fit = getFitStatus(item);
 
                                           return (
                                             <div 
@@ -5393,26 +6023,71 @@ export default function KiltHireApp() {
                                                   ? 'bg-amber-50 border-amber-400 shadow-md ring-2 ring-amber-400/50' 
                                                   : isItemOutsourced
                                                     ? 'bg-indigo-50/60 border-indigo-300 hover:border-indigo-400 ring-1 ring-indigo-200'
-                                                    : 'bg-white border-slate-200 hover:border-slate-300 shadow-xs'
+                                                    : !fit.isMatch
+                                                      ? 'bg-purple-50/40 border-purple-200 hover:border-purple-300 shadow-xs'
+                                                      : 'bg-white border-slate-200 hover:border-slate-300 shadow-xs'
                                               }`}
                                             >
-                                              <div>
+                                              <div className="space-y-1.5">
                                                 <div className="flex items-center justify-between mb-1 gap-1">
                                                   <span className="font-mono font-extrabold text-amber-900 text-[11px] bg-amber-100 px-2 py-0.5 rounded border border-amber-300 shrink-0">{item.id}</span>
                                                   {isSelected ? (
                                                     <span className="text-[10px] font-extrabold text-amber-900 bg-amber-200 px-2 py-0.5 rounded-full border border-amber-300 truncate">✓ Added to Order</span>
                                                   ) : isItemOutsourced ? (
                                                     <span className="text-[10px] font-extrabold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full border border-indigo-200 shrink-0">🏬 Sub-Hire</span>
+                                                  ) : !fit.isMatch ? (
+                                                    <span className="text-[10px] font-extrabold text-purple-900 bg-purple-100 px-2 py-0.5 rounded-full border border-purple-300 shrink-0 flex items-center gap-1 shadow-2xs">
+                                                      ✂️ Alteration
+                                                    </span>
+                                                  ) : avail.isBulk ? (
+                                                    <span className="text-[10px] font-black text-emerald-950 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-300 shrink-0 shadow-2xs">
+                                                      📦 {avail.count} in stock
+                                                    </span>
                                                   ) : (
-                                                    <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">Available</span>
+                                                    <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">
+                                                      ✓ 1 in stock
+                                                    </span>
                                                   )}
                                                 </div>
 
                                                 <h5 className="font-extrabold text-slate-900 text-xs leading-snug">{item.name}</h5>
                                                 <p className="text-[10px] text-slate-500 mt-0.5">{item.category} • {item.tartanOrColour}</p>
-                                                <p className="text-[10px] font-bold text-amber-900 mt-0.5">Size: {item.size}</p>
+                                                
+                                                <div className="flex items-center justify-between text-[10px] font-bold text-amber-900 mt-0.5">
+                                                  <span>{item.isBulkPool ? `Container: ${item.boxNumber || 'Box 1'}` : `Size: ${item.size}`}</span>
+                                                  {!item.isBulkPool && (
+                                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-black ${
+                                                      fit.isMatch 
+                                                        ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' 
+                                                        : 'bg-purple-100 text-purple-900 border border-purple-300'
+                                                    }`}>
+                                                      {fit.label}
+                                                    </span>
+                                                  )}
+                                                </div>
+
                                                 {isItemOutsourced && item.outsourcedSupplier && (
                                                   <p className="text-[10px] font-bold text-indigo-600 mt-0.5">Supplier: {item.outsourcedSupplier}</p>
+                                                )}
+
+                                                {/* QUANTITY IN STOCK DISPLAY FOR BULK ITEMS */}
+                                                {avail.isBulk && (
+                                                  <div className="bg-emerald-50/90 border border-emerald-200 p-2 rounded-xl space-y-1 shadow-2xs">
+                                                    <div className="flex justify-between text-[11px] font-black text-emerald-950">
+                                                      <span>📦 {item.boxNumber || 'Box 1'} Availability:</span>
+                                                      <span className="text-emerald-800">{avail.count} available on dates</span>
+                                                    </div>
+                                                    <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden flex">
+                                                      <div 
+                                                        className="h-full bg-emerald-500 transition-all" 
+                                                        style={{ width: `${Math.min(100, Math.max(0, (avail.count / (avail.total || 1)) * 100))}%` }} 
+                                                      />
+                                                    </div>
+                                                    <div className="text-[9px] text-slate-600 flex justify-between font-bold">
+                                                      <span>{avail.count} in Shop</span>
+                                                      <span>{avail.total} Total Pool</span>
+                                                    </div>
+                                                  </div>
                                                 )}
                                               </div>
 
@@ -5427,13 +6102,15 @@ export default function KiltHireApp() {
                                                       updateCurrentOutfit({ selectedItemIds: [...currentOutfit.selectedItemIds, item.id] });
                                                     }
                                                   }}
-                                                  className={`px-3 py-1.5 rounded-xl font-extrabold text-xs transition ${
+                                                  className={`px-3 py-1.5 rounded-xl font-extrabold text-xs transition cursor-pointer ${
                                                     isSelected 
                                                       ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-sm' 
-                                                      : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
+                                                      : !fit.isMatch
+                                                        ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-sm'
+                                                        : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
                                                   }`}
                                                 >
-                                                  {isSelected ? '✓ Added to Order' : '+ Add to Order'}
+                                                  {isSelected ? '✓ Added to Order' : !fit.isMatch ? '✂️ Add with Alteration' : '+ Add to Order'}
                                                 </button>
                                               </div>
                                             </div>
@@ -5637,25 +6314,81 @@ export default function KiltHireApp() {
 
                   {staffStockSubTab === 'SHOP_STOCK' ? (
                     <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-5">
-                  <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
-                    <div>
-                      <h3 className="text-base font-extrabold text-emerald-900 flex items-center gap-2">
-                        <Package className="w-5 h-5 text-emerald-600" /> Garments Available in Store Right Now ({getFilteredItems(availableItems, assistantSizeFilter, assistantCategoryFilter, assistantTartanFilter).length})
-                      </h3>
-                      <p className="text-xs text-slate-500">Stock physically in shop available to hire immediately. Filter by Master Pricing Category & Demographic.</p>
-                    </div>
+                      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                        <div>
+                          <h3 className="text-base font-extrabold text-emerald-900 flex items-center gap-2">
+                            <Package className="w-5 h-5 text-emerald-600" /> Garments Available in Store Right Now ({getFilteredItems(availableItems, assistantSizeFilter, assistantCategoryFilter, assistantTartanFilter).length})
+                          </h3>
+                          <p className="text-xs text-slate-500">Stock physically in shop available to hire immediately. Filter by Master Pricing Category &amp; Demographic.</p>
+                        </div>
 
-                    <div className="relative w-full sm:w-64">
-                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                      <input 
-                        type="text"
-                        placeholder="Search size, tartan, name, ID..."
-                        value={assistantSearch}
-                        onChange={e => setAssistantSearch(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-900 outline-none focus:border-amber-500 font-medium"
-                      />
-                    </div>
-                  </div>
+                        <div className="flex flex-wrap items-center gap-3">
+                          {/* 3-WAY VIEW MODE SWITCHER (Cards, Small Thumbs, Table) */}
+                          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 gap-1 text-xs font-extrabold">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setStaffStockViewMode('cards');
+                                if (typeof window !== 'undefined') localStorage.setItem('kilt_stock_view_mode', 'cards');
+                              }}
+                              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+                                staffStockViewMode === 'cards'
+                                  ? 'bg-white text-slate-950 shadow-sm border border-slate-200/80 font-black'
+                                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                              }`}
+                              title="Detailed Cards Grid View"
+                            >
+                              <LayoutGrid className="w-4 h-4 text-emerald-600" />
+                              <span>Cards</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setStaffStockViewMode('compact');
+                                if (typeof window !== 'undefined') localStorage.setItem('kilt_stock_view_mode', 'compact');
+                              }}
+                              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+                                staffStockViewMode === 'compact'
+                                  ? 'bg-white text-slate-950 shadow-sm border border-slate-200/80 font-black'
+                                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                              }`}
+                              title="Compact Smaller Thumbnails Grid"
+                            >
+                              <Grid className="w-4 h-4 text-amber-600" />
+                              <span>Small Thumbs</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setStaffStockViewMode('table');
+                                if (typeof window !== 'undefined') localStorage.setItem('kilt_stock_view_mode', 'table');
+                              }}
+                              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+                                staffStockViewMode === 'table'
+                                  ? 'bg-white text-slate-950 shadow-sm border border-slate-200/80 font-black'
+                                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                              }`}
+                              title="High-Density Table List View"
+                            >
+                              <TableIcon className="w-4 h-4 text-indigo-600" />
+                              <span>Table</span>
+                            </button>
+                          </div>
+
+                          <div className="relative w-full sm:w-64">
+                            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                            <input 
+                              type="text"
+                              placeholder="Search size, tartan, name, ID..."
+                              value={assistantSearch}
+                              onChange={e => setAssistantSearch(e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-900 outline-none focus:border-amber-500 font-medium"
+                            />
+                          </div>
+                        </div>
+                      </div>
 
                   {/* MASTER PRICING MATRIX CATEGORY & AGE DEMOGRAPHIC FILTERS TOOLBAR */}
                   <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-3 shadow-inner">
@@ -5781,84 +6514,365 @@ export default function KiltHireApp() {
 
                     return (
                       <div className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {paginatedAvailable.map(item => (
-                            <div key={item.id} className="p-4 bg-slate-50 border border-slate-200 hover:border-emerald-400 rounded-2xl space-y-3 transition shadow-sm">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="font-mono font-extrabold text-amber-800 text-xs bg-white px-2 py-0.5 rounded border border-slate-200">
-                                    {item.id}
-                                  </span>
-                                  <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded flex items-center gap-1 ${item.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900 border border-purple-300' : 'bg-blue-100 text-blue-900 border border-blue-300'}`}>
-                                    {item.sizeGroup === 'Kid' ? <Baby className="w-3 h-3" /> : <User className="w-3 h-3" />}
-                                    {item.sizeGroup}
-                                  </span>
-                                </div>
-                                <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full">
-                                  ✓ Ready in Store
-                                </span>
-                              </div>
-
-                              <div>
+                        {/* VIEW MODE 1: STANDARD CARDS */}
+                        {staffStockViewMode === 'cards' && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {paginatedAvailable.map(item => (
+                              <div key={item.id} className="p-4 bg-slate-50 border border-slate-200 hover:border-emerald-400 rounded-2xl space-y-3 transition shadow-sm">
                                 <div className="flex items-center justify-between">
-                                  <h4 className="font-bold text-slate-900 text-sm">{item.name}</h4>
-                                  <span className="text-[10px] font-extrabold bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded">
-                                    {item.category}
-                                  </span>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-mono font-extrabold text-amber-800 text-xs bg-white px-2 py-0.5 rounded border border-slate-200">
+                                      {item.id}
+                                    </span>
+                                    <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded flex items-center gap-1 ${item.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900 border border-purple-300' : 'bg-blue-100 text-blue-900 border border-blue-300'}`}>
+                                      {item.sizeGroup === 'Kid' ? <Baby className="w-3 h-3" /> : <User className="w-3 h-3" />}
+                                      {item.sizeGroup}
+                                    </span>
+                                  </div>
+                                  {item.isBulkPool ? (
+                                    <span className="px-2.5 py-0.5 text-[10px] font-black bg-emerald-100 text-emerald-950 border border-emerald-400 rounded-full flex items-center gap-1 shadow-2xs">
+                                      📦 {item.bulkQuantity ?? item.bulkTotal ?? 1} / {item.bulkTotal ?? item.bulkQuantity ?? 1} Available
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full">
+                                      ✓ Ready in Store
+                                    </span>
+                                  )}
                                 </div>
-                                <p className="text-xs text-slate-600">{item.tartanOrColour} ({item.size})</p>
-                              </div>
 
-                              <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-200">
-                                <span className="font-bold text-amber-800">£{item.hireRate} hire</span>
-                                <span className="text-[11px] text-emerald-700 font-semibold">£{item.depositAmount} dep</span>
-                              </div>
+                                <div>
+                                  <div className="flex items-center justify-between">
+                                    <h4 className="font-bold text-slate-900 text-sm">{item.name}</h4>
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-[10px] font-extrabold bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded">
+                                        {item.category}
+                                      </span>
+                                      {(() => {
+                                        const setting = pricingMatrix.find(p => p.category.toLowerCase() === item.category.toLowerCase());
+                                        const isAlterable = setting ? (setting.allowAlterations ?? (item.category === 'Kilts' || item.category === 'Jackets' || item.category === 'Waistcoats')) : (item.category === 'Kilts' || item.category === 'Jackets' || item.category === 'Waistcoats');
+                                        return isAlterable ? (
+                                          <span className="text-[9px] font-black bg-purple-100 text-purple-900 px-1.5 py-0.5 rounded border border-purple-200 flex items-center gap-0.5" title="Alterations / Made-to-Measure Supported">
+                                            <Scissors className="w-2.5 h-2.5" /> Alterable
+                                          </span>
+                                        ) : (
+                                          <span className="text-[9px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200" title="Fixed Sizing Accessory">
+                                            Fixed
+                                          </span>
+                                        );
+                                      })()}
+                                    </div>
+                                  </div>
+                                  <p className="text-xs text-slate-600">{item.tartanOrColour} ({item.isBulkPool ? `${item.boxNumber || 'Box 1'} Container` : item.size})</p>
+                                </div>
 
-                              <div className="bg-white p-2.5 rounded-xl border border-slate-200 space-y-2">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Quick Garment Actions:</span>
-                                <div className="grid grid-cols-2 gap-1.5">
+                                {item.isBulkPool && (
+                                  <div className="bg-emerald-50/80 border border-emerald-200 p-2.5 rounded-xl space-y-1.5 shadow-2xs">
+                                    <div className="flex justify-between text-xs font-black text-emerald-950">
+                                      <span>📦 {item.boxNumber || 'Box 1'} Stock Container:</span>
+                                      <span className="text-emerald-900">{item.bulkQuantity ?? 0} in shop ({item.bulkTotal ?? 0} total)</span>
+                                    </div>
+                                    <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden flex">
+                                      <div 
+                                        className="h-full bg-emerald-500 transition-all"
+                                        style={{ width: `${Math.min(100, Math.max(0, ((item.bulkQuantity || 0) / (item.bulkTotal || 1)) * 100))}%` }}
+                                      />
+                                      <div 
+                                        className="h-full bg-amber-500 transition-all"
+                                        style={{ width: `${Math.min(100, Math.max(0, (((item.bulkTotal || 0) - (item.bulkQuantity || 0)) / (item.bulkTotal || 1)) * 100))}%` }}
+                                      />
+                                    </div>
+                                    <div className="flex justify-between text-[10px] font-bold">
+                                      <span className="text-emerald-800 font-extrabold">{item.bulkQuantity ?? 0} Available to Hire</span>
+                                      <span className="text-amber-800">{Math.max(0, (item.bulkTotal || 0) - (item.bulkQuantity || 0))} out on hire</span>
+                                    </div>
+                                  </div>
+                                )}
+
+                                <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-200">
+                                  <span className="font-bold text-amber-800">£{item.hireRate} hire</span>
+                                  <span className="text-[11px] text-emerald-700 font-semibold">£{item.depositAmount} dep</span>
+                                </div>
+
+                                <div className="bg-white p-2.5 rounded-xl border border-slate-200 space-y-2">
+                                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Quick Garment Actions:</span>
+                                  <div className="grid grid-cols-2 gap-1.5">
+                                    <button
+                                      onClick={() => {
+                                        handleScanCode(item.id);
+                                        setShowCreatePoModal(true);
+                                      }}
+                                      className="py-1.5 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg shadow-sm transition text-center cursor-pointer"
+                                    >
+                                      Hire Out
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        handleScanCode(item.id);
+                                        setShowSendRepairModal(true);
+                                      }}
+                                      className="py-1.5 px-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] rounded-lg shadow-sm transition text-center cursor-pointer"
+                                    >
+                                      Send Repair
+                                    </button>
+                                    <button
+                                      onClick={() => setShowEditItemModal(item)}
+                                      className="py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-[11px] rounded-lg border border-slate-200 transition flex items-center justify-center gap-1 cursor-pointer"
+                                    >
+                                      <Edit3 className="w-3 h-3 text-amber-600" /> Edit Specs
+                                    </button>
+                                    <button
+                                      onClick={() => setShowRemoveRotationModal(item)}
+                                      className="py-1.5 px-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[11px] rounded-lg border border-rose-200 transition flex items-center justify-center gap-1 cursor-pointer"
+                                    >
+                                      <Trash2 className="w-3 h-3 text-rose-600" /> Remove Stock
+                                    </button>
+                                    <button
+                                      onClick={() => handleManualSendToLaundry(item.id)}
+                                      className="py-1.5 px-2 bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-[11px] rounded-lg shadow-sm transition text-center col-span-2 flex items-center justify-center gap-1 cursor-pointer"
+                                    >
+                                      <Sparkles className="w-3 h-3 text-cyan-200" /> Send to Dry Cleaners
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* VIEW MODE 2: COMPACT SMALL THUMBNAILS GRID */}
+                        {staffStockViewMode === 'compact' && (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                            {paginatedAvailable.map(item => (
+                              <div 
+                                key={item.id} 
+                                className="p-3 bg-slate-50 hover:bg-white border border-slate-200 hover:border-emerald-500 rounded-2xl space-y-2.5 transition shadow-xs hover:shadow-md flex flex-col justify-between group"
+                              >
+                                <div className="space-y-1.5">
+                                  {/* Top Bar: QR Code & Demographic Badge */}
+                                  <div className="flex items-center justify-between gap-1">
+                                    <span className="font-mono font-black text-amber-900 text-[10px] bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/80 truncate">
+                                      {item.id}
+                                    </span>
+                                    <span className={`px-1.5 py-0.5 text-[9px] font-extrabold rounded flex items-center gap-0.5 shrink-0 ${
+                                      item.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900' : 'bg-blue-100 text-blue-900'
+                                    }`}>
+                                      {item.sizeGroup === 'Kid' ? <Baby className="w-2.5 h-2.5" /> : <User className="w-2.5 h-2.5" />}
+                                      {item.sizeGroup === 'Kid' ? 'Kid' : 'Adult'}
+                                    </span>
+                                  </div>
+
+                                  {/* Name & Category */}
+                                  <div>
+                                    <h4 className="font-extrabold text-slate-900 text-xs line-clamp-1 group-hover:text-emerald-700 transition" title={item.name}>
+                                      {item.name}
+                                    </h4>
+                                    <div className="flex items-center justify-between text-[10px] text-slate-500 mt-0.5">
+                                      <span className="truncate">{item.tartanOrColour || item.category}</span>
+                                      {item.isBulkPool ? (
+                                        <span className="font-black text-emerald-950 bg-emerald-100 px-1.5 py-0.5 rounded text-[9px] shrink-0 ml-1 border border-emerald-300">
+                                          📦 {item.bulkQuantity ?? 0}/{item.bulkTotal ?? 0} in {item.boxNumber || 'Box'}
+                                        </span>
+                                      ) : (
+                                        <span className="font-bold text-slate-700 shrink-0 ml-1">{item.size}</span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Pricing Pill */}
+                                  <div className="flex items-center justify-between text-[11px] bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-2xs">
+                                    <span className="font-black text-amber-900">£{item.hireRate}</span>
+                                    <span className="text-[10px] text-emerald-700 font-bold">dep £{item.depositAmount}</span>
+                                  </div>
+                                </div>
+
+                                {/* Compact Actions */}
+                                <div className="pt-1.5 border-t border-slate-200 space-y-1">
                                   <button
+                                    type="button"
                                     onClick={() => {
                                       handleScanCode(item.id);
                                       setShowCreatePoModal(true);
                                     }}
-                                    className="py-1.5 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg shadow-sm transition text-center cursor-pointer"
+                                    className="w-full py-1.5 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] rounded-lg shadow-2xs transition flex items-center justify-center gap-1 cursor-pointer"
                                   >
-                                    Hire Out
+                                    <ShoppingCart className="w-3 h-3" /> Hire Out
                                   </button>
-                                  <button
-                                    onClick={() => {
-                                      handleScanCode(item.id);
-                                      setShowSendRepairModal(true);
-                                    }}
-                                    className="py-1.5 px-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] rounded-lg shadow-sm transition text-center cursor-pointer"
-                                  >
-                                    Send Repair
-                                  </button>
-                                  <button
-                                    onClick={() => setShowEditItemModal(item)}
-                                    className="py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-[11px] rounded-lg border border-slate-200 transition flex items-center justify-center gap-1 cursor-pointer"
-                                  >
-                                    <Edit3 className="w-3 h-3 text-amber-600" /> Edit Specs
-                                  </button>
-                                  <button
-                                    onClick={() => setShowRemoveRotationModal(item)}
-                                    className="py-1.5 px-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[11px] rounded-lg border border-rose-200 transition flex items-center justify-center gap-1 cursor-pointer"
-                                  >
-                                    <Trash2 className="w-3 h-3 text-rose-600" /> Remove Stock
-                                  </button>
-                                  <button
-                                    onClick={() => handleManualSendToLaundry(item.id)}
-                                    className="py-1.5 px-2 bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-[11px] rounded-lg shadow-sm transition text-center col-span-2 flex items-center justify-center gap-1 cursor-pointer"
-                                  >
-                                    <Sparkles className="w-3 h-3 text-cyan-200" /> Send to Dry Cleaners
-                                  </button>
+                                  <div className="grid grid-cols-3 gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => setShowEditItemModal(item)}
+                                      className="p-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-md transition text-center flex items-center justify-center cursor-pointer"
+                                      title="Edit Garment Specs"
+                                    >
+                                      <Edit3 className="w-3 h-3 text-amber-600" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        handleScanCode(item.id);
+                                        setShowSendRepairModal(true);
+                                      }}
+                                      className="p-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-md transition text-center flex items-center justify-center cursor-pointer"
+                                      title="Send to Repair"
+                                    >
+                                      <Wrench className="w-3 h-3" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleManualSendToLaundry(item.id)}
+                                      className="p-1 bg-cyan-50 hover:bg-cyan-100 text-cyan-700 border border-cyan-200 rounded-md transition text-center flex items-center justify-center cursor-pointer"
+                                      title="Send to Dry Cleaners"
+                                    >
+                                      <Sparkles className="w-3 h-3" />
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
+                            ))}
+                          </div>
+                        )}
 
+                        {/* VIEW MODE 3: HIGH-DENSITY DATA TABLE */}
+                        {staffStockViewMode === 'table' && (
+                          <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs bg-white">
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left text-xs border-collapse">
+                                <thead className="bg-slate-100 border-b border-slate-200 text-[11px] font-extrabold text-slate-600 uppercase tracking-wider">
+                                  <tr>
+                                    <th className="py-3 px-4 whitespace-nowrap">QR Code ID</th>
+                                    <th className="py-3 px-4 whitespace-nowrap">Category</th>
+                                    <th className="py-3 px-4 min-w-[320px] lg:min-w-[440px] w-2/5">Garment Title &amp; Tartan</th>
+                                    <th className="py-3 px-4 min-w-[140px] whitespace-nowrap">Demographic &amp; Size</th>
+                                    <th className="py-3 px-4 text-right whitespace-nowrap">Hire Rate</th>
+                                    <th className="py-3 px-4 text-right whitespace-nowrap">Deposit</th>
+                                    <th className="py-3 px-4 text-center whitespace-nowrap">Status / Available</th>
+                                    <th className="py-3 px-4 text-right whitespace-nowrap">Quick Actions</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
+                                  {paginatedAvailable.map(item => (
+                                    <tr key={item.id} className="hover:bg-emerald-50/40 transition">
+                                      <td className="py-3 px-4 font-mono font-black text-amber-900 whitespace-nowrap">
+                                        <span className="bg-amber-50 border border-amber-200 px-2 py-0.5 rounded text-xs">
+                                          {item.id}
+                                        </span>
+                                      </td>
+                                      <td className="py-3 px-4 whitespace-nowrap">
+                                        <div className="flex items-center gap-1">
+                                          <span className="px-2 py-0.5 bg-slate-100 text-slate-800 font-bold rounded text-[11px] border border-slate-200">
+                                            {item.category}
+                                          </span>
+                                          {(() => {
+                                            const setting = pricingMatrix.find(p => p.category.toLowerCase() === item.category.toLowerCase());
+                                            const isAlterable = setting ? (setting.allowAlterations ?? (item.category === 'Kilts' || item.category === 'Jackets' || item.category === 'Waistcoats')) : (item.category === 'Kilts' || item.category === 'Jackets' || item.category === 'Waistcoats');
+                                            return isAlterable ? (
+                                              <span className="text-[9px] font-black bg-purple-100 text-purple-900 px-1.5 py-0.5 rounded border border-purple-200 flex items-center gap-0.5" title="Alterations / Made-to-Measure Supported">
+                                                <Scissors className="w-2.5 h-2.5 text-purple-700" /> Alterable
+                                              </span>
+                                            ) : (
+                                              <span className="text-[9px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200" title="Fixed Sizing Accessory">
+                                                Fixed
+                                              </span>
+                                            );
+                                          })()}
+                                        </div>
+                                      </td>
+                                      <td className="py-3 px-4 min-w-[320px] lg:min-w-[440px]">
+                                        <div className="font-extrabold text-slate-900 text-sm leading-snug">{item.name}</div>
+                                        <div className="text-xs text-slate-500 font-semibold mt-0.5">{item.tartanOrColour || 'Standard'}</div>
+                                      </td>
+                                      <td className="py-3 px-4 whitespace-nowrap">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded flex items-center gap-1 ${
+                                            item.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900 border border-purple-300' : 'bg-blue-100 text-blue-900 border border-blue-300'
+                                          }`}>
+                                            {item.sizeGroup === 'Kid' ? <Baby className="w-3 h-3" /> : <User className="w-3 h-3" />}
+                                            {item.sizeGroup}
+                                          </span>
+                                          <span className="font-bold text-slate-700">
+                                            {item.isBulkPool ? `${item.boxNumber || 'Box 1'} Bin` : item.size}
+                                          </span>
+                                        </div>
+                                      </td>
+                                      <td className="py-3 px-4 text-right font-mono font-black text-amber-900 whitespace-nowrap">
+                                        £{(item.hireRate || 0).toFixed(2)}
+                                      </td>
+                                      <td className="py-3 px-4 text-right font-mono font-semibold text-emerald-700 whitespace-nowrap">
+                                        £{(item.depositAmount || 0).toFixed(2)}
+                                      </td>
+                                      <td className="py-3 px-4 text-center whitespace-nowrap">
+                                        {item.isBulkPool ? (
+                                          <div>
+                                            <span className="px-2.5 py-1 text-[10px] font-black bg-emerald-100 text-emerald-950 border border-emerald-400 rounded-full inline-flex items-center gap-1 shadow-2xs">
+                                              📦 {item.bulkQuantity ?? 0} / {item.bulkTotal ?? 0} In Stock
+                                            </span>
+                                            <span className="block text-[10px] font-bold text-amber-800 mt-0.5">
+                                              {item.boxNumber || 'Box 1'} ({Math.max(0, (item.bulkTotal || 0) - (item.bulkQuantity || 0))} on hire)
+                                            </span>
+                                          </div>
+                                        ) : (
+                                          <span className="px-2.5 py-1 text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full">
+                                            ✓ Ready in Store
+                                          </span>
+                                        )}
+                                      </td>
+                                      <td className="py-3 px-4 text-right whitespace-nowrap">
+                                        <div className="flex items-center justify-end gap-1.5">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              handleScanCode(item.id);
+                                              setShowCreatePoModal(true);
+                                            }}
+                                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-lg shadow-2xs transition cursor-pointer flex items-center gap-1"
+                                            title="Hire Out Item"
+                                          >
+                                            <ShoppingCart className="w-3 h-3" /> Hire
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setShowEditItemModal(item)}
+                                            className="p-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition border border-slate-200 cursor-pointer"
+                                            title="Edit Specs"
+                                          >
+                                            <Edit3 className="w-3.5 h-3.5 text-amber-600" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              handleScanCode(item.id);
+                                              setShowSendRepairModal(true);
+                                            }}
+                                            className="p-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg transition border border-rose-200 cursor-pointer"
+                                            title="Send to Repair"
+                                          >
+                                            <Wrench className="w-3.5 h-3.5" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleManualSendToLaundry(item.id)}
+                                            className="p-1 bg-cyan-50 hover:bg-cyan-100 text-cyan-700 rounded-lg transition border border-cyan-200 cursor-pointer"
+                                            title="Dry Cleaning"
+                                          >
+                                            <Sparkles className="w-3.5 h-3.5" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setShowRemoveRotationModal(item)}
+                                            className="p-1 bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition border border-slate-200 cursor-pointer"
+                                            title="Remove Stock"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
                             </div>
-                          ))}
-                        </div>
+                          </div>
+                        )}
 
                         {/* INTERACTIVE PAGINATION CONTROLS FOOTER */}
                         <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-600 font-medium shadow-2xs">
@@ -6306,9 +7320,299 @@ export default function KiltHireApp() {
                     </div>
                   </div>
 
+                  {/* SEARCH, FILTER & QUEUE SORTING TOOLBAR */}
+                  {(() => {
+                    const activePosList = pos.filter(p => p.orderStatus !== 'CANCELLED' && p.orderStatus !== 'RETURNED_COMPLETED' && !p.items.every(i => i.returned));
+                    const countPick = activePosList.filter(p => p.orderStatus === 'DEPOSIT_PAID_CONFIRMED' || p.orderStatus === 'RESERVED_PENDING_PAYMENT' || p.orderStatus === 'ASSEMBLY_DUE').length;
+                    const countReady = activePosList.filter(p => p.orderStatus === 'READY_FOR_COLLECTION').length;
+                    const countOnHire = activePosList.filter(p => p.orderStatus === 'OUT_ON_HIRE').length;
+                    const countOverdue = activePosList.filter(p => p.orderStatus === 'OUT_ON_HIRE' && !p.items.every(i => i.returned) && getOverdueStatus(p.hireEndDate, false).level !== 'ON_TIME').length;
+                    const countCapped = activePosList.filter(p => p.fullRigoutCapApplied).length;
+
+                    return (
+                      <div className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 space-y-3.5 shadow-2xs">
+                        {/* TOP ROW: SEARCH BAR + SORT SELECTOR + TIMEFRAME */}
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                          {/* SEARCH INPUT */}
+                          <div className="md:col-span-6 relative">
+                            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                            <input
+                              type="text"
+                              placeholder="Search by PO #, Customer Name, Phone, Email, QR Tag, Tartan..."
+                              value={poSearchQuery}
+                              onChange={e => setPoSearchQuery(e.target.value)}
+                              className="w-full pl-10 pr-9 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200 shadow-2xs"
+                            />
+                            {poSearchQuery && (
+                              <button
+                                type="button"
+                                onClick={() => setPoSearchQuery('')}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                                title="Clear search"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+
+                          {/* QUEUE SORT SELECTOR */}
+                          <div className="md:col-span-3">
+                            <select
+                              value={poSortOption}
+                              onChange={e => setPoSortOption(e.target.value as any)}
+                              className="w-full py-2.5 px-3 bg-white border border-slate-300 rounded-xl text-xs font-extrabold text-slate-800 outline-none focus:border-amber-500 shadow-2xs cursor-pointer"
+                            >
+                              <option value="ACTION_DATE_ASC">⚡ Next in Queue (Soonest Action First)</option>
+                              <option value="HIRE_START_ASC">📅 Collection Date (Earliest First)</option>
+                              <option value="HIRE_START_DESC">📅 Collection Date (Latest First)</option>
+                              <option value="EVENT_DATE_ASC">🎪 Event Date (Earliest First)</option>
+                              <option value="RETURN_DUE_ASC">🚚 Return Due Date (Earliest First)</option>
+                              <option value="PO_NEWEST">🆕 Newest PO Created</option>
+                            </select>
+                          </div>
+
+                          {/* TIMEFRAME SELECTOR */}
+                          <div className="md:col-span-3">
+                            <select
+                              value={poDateRangeFilter}
+                              onChange={e => setPoDateRangeFilter(e.target.value as any)}
+                              className="w-full py-2.5 px-3 bg-white border border-slate-300 rounded-xl text-xs font-extrabold text-slate-800 outline-none focus:border-amber-500 shadow-2xs cursor-pointer"
+                            >
+                              <option value="ALL">🗓️ All Dates (Full Calendar)</option>
+                              <option value="TODAY">📅 Today's Actions</option>
+                              <option value="THIS_WEEK">📅 This Week</option>
+                              <option value="THIS_MONTH">📅 This Month</option>
+                              <option value="CUSTOM">🔍 Custom Date Range...</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* CUSTOM DATE RANGE ROW (IF SELECTED) */}
+                        {poDateRangeFilter === 'CUSTOM' && (
+                          <div className="flex flex-wrap items-center gap-3 p-2.5 bg-white rounded-xl border border-slate-300 text-xs">
+                            <span className="font-bold text-slate-600">From Date:</span>
+                            <input
+                              type="date"
+                              value={poCustomStartDate}
+                              onChange={e => setPoCustomStartDate(e.target.value)}
+                              className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-800 outline-none"
+                            />
+                            <span className="font-bold text-slate-600">To Date:</span>
+                            <input
+                              type="date"
+                              value={poCustomEndDate}
+                              onChange={e => setPoCustomEndDate(e.target.value)}
+                              className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-800 outline-none"
+                            />
+                          </div>
+                        )}
+
+                        {/* STAGE & STATUS FILTER PILLS */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/80">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setPoStageFilter('ALL')}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
+                                poStageFilter === 'ALL'
+                                  ? 'bg-slate-900 text-white shadow-2xs'
+                                  : 'bg-white text-slate-700 hover:bg-slate-200 border border-slate-300'
+                              }`}
+                            >
+                              All Active ({activePosList.length})
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setPoStageFilter('AWAITING_PICK')}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1 ${
+                                poStageFilter === 'AWAITING_PICK'
+                                  ? 'bg-amber-500 text-slate-950 shadow-2xs ring-2 ring-amber-400'
+                                  : 'bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-300'
+                              }`}
+                            >
+                              <span>📦 Awaiting Pick &amp; Pack</span>
+                              <span className="px-1.5 py-0.2 bg-white/80 rounded-full text-[10px] font-black">{countPick}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setPoStageFilter('READY_FOR_COLLECTION')}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1 ${
+                                poStageFilter === 'READY_FOR_COLLECTION'
+                                  ? 'bg-indigo-600 text-white shadow-2xs ring-2 ring-indigo-400'
+                                  : 'bg-indigo-50 text-indigo-900 hover:bg-indigo-100 border border-indigo-300'
+                              }`}
+                            >
+                              <span>🏷️ Ready for Collection</span>
+                              <span className="px-1.5 py-0.2 bg-white/80 rounded-full text-[10px] font-black">{countReady}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setPoStageFilter('OUT_ON_HIRE')}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1 ${
+                                poStageFilter === 'OUT_ON_HIRE'
+                                  ? 'bg-blue-600 text-white shadow-2xs ring-2 ring-blue-400'
+                                  : 'bg-blue-50 text-blue-900 hover:bg-blue-100 border border-blue-300'
+                              }`}
+                            >
+                              <span>🚚 Out on Hire</span>
+                              <span className="px-1.5 py-0.2 bg-white/80 rounded-full text-[10px] font-black">{countOnHire}</span>
+                            </button>
+
+                            {countOverdue > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setPoStageFilter('OVERDUE')}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1 animate-pulse ${
+                                  poStageFilter === 'OVERDUE'
+                                    ? 'bg-rose-600 text-white shadow-2xs ring-2 ring-rose-400'
+                                    : 'bg-rose-100 text-rose-900 hover:bg-rose-200 border border-rose-400'
+                                }`}
+                              >
+                                <span>⚠️ Overdue Returns</span>
+                                <span className="px-1.5 py-0.2 bg-rose-200 text-rose-950 rounded-full text-[10px] font-black">{countOverdue}</span>
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => setPoCapFilter(prev => prev === 'CAPPED_ONLY' ? 'ALL' : 'CAPPED_ONLY')}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1 ${
+                                poCapFilter === 'CAPPED_ONLY'
+                                  ? 'bg-amber-600 text-white shadow-2xs ring-2 ring-amber-400'
+                                  : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-300'
+                              }`}
+                              title="Filter orders with Rigout Price Caps applied"
+                            >
+                              <span>✨ Price Capped ({countCapped})</span>
+                            </button>
+                          </div>
+
+                          {/* RESET ALL FILTERS IF ANY ACTIVE */}
+                          {(poSearchQuery || poStageFilter !== 'ALL' || poDateRangeFilter !== 'ALL' || poCapFilter !== 'ALL') && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPoSearchQuery('');
+                                setPoStageFilter('ALL');
+                                setPoDateRangeFilter('ALL');
+                                setPoCapFilter('ALL');
+                                setPoCustomStartDate('');
+                                setPoCustomEndDate('');
+                              }}
+                              className="text-xs font-extrabold text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-2.5 py-1 rounded-lg transition cursor-pointer flex items-center gap-1"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" /> Reset Filters
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   <div className="space-y-4">
                     {(() => {
                       const activePosList = pos.filter(p => p.orderStatus !== 'CANCELLED' && p.orderStatus !== 'RETURNED_COMPLETED' && !p.items.every(i => i.returned));
+                      
+                      // Apply Filters & Sorting
+                      const displayPosList = activePosList.filter(po => {
+                        const isComplete = po.items.length > 0 && po.items.every(i => i.returned);
+                        const overdueInfo = getOverdueStatus(po.hireEndDate, isComplete);
+                        const isPickPending = po.orderStatus === 'DEPOSIT_PAID_CONFIRMED' || po.orderStatus === 'RESERVED_PENDING_PAYMENT' || po.orderStatus === 'ASSEMBLY_DUE';
+                        const isReadyForCollection = po.orderStatus === 'READY_FOR_COLLECTION';
+                        const isOutOnHire = po.orderStatus === 'OUT_ON_HIRE';
+                        const isOverdue = isOutOnHire && !isComplete && overdueInfo.level !== 'ON_TIME';
+
+                        // 1. Text Search Filter
+                        if (poSearchQuery.trim()) {
+                          const q = poSearchQuery.trim().toLowerCase();
+                          const matchPoId = (po.id || '').toLowerCase().includes(q);
+                          const matchCustomer = (po.customerName || '').toLowerCase().includes(q);
+                          const matchPhone = (po.customerPhone || '').toLowerCase().includes(q);
+                          const matchEmail = (po.customerEmail || '').toLowerCase().includes(q);
+                          const matchHanger = (po.hangerQr || '').toLowerCase().includes(q);
+                          const matchBag = (po.outfitBagQr || '').toLowerCase().includes(q);
+                          const matchNotes = (po.notes || '').toLowerCase().includes(q);
+                          const matchItems = po.items.some(item => 
+                            (item.qrCodeId || '').toLowerCase().includes(q) ||
+                            (item.itemName || '').toLowerCase().includes(q)
+                          );
+                          if (!matchPoId && !matchCustomer && !matchPhone && !matchEmail && !matchHanger && !matchBag && !matchNotes && !matchItems) {
+                            return false;
+                          }
+                        }
+
+                        // 2. Stage Filter
+                        if (poStageFilter === 'AWAITING_PICK' && !isPickPending) return false;
+                        if (poStageFilter === 'READY_FOR_COLLECTION' && !isReadyForCollection) return false;
+                        if (poStageFilter === 'OUT_ON_HIRE' && !isOutOnHire) return false;
+                        if (poStageFilter === 'OVERDUE' && !isOverdue) return false;
+
+                        // 3. Price Cap Filter
+                        if (poCapFilter === 'CAPPED_ONLY' && !po.fullRigoutCapApplied) return false;
+                        if (poCapFilter === 'UNCAPPED' && po.fullRigoutCapApplied) return false;
+
+                        // 4. Date Range Filter
+                        if (poDateRangeFilter !== 'ALL') {
+                          const todayStr = new Date().toISOString().slice(0, 10);
+                          const poDate = po.hireStartDate || po.eventDate || '';
+                          
+                          if (poDateRangeFilter === 'TODAY') {
+                            if (po.hireStartDate !== todayStr && po.hireEndDate !== todayStr && po.eventDate !== todayStr) return false;
+                          } else if (poDateRangeFilter === 'THIS_WEEK') {
+                            const now = new Date();
+                            const currentDay = now.getDay();
+                            const startOfWeek = new Date(now);
+                            startOfWeek.setDate(now.getDate() - currentDay);
+                            const endOfWeek = new Date(now);
+                            endOfWeek.setDate(now.getDate() - currentDay + 6);
+                            const startStr = startOfWeek.toISOString().slice(0, 10);
+                            const endStr = endOfWeek.toISOString().slice(0, 10);
+                            if (poDate < startStr || poDate > endStr) return false;
+                          } else if (poDateRangeFilter === 'THIS_MONTH') {
+                            const currentMonthPrefix = todayStr.slice(0, 7);
+                            if (!poDate.startsWith(currentMonthPrefix)) return false;
+                          } else if (poDateRangeFilter === 'CUSTOM') {
+                            if (poCustomStartDate && poDate < poCustomStartDate) return false;
+                            if (poCustomEndDate && poDate > poCustomEndDate) return false;
+                          }
+                        }
+
+                        return true;
+                      }).sort((a, b) => {
+                        if (poSortOption === 'ACTION_DATE_ASC') {
+                          const getActionDate = (po: PurchaseOrder) => {
+                            if (po.orderStatus === 'DEPOSIT_PAID_CONFIRMED' || po.orderStatus === 'RESERVED_PENDING_PAYMENT' || po.orderStatus === 'ASSEMBLY_DUE') {
+                              const d = new Date(po.hireStartDate);
+                              return isNaN(d.getTime()) ? (po.hireStartDate || '') : new Date(d.getTime() - 2 * 86400000).toISOString().slice(0, 10);
+                            }
+                            if (po.orderStatus === 'READY_FOR_COLLECTION') {
+                              return po.hireStartDate || '';
+                            }
+                            return po.hireEndDate || po.hireStartDate || '';
+                          };
+                          return getActionDate(a).localeCompare(getActionDate(b));
+                        }
+                        if (poSortOption === 'HIRE_START_ASC') {
+                          return (a.hireStartDate || '').localeCompare(b.hireStartDate || '');
+                        }
+                        if (poSortOption === 'HIRE_START_DESC') {
+                          return (b.hireStartDate || '').localeCompare(a.hireStartDate || '');
+                        }
+                        if (poSortOption === 'EVENT_DATE_ASC') {
+                          return (a.eventDate || '').localeCompare(b.eventDate || '');
+                        }
+                        if (poSortOption === 'RETURN_DUE_ASC') {
+                          return (a.hireEndDate || '').localeCompare(b.hireEndDate || '');
+                        }
+                        if (poSortOption === 'PO_NEWEST') {
+                          return (b.createdAt || b.id || '').localeCompare(a.createdAt || a.id || '');
+                        }
+                        return 0;
+                      });
+
                       if (activePosList.length === 0) {
                         return (
                           <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
@@ -6325,135 +7629,338 @@ export default function KiltHireApp() {
                         );
                       }
 
-                      return activePosList.map(po => {
+                      if (displayPosList.length === 0) {
+                        return (
+                          <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                            <Search className="w-10 h-10 text-slate-400 mx-auto" />
+                            <h4 className="font-extrabold text-slate-900 text-sm">No Purchase Orders Match Your Filters</h4>
+                            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                              Try clearing your search query or switching the state filter tab to see matching orders.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPoSearchQuery('');
+                                setPoStageFilter('ALL');
+                                setPoDateRangeFilter('ALL');
+                                setPoCapFilter('ALL');
+                                setPoCustomStartDate('');
+                                setPoCustomEndDate('');
+                              }}
+                              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs rounded-xl shadow transition inline-flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <RotateCcw className="w-4 h-4" /> Reset All Filters ({activePosList.length} Active Orders)
+                            </button>
+                          </div>
+                        );
+                      }
+
+                      return displayPosList.map(po => {
                         const returnedCount = po.items.filter(i => i.returned).length;
                         const totalCount = po.items.length;
-                        const isComplete = returnedCount === totalCount;
+                        const isComplete = returnedCount === totalCount && totalCount > 0;
                         const overdueInfo = getOverdueStatus(po.hireEndDate, isComplete);
 
+                        const isPickPending = po.orderStatus === 'DEPOSIT_PAID_CONFIRMED' || po.orderStatus === 'RESERVED_PENDING_PAYMENT' || po.orderStatus === 'ASSEMBLY_DUE';
+                        const isReadyForCollection = po.orderStatus === 'READY_FOR_COLLECTION';
+                        const isOutOnHire = po.orderStatus === 'OUT_ON_HIRE';
+                        const isCancelled = po.orderStatus === 'CANCELLED';
+
+                        // Pick date (2 days before hireStartDate)
+                        const hireStartObj = new Date(po.hireStartDate);
+                        const pickDateObj = new Date(hireStartObj.getTime() - 2 * 86400000);
+                        const pickDateStr = isNaN(pickDateObj.getTime()) ? po.hireStartDate : pickDateObj.toISOString().slice(0, 10);
+
                         return (
-                          <div key={po.id} className={`p-5 rounded-2xl space-y-3 transition ${isComplete ? 'bg-slate-50 border border-slate-200 shadow-sm' : overdueInfo.poCardBg}`}>
-                            <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div 
+                            key={po.id} 
+                            className={`bg-white border-2 rounded-3xl shadow-md overflow-hidden transition ${
+                              isCancelled 
+                                ? 'border-rose-300 bg-rose-50/30 opacity-85' 
+                                : overdueInfo.level === 'OVERDUE_SEVERE' && isOutOnHire
+                                ? 'border-rose-400 ring-2 ring-rose-300/60 shadow-lg'
+                                : overdueInfo.level === 'OVERDUE_LIGHT' && isOutOnHire
+                                ? 'border-amber-400 ring-2 ring-amber-300/60 shadow-lg'
+                                : isOutOnHire
+                                ? 'border-blue-400 shadow-md'
+                                : isReadyForCollection
+                                ? 'border-indigo-400 shadow-md'
+                                : 'border-slate-300 hover:border-slate-400 shadow-md'
+                            }`}
+                          >
+                            {/* TOP HEADER RIBBON WITH DARK BORDER & ORDER METADATA */}
+                            <div className="bg-slate-100/90 border-b-2 border-slate-200 p-4 flex flex-wrap items-center justify-between gap-3">
                               <div>
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="font-mono font-extrabold text-amber-900 text-sm bg-white px-2 py-0.5 rounded border border-amber-300">{po.id}</span>
-                                  <span className="font-extrabold text-slate-900 text-sm">{po.customerName}</span>
-                                  <span className="text-xs text-slate-600">({po.customerPhone})</span>
+                                  <span className="font-mono font-black text-amber-900 text-base bg-white px-2.5 py-0.5 rounded-lg border-2 border-amber-300 shadow-2xs">
+                                    {po.id}
+                                  </span>
+                                  <span className="font-black text-slate-900 text-sm">
+                                    {po.customerName}
+                                  </span>
+                                  <span className="text-xs text-slate-600 font-semibold">
+                                    ({po.customerPhone})
+                                  </span>
 
-                                  {isComplete ? (
-                                    <span className="px-2.5 py-0.5 text-[10px] font-extrabold bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-full flex items-center gap-1">
-                                      <CheckCircle className="w-3 h-3 text-emerald-600" /> ALL ITEMS RETURNED & REFUNDED
+                                  {/* STAGE-BASED STATUS BADGE */}
+                                  {isPickPending && (
+                                    <span className="px-3 py-1 text-xs font-black bg-amber-100 text-amber-950 border border-amber-300 rounded-full flex items-center gap-1.5 shadow-2xs">
+                                      📦 Awaiting Pick &amp; Assembly (Pick Due: {pickDateStr})
                                     </span>
-                                  ) : (
-                                    <span className={`px-2.5 py-0.5 text-[10px] rounded-full border ${overdueInfo.badgeBg}`}>
-                                      {overdueInfo.label} • ({returnedCount}/{totalCount} Returned)
+                                  )}
+
+                                  {isReadyForCollection && (
+                                    <span className="px-3 py-1 text-xs font-black bg-indigo-100 text-indigo-950 border border-indigo-300 rounded-full flex items-center gap-1.5 shadow-2xs">
+                                      🏷️ Ready for Collection (Collection Date: {po.hireStartDate})
+                                    </span>
+                                  )}
+
+                                  {isOutOnHire && !isComplete && (
+                                    <span className={`px-3 py-1 text-xs font-black rounded-full border shadow-2xs flex items-center gap-1.5 ${overdueInfo.badgeBg}`}>
+                                      {overdueInfo.label} • Return Due: {po.hireEndDate} ({returnedCount}/{totalCount} Returned)
+                                    </span>
+                                  )}
+
+                                  {isComplete && (
+                                    <span className="px-3 py-1 text-xs font-black bg-emerald-100 text-emerald-950 border border-emerald-300 rounded-full flex items-center gap-1.5 shadow-2xs">
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" /> ALL ITEMS RETURNED &amp; COMPLETED
                                     </span>
                                   )}
                                 </div>
-                                <span className="text-xs text-slate-600 block mt-1">
-                                  Hire Period: <strong>{po.hireStartDate}</strong> to <strong className={!isComplete ? overdueInfo.textColor : ''}>{po.hireEndDate}</strong> (Event: {po.eventDate})
-                                </span>
+
+                                <div className="text-xs text-slate-600 font-medium mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+                                  <span>📅 Hire Period: <strong className="text-slate-900">{po.hireStartDate}</strong> to <strong className={isOutOnHire && !isComplete ? overdueInfo.textColor : 'text-slate-900'}>{po.hireEndDate}</strong></span>
+                                  <span>🎪 Event Date: <strong className="text-slate-900">{po.eventDate}</strong></span>
+                                  <span>💳 Total Hire: <strong className="text-amber-800 font-mono">£{po.totalHireFee}</strong> | Deposit Held: <strong className="text-emerald-800 font-mono">£{po.totalDepositHeld}</strong></span>
+                                </div>
                               </div>
 
-                              <div className="flex items-center gap-2">
-                                <button
-                                  onClick={() => openPoReturnChecklist(po)}
-                                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-sm transition flex items-center gap-1 ${
-                                    overdueInfo.level === 'OVERDUE_SEVERE' && !isComplete ? 'bg-rose-600 hover:bg-rose-700 text-white font-extrabold' :
-                                    overdueInfo.level === 'OVERDUE_LIGHT' && !isComplete ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold' :
-                                    'bg-blue-600 hover:bg-blue-700 text-white'
-                                  }`}
-                                >
-                                  <RotateCcw className="w-3.5 h-3.5" /> Process PO Batch Return
-                                </button>
+                              {/* STAGE-DRIVEN ACTION BUTTONS */}
+                              <div className="flex flex-wrap items-center gap-2">
+                                {/* STAGE 1: PICK PENDING */}
+                                {isPickPending && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => setShowPrintPickSheetModal(po)}
+                                      className="px-3 py-1.5 bg-white hover:bg-slate-200 text-slate-800 border-2 border-slate-300 rounded-xl font-extrabold text-xs shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                                      title="Print physical paper pick sheet"
+                                    >
+                                      <Printer className="w-3.5 h-3.5 text-slate-700" /> Paper Sheet
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => openAssemblyModal(po)}
+                                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer ring-2 ring-emerald-400/40"
+                                    >
+                                      <PackageCheck className="w-3.5 h-3.5" /> Pick &amp; Assemble Garments
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setShowCancelPoModal(po);
+                                        setCancelPinInput('');
+                                        setCancelReasonInput('');
+                                        setCancelRefundOption(po.totalDepositHeld > 0 ? 'FULL_REFUND_ISSUED' : 'NO_DEPOSIT_WAS_PAID');
+                                      }}
+                                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-xl font-extrabold text-xs shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <XCircle className="w-3.5 h-3.5 text-rose-600" /> Cancel Hire
+                                    </button>
+                                  </>
+                                )}
 
-                                {!isComplete && overdueInfo.level !== 'ON_TIME' && (
-                                  <button
-                                    onClick={() => handleOpenOverdueNoticeEmail(po)}
-                                    className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-extrabold flex items-center gap-1 shadow transition"
-                                    title="Dispatch Brevo Overdue Return Notice"
-                                  >
-                                    <Mail className="w-3.5 h-3.5" /> Send Overdue Notice (Brevo)
-                                  </button>
+                                {/* STAGE 2: READY FOR COLLECTION */}
+                                {isReadyForCollection && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => setShowPrintPickSheetModal(po)}
+                                      className="px-3 py-1.5 bg-white hover:bg-slate-200 text-slate-800 border-2 border-slate-300 rounded-xl font-extrabold text-xs shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                                      title="Print physical paper bag tag / pick sheet"
+                                    >
+                                      <Printer className="w-3.5 h-3.5 text-slate-700" /> Bag Tag
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleMarkHandedOut(po)}
+                                      className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer ring-2 ring-blue-400/40"
+                                    >
+                                      <Send className="w-3.5 h-3.5" /> 🚀 Hand Out to Customer
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setShowCancelPoModal(po);
+                                        setCancelPinInput('');
+                                        setCancelReasonInput('');
+                                        setCancelRefundOption(po.totalDepositHeld > 0 ? 'FULL_REFUND_ISSUED' : 'NO_DEPOSIT_WAS_PAID');
+                                      }}
+                                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-xl font-extrabold text-xs shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <XCircle className="w-3.5 h-3.5 text-rose-600" /> Cancel Hire
+                                    </button>
+                                  </>
+                                )}
+
+                                {/* STAGE 3: OUT ON HIRE */}
+                                {isOutOnHire && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => openPoReturnChecklist(po)}
+                                      className={`px-4 py-1.5 rounded-xl text-xs font-black shadow-sm transition flex items-center gap-1.5 cursor-pointer ring-2 ${
+                                        overdueInfo.level === 'OVERDUE_SEVERE' && !isComplete 
+                                          ? 'bg-rose-600 hover:bg-rose-700 text-white ring-rose-400/40' 
+                                          : overdueInfo.level === 'OVERDUE_LIGHT' && !isComplete 
+                                          ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 ring-amber-400/40' 
+                                          : 'bg-emerald-600 hover:bg-emerald-700 text-white ring-emerald-400/40'
+                                      }`}
+                                    >
+                                      <RotateCcw className="w-3.5 h-3.5" /> Process PO Batch Return
+                                    </button>
+
+                                    {!isComplete && overdueInfo.level !== 'ON_TIME' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenOverdueNoticeEmail(po)}
+                                        className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-extrabold flex items-center gap-1 shadow transition cursor-pointer"
+                                        title="Dispatch Brevo Overdue Return Notice"
+                                      >
+                                        <Mail className="w-3.5 h-3.5" /> Send Overdue Notice
+                                      </button>
+                                    )}
+                                  </>
                                 )}
 
                                 <button
+                                  type="button"
                                   onClick={() => {
                                     setShowEditPoModal(po);
                                     setEditPoNotes(po.notes || '');
                                   }}
-                                  className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm transition"
+                                  className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border-2 border-slate-300 rounded-xl text-xs font-bold flex items-center gap-1 shadow-2xs transition cursor-pointer"
                                 >
                                   <Edit3 className="w-3.5 h-3.5 text-amber-600" /> Edit Notes
                                 </button>
                               </div>
                             </div>
 
-                            {/* AUTOMATED RETURN PROGRESS BAR */}
-                            <div className="space-y-1">
-                              <div className="flex justify-between text-[11px] font-bold text-slate-600">
-                                <span>Automated Return Progress:</span>
-                                <span>{returnedCount} of {totalCount} Garments Returned</span>
-                              </div>
-                              <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
-                                <div 
-                                  className={`h-full transition-all duration-500 ${isComplete ? 'bg-emerald-500' : 'bg-blue-600'}`}
-                                  style={{ width: `${(returnedCount / totalCount) * 100}%` }}
-                                />
-                              </div>
-                            </div>
-
-                            {po.notes && (
-                              <div className="text-xs bg-amber-50/70 p-2.5 rounded-xl border border-amber-200 text-amber-900">
-                                <strong>Staff Notes:</strong> {po.notes}
-                              </div>
-                            )}
-
-                            {/* INDIVIDUAL ITEM LINE ITEMS WITH AUTOMATED SCAN STATUS */}
-                            <div className="space-y-1.5 pt-1">
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Garment Line Items & Real-Time Scan Status:</span>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                {po.items.map(item => (
-                                  <div key={item.qrCodeId} className={`p-2.5 rounded-xl border text-xs flex items-center justify-between transition ${
-                                    item.returned ? 'bg-emerald-50/80 border-emerald-200' : 'bg-white border-slate-200'
-                                  }`}>
-                                    <div>
-                                      <div className="flex items-center gap-1.5">
-                                        <span className="font-mono font-extrabold text-slate-800">{item.qrCodeId}</span>
-                                        <span className="text-slate-900 font-semibold">{item.itemName}</span>
-                                      </div>
-                                      <span className={`text-[10px] ${item.sizeGroup === 'Kid' ? 'text-purple-800 font-bold' : 'text-blue-800 font-bold'}`}>
-                                        {item.sizeGroup} ({item.size}) • Deposit £{item.depositAmount}
-                                      </span>
-                                    </div>
-
-                                    <div>
-                                      {item.returned ? (
-                                        <div className="text-right">
-                                          <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded inline-flex items-center gap-1 ${
-                                            item.returnCondition === 'GOOD_CLEAN' 
-                                              ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' 
-                                              : 'bg-rose-100 text-rose-900 border border-rose-300'
-                                          }`}>
-                                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                            {item.returnCondition === 'GOOD_CLEAN' ? 'Returned (Deposit Refunded)' : 'Damaged (Deposit Held)'}
-                                          </span>
-                                          <span className="text-[9px] text-slate-400 block font-mono mt-0.5">{item.returnedAt}</span>
-                                        </div>
-                                      ) : (
-                                        <button
-                                          onClick={() => openPoReturnChecklist(po, item.qrCodeId)}
-                                          className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-extrabold shadow-sm transition flex items-center gap-1"
-                                        >
-                                          <Zap className="w-3 h-3 text-amber-300" /> Scan Return
-                                        </button>
-                                      )}
-                                    </div>
+                            {/* CARD BODY WITH STAGE INSTRUCTIONS & GARMENTS */}
+                            <div className="p-5 space-y-4">
+                              {/* STAGE INSTRUCTIONAL BANNER */}
+                              {isPickPending && (
+                                <div className="p-3 bg-amber-50 rounded-2xl border-2 border-amber-200 text-xs text-amber-950 flex items-center justify-between gap-3">
+                                  <div className="flex items-center gap-2">
+                                    <Clock className="w-4 h-4 text-amber-700 shrink-0" />
+                                    <span>
+                                      <strong>Step 1 of 3 (Stock Picking):</strong> Outfits are scheduled for hire. Click <strong>"Pick &amp; Assemble Garments"</strong> to verify QR items onto bespoke hangers &amp; outfit bags before collection date ({po.hireStartDate}).
+                                    </span>
                                   </div>
-                                ))}
+                                </div>
+                              )}
+
+                              {isReadyForCollection && (
+                                <div className="p-3 bg-indigo-50 rounded-2xl border-2 border-indigo-200 text-xs text-indigo-950 flex items-center justify-between gap-3">
+                                  <div className="flex items-center gap-2">
+                                    <CheckCircle2 className="w-4 h-4 text-indigo-700 shrink-0" />
+                                    <span>
+                                      <strong>Step 2 of 3 (Ready in Store):</strong> Garments are bagged (Hanger: <strong>{po.hangerQr || '—'}</strong>, Bag: <strong>{po.outfitBagQr || '—'}</strong>). When the customer arrives, click <strong>"🚀 Hand Out to Customer"</strong> to lock items as Out on Hire.
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+
+                              {isOutOnHire && (
+                                <div className="space-y-1.5">
+                                  <div className="flex justify-between text-[11px] font-extrabold text-slate-700">
+                                    <span><strong>Step 3 of 3 (Returns &amp; PayPal Refund Ledger):</strong> {returnedCount} of {totalCount} Garments Returned</span>
+                                    <span className="font-mono">{Math.round((returnedCount / totalCount) * 100)}%</span>
+                                  </div>
+                                  <div className="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden border border-slate-300">
+                                    <div 
+                                      className={`h-full transition-all duration-500 ${isComplete ? 'bg-emerald-500' : 'bg-blue-600'}`}
+                                      style={{ width: `${(returnedCount / totalCount) * 100}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+
+                              {po.notes && (
+                                <div className="text-xs bg-amber-50/80 p-3 rounded-2xl border-2 border-amber-200/80 text-amber-950 font-medium">
+                                  <strong className="text-amber-900">Staff Notes:</strong> {po.notes}
+                                </div>
+                              )}
+
+                              {/* INDIVIDUAL ITEM LINE ITEMS WITH CLEAR BORDERS & STATE BADGES */}
+                              <div className="space-y-2 pt-1 border-t border-slate-100">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">
+                                  Outfit Garments &amp; Inventory Line Items ({po.items.length}):
+                                </span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                  {po.items.map(item => (
+                                    <div 
+                                      key={item.qrCodeId} 
+                                      className={`p-3 rounded-2xl border-2 text-xs flex items-center justify-between transition shadow-2xs ${
+                                        item.returned 
+                                          ? 'bg-emerald-50/90 border-emerald-300' 
+                                          : isOutOnHire
+                                          ? 'bg-white border-blue-200 hover:border-blue-400'
+                                          : isReadyForCollection
+                                          ? 'bg-white border-indigo-200'
+                                          : 'bg-white border-slate-300'
+                                      }`}
+                                    >
+                                      <div>
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-mono font-extrabold text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-300">
+                                            {item.qrCodeId}
+                                          </span>
+                                          <span className="text-slate-900 font-extrabold">
+                                            {item.itemName}
+                                          </span>
+                                        </div>
+                                        <span className={`text-[10px] block mt-1 ${item.sizeGroup === 'Kid' ? 'text-purple-800 font-bold' : 'text-blue-800 font-bold'}`}>
+                                          {item.sizeGroup} ({item.size}) • Deposit £{item.depositAmount}
+                                        </span>
+                                      </div>
+
+                                      <div>
+                                        {item.returned ? (
+                                          <div className="text-right">
+                                            <span className={`px-2.5 py-1 text-[10px] font-black rounded-lg inline-flex items-center gap-1 border ${
+                                              item.returnCondition === 'GOOD_CLEAN' 
+                                                ? 'bg-emerald-100 text-emerald-950 border-emerald-300' 
+                                                : 'bg-rose-100 text-rose-950 border-rose-300'
+                                            }`}>
+                                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                              {item.returnCondition === 'GOOD_CLEAN' ? 'Returned (Clean)' : 'Damaged / Needs Repair'}
+                                            </span>
+                                            <span className="text-[9px] text-slate-500 block font-mono mt-0.5">{item.returnedAt}</span>
+                                          </div>
+                                        ) : isOutOnHire ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => openPoReturnChecklist(po, item.qrCodeId)}
+                                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                                          >
+                                            <Zap className="w-3 h-3 text-amber-300" /> Scan Return
+                                          </button>
+                                        ) : isReadyForCollection ? (
+                                          <span className="px-2.5 py-1 text-[10px] font-extrabold bg-indigo-50 text-indigo-900 border border-indigo-200 rounded-lg">
+                                            🏷️ In Outfit Bag
+                                          </span>
+                                        ) : (
+                                          <span className="px-2.5 py-1 text-[10px] font-extrabold bg-slate-100 text-slate-700 border border-slate-200 rounded-lg">
+                                            📦 Awaiting Pick
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
                             </div>
-
                           </div>
                         );
                       });
@@ -7993,34 +9500,45 @@ export default function KiltHireApp() {
 
                       let retainedLateFee = 0;
                       if (lateFeeOption === 'CUSTOM') {
-                        retainedLateFee = Math.min(cleanRefundSum, Math.max(0, customLateFeeAmount));
+                        retainedLateFee = Math.max(0, customLateFeeAmount);
                       } else if (lateFeeOption === 'FULL_DEPOSIT') {
-                        retainedLateFee = cleanRefundSum;
+                        retainedLateFee = activeReturnPo.totalDepositHeld;
                       }
 
-                      const netRefundToCustomer = Math.max(0, cleanRefundSum - retainedLateFee);
                       const totalHeld = activeReturnPo.totalDepositHeld;
-                      const totalRetainedAll = heldRepairSum + heldMissingSum + retainedLateFee;
+                      const totalPenalties = heldRepairSum + heldMissingSum + retainedLateFee;
+                      const is100PercentRetained = totalPenalties >= totalHeld || lateFeeOption === 'FULL_DEPOSIT';
+                      const netRefundToCustomer = is100PercentRetained ? 0 : Math.max(0, totalHeld - totalPenalties);
+                      const totalRetainedAll = is100PercentRetained ? totalHeld : totalPenalties;
 
                       return (
                         <div className="bg-slate-900 text-white p-5 rounded-2xl space-y-3 shadow-lg">
-                          <h4 className="font-extrabold text-sm text-amber-400 flex items-center gap-2">
-                            <DollarSign className="w-4 h-4" /> Live PayPal Deposit Refund Ledger Breakdown
+                          <h4 className="font-extrabold text-sm text-amber-400 flex items-center justify-between">
+                            <span className="flex items-center gap-2">
+                              <PoundIcon className="w-4 h-4" /> Live PayPal Deposit Refund Ledger Breakdown
+                            </span>
+                            {is100PercentRetained && (
+                              <span className="text-[10px] font-extrabold bg-red-950 text-red-300 border border-red-500/50 px-2.5 py-0.5 rounded-full">
+                                🔒 100% DEPOSIT RETAINED (NO REFUND)
+                              </span>
+                            )}
                           </h4>
 
                           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs border-t border-slate-800 pt-3">
                             <div>
-                              <span className="text-slate-400 block">Total Deposit Held</span>
+                              <span className="text-slate-400 block">Security Deposit Held</span>
                               <span className="font-mono font-extrabold text-white text-base">£{totalHeld}</span>
                             </div>
 
                             <div>
                               <span className="text-slate-400 block">Net PayPal Refund</span>
-                              <span className="font-mono font-extrabold text-emerald-400 text-base">£{netRefundToCustomer}</span>
+                              <span className={`font-mono font-extrabold text-base ${netRefundToCustomer > 0 ? 'text-emerald-400' : 'text-slate-400'}`}>
+                                £{netRefundToCustomer}
+                              </span>
                             </div>
 
                             <div>
-                              <span className="text-slate-400 block">Missing / Damaged</span>
+                              <span className="text-slate-400 block">Retained for Items (Pins/Kilts/Shoes)</span>
                               <span className="font-mono font-extrabold text-amber-400 text-base">£{heldRepairSum + heldMissingSum}</span>
                             </div>
 
@@ -8038,8 +9556,11 @@ export default function KiltHireApp() {
 
                           {unselectedCount === 0 && (
                             <p className="text-[11px] text-amber-200 bg-amber-950/60 p-2.5 rounded-xl border border-amber-800">
-                              <strong>Summary Action:</strong> Net deposit of <strong>£{netRefundToCustomer}</strong> will be refunded to {activeReturnPo.customerName} via PayPal today. 
-                              {totalRetainedAll > 0 && ` Total retained: £${totalRetainedAll} (${retainedLateFee > 0 ? `£${retainedLateFee} late return fee` : ''}${heldRepairSum + heldMissingSum > 0 ? `, £${heldRepairSum + heldMissingSum} missing/damaged` : ''}).`}
+                              <strong>Summary Action:</strong> {netRefundToCustomer > 0 ? (
+                                <>Net refund of <strong>£{netRefundToCustomer}</strong> will be processed via PayPal. Total retained by shop: <strong>£{totalRetainedAll}</strong>.</>
+                              ) : (
+                                <><strong>100% of the £{totalHeld} deposit is retained</strong> to cover damages/missing items (£{heldRepairSum + heldMissingSum}) &amp; late fees (£{retainedLateFee}). <strong>£0</strong> will be refunded to the customer.</>
+                              )}
                             </p>
                           )}
                         </div>
@@ -8080,78 +9601,141 @@ export default function KiltHireApp() {
                     </div>
                   ) : (
                     <>
-                      {/* TOP SUB-TAB SWITCHER: PRICING vs PRODUCTS */}
-                      <div className="flex bg-slate-200 p-1.5 rounded-2xl border border-slate-300 w-fit">
-                        <button
-                          onClick={() => setPricingSubTab('PRICING')}
-                          className={`px-5 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
-                            pricingSubTab === 'PRICING'
-                              ? 'bg-amber-500 text-slate-950 shadow-sm'
-                              : 'text-slate-700 hover:text-slate-900 hover:bg-white/50'
-                          }`}
-                        >
-                          <PriceTag className="w-4 h-4" /> Category Hire Rates & Deposit Matrix
-                        </button>
+                      {/* TOP SUB-TAB SWITCHER & SAVE TO CLOUD ACTION BAR */}
+                      <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-3 rounded-2xl border border-slate-200 shadow-sm">
+                        <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 w-fit">
+                          <button
+                            onClick={() => setPricingSubTab('PRICING')}
+                            className={`px-5 py-2 rounded-lg text-xs font-extrabold flex items-center gap-2 transition cursor-pointer ${
+                              pricingSubTab === 'PRICING'
+                                ? 'bg-amber-500 text-slate-950 shadow-sm'
+                                : 'text-slate-700 hover:text-slate-900 hover:bg-white/50'
+                            }`}
+                          >
+                            <PriceTag className="w-4 h-4" /> Category Hire Rates & Deposit Matrix
+                          </button>
 
-                        <button
-                          onClick={() => setPricingSubTab('PRODUCTS')}
-                          className={`px-5 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
-                            pricingSubTab === 'PRODUCTS'
-                              ? 'bg-amber-500 text-slate-950 shadow-sm'
-                              : 'text-slate-700 hover:text-slate-900 hover:bg-white/50'
-                          }`}
-                        >
-                          <Tag className="w-4 h-4" /> Tartan & Product Catalog ({tartanList.length})
-                        </button>
+                          <button
+                            onClick={() => setPricingSubTab('PRODUCTS')}
+                            className={`px-5 py-2 rounded-lg text-xs font-extrabold flex items-center gap-2 transition cursor-pointer ${
+                              pricingSubTab === 'PRODUCTS'
+                                ? 'bg-amber-500 text-slate-950 shadow-sm'
+                                : 'text-slate-700 hover:text-slate-900 hover:bg-white/50'
+                            }`}
+                          >
+                            <Tag className="w-4 h-4" /> Tartan & Product Catalog ({tartanList.length})
+                          </button>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={handleSavePricingToFirestore}
+                            className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-2 cursor-pointer ring-2 ring-emerald-400/50"
+                          >
+                            <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+                            <span>💾 Save All Rates, Caps & Deposits to Cloud DB</span>
+                          </button>
+                        </div>
                       </div>
 
                       {pricingSubTab === 'PRICING' ? (
                         <>
-                          {/* PRICING CAPS BANNER */}
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="bg-white border border-amber-300 p-5 rounded-3xl shadow-sm space-y-2">
+                          {/* PRICING & DEPOSIT CAPS BANNER */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            {/* ADULT HIRE FEE CAP */}
+                            <div className="bg-white border border-amber-300 p-4 rounded-3xl shadow-sm space-y-2">
                               <div className="flex items-center justify-between">
                                 <span className="text-xs font-extrabold text-amber-900 flex items-center gap-1.5">
-                                  <Tag className="w-4 h-4 text-amber-600" /> Adult Full Rigout Price Cap
+                                  <Tag className="w-4 h-4 text-amber-600" /> Adult Hire Fee Cap
                                 </span>
-                                <span className="text-xs font-mono font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded">
-                                  Adult Cap
+                                <span className="text-[10px] font-mono font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded">
+                                  Fee Cap
                                 </span>
                               </div>
-                              <p className="text-[11px] text-slate-500">Max total hire fee when an adult hires a full outfit.</p>
-                              <div className="flex items-center gap-2 pt-2">
+                              <p className="text-[11px] text-slate-500">Max total hire rate when an adult hires a full outfit.</p>
+                              <div className="flex items-center gap-2 pt-1">
                                 <span className="font-bold text-sm text-slate-700">£</span>
                                 <input 
                                   type="number"
                                   min={0}
                                   value={maxRigoutCapPrice}
                                   onChange={e => setMaxRigoutCapPrice(Number(e.target.value))}
-                                  className="w-28 bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 font-mono font-extrabold text-base text-amber-800 outline-none focus:border-amber-500"
+                                  className="w-24 bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 font-mono font-extrabold text-base text-amber-800 outline-none focus:border-amber-500"
                                 />
-                                <span className="text-xs font-bold text-slate-500">Max Limit</span>
+                                <span className="text-[11px] font-bold text-slate-400">Max Fee</span>
                               </div>
                             </div>
 
-                            <div className="bg-white border border-purple-300 p-5 rounded-3xl shadow-sm space-y-2">
+                            {/* ADULT SECURITY DEPOSIT CAP */}
+                            <div className="bg-white border border-amber-400/70 p-4 rounded-3xl shadow-sm space-y-2 bg-gradient-to-br from-white to-amber-50/40">
                               <div className="flex items-center justify-between">
-                                <span className="text-xs font-extrabold text-purple-900 flex items-center gap-1.5">
-                                  <Users className="w-4 h-4 text-purple-600" /> Kids Full Rigout Price Cap
+                                <span className="text-xs font-extrabold text-amber-950 flex items-center gap-1.5">
+                                  <ShieldCheck className="w-4 h-4 text-amber-700" /> Adult Deposit Cap
                                 </span>
-                                <span className="text-xs font-mono font-bold text-purple-800 bg-purple-100 px-2 py-0.5 rounded">
-                                  Kids Cap
+                                <span className="text-[10px] font-mono font-bold text-amber-900 bg-amber-200/80 px-2 py-0.5 rounded">
+                                  Deposit Cap
                                 </span>
                               </div>
-                              <p className="text-[11px] text-slate-500">Max total hire fee when a child hires a full outfit.</p>
-                              <div className="flex items-center gap-2 pt-2">
+                              <p className="text-[11px] text-slate-500">Max security deposit held per adult rigout.</p>
+                              <div className="flex items-center gap-2 pt-1">
+                                <span className="font-bold text-sm text-slate-700">£</span>
+                                <input 
+                                  type="number"
+                                  min={0}
+                                  value={adultMaxDepositCapPrice}
+                                  onChange={e => setAdultMaxDepositCapPrice(Number(e.target.value))}
+                                  className="w-24 bg-white border border-amber-400 rounded-xl px-3 py-1.5 font-mono font-extrabold text-base text-amber-900 outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-300"
+                                />
+                                <span className="text-[11px] font-bold text-slate-400">Max Dep</span>
+                              </div>
+                            </div>
+
+                            {/* KIDS HIRE FEE CAP */}
+                            <div className="bg-white border border-purple-300 p-4 rounded-3xl shadow-sm space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-extrabold text-purple-900 flex items-center gap-1.5">
+                                  <Users className="w-4 h-4 text-purple-600" /> Kids Hire Fee Cap
+                                </span>
+                                <span className="text-[10px] font-mono font-bold text-purple-800 bg-purple-100 px-2 py-0.5 rounded">
+                                  Fee Cap
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-500">Max total hire rate when a child hires a full outfit.</p>
+                              <div className="flex items-center gap-2 pt-1">
                                 <span className="font-bold text-sm text-slate-700">£</span>
                                 <input 
                                   type="number"
                                   min={0}
                                   value={kidMaxRigoutCapPrice}
                                   onChange={e => setKidMaxRigoutCapPrice(Number(e.target.value))}
-                                  className="w-28 bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 font-mono font-extrabold text-base text-purple-800 outline-none focus:border-purple-500"
+                                  className="w-24 bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 font-mono font-extrabold text-base text-purple-800 outline-none focus:border-purple-500"
                                 />
-                                <span className="text-xs font-bold text-slate-500">Max Limit</span>
+                                <span className="text-[11px] font-bold text-slate-400">Max Fee</span>
+                              </div>
+                            </div>
+
+                            {/* KIDS SECURITY DEPOSIT CAP */}
+                            <div className="bg-white border border-purple-400/70 p-4 rounded-3xl shadow-sm space-y-2 bg-gradient-to-br from-white to-purple-50/40">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-extrabold text-purple-950 flex items-center gap-1.5">
+                                  <ShieldCheck className="w-4 h-4 text-purple-700" /> Kids Deposit Cap
+                                </span>
+                                <span className="text-[10px] font-mono font-bold text-purple-900 bg-purple-200/80 px-2 py-0.5 rounded">
+                                  Deposit Cap
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-500">Max security deposit held per child rigout.</p>
+                              <div className="flex items-center gap-2 pt-1">
+                                <span className="font-bold text-sm text-slate-700">£</span>
+                                <input 
+                                  type="number"
+                                  min={0}
+                                  value={kidMaxDepositCapPrice}
+                                  onChange={e => setKidMaxDepositCapPrice(Number(e.target.value))}
+                                  className="w-24 bg-white border border-purple-400 rounded-xl px-3 py-1.5 font-mono font-extrabold text-base text-purple-900 outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-300"
+                                />
+                                <span className="text-[11px] font-bold text-slate-400">Max Dep</span>
                               </div>
                             </div>
                           </div>
@@ -8164,7 +9748,7 @@ export default function KiltHireApp() {
                                   <PriceTag className="w-5 h-5 text-amber-600" /> Master Category Pricing Matrix (Adults vs Kids)
                                 </h3>
                                 <p className="text-xs text-slate-500">
-                                  Set default rental rates and security deposits for all items. Garments automatically pre-fill these prices during registration.
+                                  Set default rental rates, deposits, and specify whether items in this category support tailoring/alterations/made-to-measure.
                                 </p>
                               </div>
 
@@ -8186,6 +9770,7 @@ export default function KiltHireApp() {
                                     <th className="py-4 px-4 bg-amber-50/50 text-amber-950">Adult Deposit (£)</th>
                                     <th className="py-4 px-4 bg-purple-50/50 text-purple-950 border-l border-purple-200">Kids Rental (£)</th>
                                     <th className="py-4 px-4 bg-purple-50/50 text-purple-950">Kids Deposit (£)</th>
+                                    <th className="py-4 px-4 text-center border-l border-slate-200">✂️ Alterations / Made to Measure?</th>
                                     <th className="py-4 px-4 text-center">Actions</th>
                                   </tr>
                                 </thead>
@@ -8200,7 +9785,6 @@ export default function KiltHireApp() {
                                             const newCatName = e.target.value;
                                             const updated = pricingMatrix.map(p => p.category === setting.category ? { ...p, category: newCatName } : p);
                                             setPricingMatrix(updated);
-                                            savePricing(updated, maxRigoutCapPrice, kidMaxRigoutCapPrice, tartanList).catch(err => console.warn(err));
                                           }}
                                           className="bg-transparent border border-transparent hover:border-slate-300 focus:border-amber-500 rounded px-1.5 py-0.5 font-extrabold text-slate-900 text-xs outline-none"
                                         />
@@ -8253,6 +9837,35 @@ export default function KiltHireApp() {
                                           />
                                         </div>
                                       </td>
+                                      <td className="py-3 px-4 text-center border-l border-slate-100">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const current = setting.allowAlterations ?? (setting.category === 'Kilts' || setting.category === 'Jackets' || setting.category === 'Waistcoats');
+                                            const updated = pricingMatrix.map(p => p.category === setting.category ? { ...p, allowAlterations: !current } : p);
+                                            setPricingMatrix(updated);
+                                            showToast(`✂️ Alteration capability for "${setting.category}": ${!current ? 'Supported (Made to Measure)' : 'Fixed / Non-Alterable'}`, 'success');
+                                          }}
+                                          className={`px-2.5 py-1 rounded-xl font-black text-[11px] transition cursor-pointer border inline-flex items-center gap-1.5 ${
+                                            (setting.allowAlterations ?? (setting.category === 'Kilts' || setting.category === 'Jackets' || setting.category === 'Waistcoats'))
+                                              ? 'bg-purple-100 text-purple-950 border-purple-300 hover:bg-purple-200 shadow-2xs'
+                                              : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
+                                          }`}
+                                          title="Toggle whether garments in this category can be altered or made to measure"
+                                        >
+                                          {(setting.allowAlterations ?? (setting.category === 'Kilts' || setting.category === 'Jackets' || setting.category === 'Waistcoats')) ? (
+                                            <>
+                                              <Scissors className="w-3.5 h-3.5 text-purple-700" />
+                                              <span>Yes (Alterable)</span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Lock className="w-3.5 h-3.5 text-slate-400" />
+                                              <span>No (Fixed Size)</span>
+                                            </>
+                                          )}
+                                        </button>
+                                      </td>
                                       <td className="py-3 px-4 text-center">
                                         {deleteCategoryConfirm === setting.category ? (
                                           <div className="flex items-center justify-center gap-1">
@@ -8292,6 +9905,26 @@ export default function KiltHireApp() {
                                   ))}
                                 </tbody>
                               </table>
+                            </div>
+
+                            {/* BOTTOM FOOTER BAR WITH SAVE BUTTON & CLOUD SYNC BADGE */}
+                            <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-4">
+                              <div className="flex items-center gap-2 text-xs text-slate-600 font-semibold">
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-extrabold text-[11px]">
+                                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                  Live Cloud Sync Enabled
+                                </span>
+                                <span>Edits to rates and caps propagate across all staff shop floor tablets instantly.</span>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={handleSavePricingToFirestore}
+                                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-2 cursor-pointer ring-2 ring-emerald-400/50"
+                              >
+                                <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+                                <span>💾 Save All Rates, Caps & Deposits to Cloud DB</span>
+                              </button>
                             </div>
                           </div>
                         </>
@@ -8658,31 +10291,61 @@ export default function KiltHireApp() {
                             const scMatrix = generateQrMatrix(scannedCode);
                             const scViewBox = getQrViewBoxSize(scMatrix, 4);
                             return (
-                              <div className="p-1 bg-white border border-slate-200 rounded-lg shadow-sm">
-                                <svg viewBox={`0 0 ${scViewBox} ${scViewBox}`} className="w-16 h-16" style={{ shapeRendering: 'crispEdges' }}>
-                                  <rect width={scViewBox} height={scViewBox} fill="#ffffff" />
-                                  <path d={renderQrSvgPath(scMatrix, 4)} fill="#000000" />
-                                </svg>
+                              <div className="flex items-center gap-3">
+                                <div className="p-1 bg-white border border-slate-200 rounded-lg shadow-sm">
+                                  <svg viewBox={`0 0 ${scViewBox} ${scViewBox}`} className="w-16 h-16" style={{ shapeRendering: 'crispEdges' }}>
+                                    <rect width={scViewBox} height={scViewBox} fill="#ffffff" />
+                                    <path d={renderQrSvgPath(scMatrix, 4)} fill="#000000" />
+                                  </svg>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setScannedCode('');
+                                    setSimulatedInput('');
+                                    showToast('Scan dismissed / cleared.', 'info');
+                                  }}
+                                  className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+                                  title="Cancel / Dismiss this scan"
+                                >
+                                  <X className="w-5 h-5" />
+                                </button>
                               </div>
                             );
                           })()}
                         </div>
 
                         {!scItem && (
-                          <div className="bg-amber-50/60 rounded-xl p-5 border border-amber-200 text-center">
-                            <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 shadow-sm">
+                          <div className="bg-amber-50/60 rounded-xl p-5 border border-amber-200 text-center space-y-4">
+                            <div className="w-12 h-12 mx-auto rounded-full bg-amber-100 flex items-center justify-center text-amber-700 shadow-sm">
                               <PlusCircle className="w-6 h-6" />
                             </div>
-                            <h3 className="text-base font-bold text-amber-900 mb-1">Item Not Registered Yet</h3>
-                            <p className="text-xs text-amber-800 mb-4">
-                              This iron-on QR label ({scannedCode}) is ready to be assigned to a new garment in your stock database.
-                            </p>
-                            <button
-                              onClick={() => setShowRegisterModal(true)}
-                              className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow transition flex items-center gap-2 mx-auto"
-                            >
-                              <PlusCircle className="w-4 h-4" /> Register Item into Database
-                            </button>
+                            <div>
+                              <h3 className="text-base font-bold text-amber-900 mb-1">Item Not Registered Yet</h3>
+                              <p className="text-xs text-amber-800">
+                                This iron-on QR label ({scannedCode}) is ready to be assigned to a new garment in your stock database.
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap items-center justify-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() => setShowRegisterModal(true)}
+                                className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow transition flex items-center gap-2 cursor-pointer"
+                              >
+                                <PlusCircle className="w-4 h-4" /> Register Item into Database
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setScannedCode('');
+                                  setSimulatedInput('');
+                                  showToast('Scan cancelled and dismissed.', 'info');
+                                }}
+                                className="px-5 py-2.5 bg-white hover:bg-rose-50 border border-slate-300 hover:border-rose-300 text-slate-700 hover:text-rose-700 font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                              >
+                                <X className="w-4 h-4" /> Cancel Scan
+                              </button>
+                            </div>
                           </div>
                         )}
 
@@ -8967,8 +10630,11 @@ export default function KiltHireApp() {
                               {items.filter(i => i.isBulkPool && !i.isOutsourcedDefault).map(bin => {
                                 const onHireCount = Math.max(0, (bin.bulkTotal || 0) - (bin.bulkQuantity || 0));
                                 const boxDisplay = bin.boxNumber || 'Box 1';
+                                const isBinPrinted = Boolean(bin.isPrinted || batches.some(b => (b.bulkBinId === bin.id || b.id === bin.id) && b.isPrinted));
                                 return (
-                                  <div key={bin.id} className="bg-white border-2 border-emerald-200/80 rounded-2xl p-5 shadow-sm hover:border-emerald-400 transition space-y-3">
+                                  <div key={bin.id} className={`bg-white border-2 rounded-2xl p-5 shadow-sm transition space-y-3 ${
+                                    isBinPrinted ? 'border-emerald-300 bg-emerald-50/20' : 'border-emerald-200/80 hover:border-emerald-400'
+                                  }`}>
                                     <div className="flex items-start justify-between">
                                       <div>
                                         <div className="flex items-center gap-1.5 flex-wrap">
@@ -8981,6 +10647,15 @@ export default function KiltHireApp() {
                                           <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${bin.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900' : 'bg-blue-100 text-blue-900'}`}>
                                             {bin.sizeGroup}s
                                           </span>
+                                          {isBinPrinted ? (
+                                            <span className="px-2 py-0.5 text-[10px] font-extrabold bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-full flex items-center gap-1">
+                                              <Lock className="w-3 h-3 text-emerald-700" /> PRINTED - LOCKED
+                                            </span>
+                                          ) : (
+                                            <span className="px-2 py-0.5 text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 rounded-full">
+                                              UNPRINTED LABEL
+                                            </span>
+                                          )}
                                         </div>
                                         <h4 className="text-sm font-extrabold text-slate-900 mt-1">{bin.name}</h4>
                                         <span className="text-xs text-emerald-800 font-mono font-bold">{bin.id}</span>
@@ -9033,13 +10708,54 @@ export default function KiltHireApp() {
                                       </div>
                                     </div>
 
-                                    <div className="border-t border-slate-100 pt-2 flex items-center gap-2">
+                                    {isBinPrinted && (
+                                      <p className="text-emerald-800 font-bold text-[11px]">
+                                        🖨️ Label Printed by {bin.printedBy || 'Staff'} ({bin.printedAt || 'Recorded'})
+                                      </p>
+                                    )}
+
+                                    <div className="border-t border-slate-100 pt-2 flex items-center gap-1.5">
                                       <button
                                         type="button"
                                         onClick={() => setSelectedBulkBinForPrint(bin)}
                                         className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer"
                                       >
-                                        <Printer className="w-3.5 h-3.5" /> 🖨️ Print {boxDisplay} Side Label
+                                        <Printer className="w-3.5 h-3.5" /> 🖨️ Print Label
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingBulkBin(bin);
+                                          setEditBulkBinForm({
+                                            name: bin.name,
+                                            boxNumber: bin.boxNumber || '1',
+                                            category: bin.category,
+                                            sizeGroup: bin.sizeGroup,
+                                            tartanOrColour: bin.tartanOrColour || '',
+                                            brandMake: bin.brandMake || '',
+                                            hireRate: bin.hireRate || 5,
+                                            depositAmount: bin.depositAmount || 5
+                                          });
+                                        }}
+                                        title="Edit Box Bin Details (Fix spelling, change box # or description)"
+                                        className="p-2 bg-slate-100 hover:bg-emerald-100 text-slate-700 hover:text-emerald-900 border border-slate-200 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1"
+                                      >
+                                        <Edit3 className="w-3.5 h-3.5" />
+                                        <span className="hidden sm:inline">Edit</span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRequestDeleteBulkBin(bin)}
+                                        title={isBinPrinted ? "Locked: Cannot delete printed storage box label" : "Delete storage container"}
+                                        className={`p-2 rounded-xl text-xs font-bold border transition cursor-pointer flex items-center gap-1 ${
+                                          isBinPrinted
+                                            ? 'bg-slate-50 text-slate-400 border-slate-200 opacity-60'
+                                            : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                                        }`}
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
                                       </button>
                                     </div>
                                   </div>
@@ -9106,16 +10822,46 @@ export default function KiltHireApp() {
                                   )}
                                 </div>
 
-                                <div className="flex gap-2 border-t border-slate-100 pt-3">
+                                <div className="flex items-center gap-1.5 border-t border-slate-100 pt-3">
                                   <button
                                     onClick={() => {
                                       setSelectedBatchForPrint(batch);
                                       setSelectedCodesForReprint([]);
                                       setReprintPrintMode(false);
                                     }}
-                                    className="flex-1 py-2 bg-slate-50 hover:bg-slate-100 text-slate-800 font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 border border-slate-200 transition cursor-pointer"
+                                    className="flex-1 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer"
                                   >
-                                    <Printer className="w-3.5 h-3.5 text-amber-600" /> Manage Batch & Print/Reprint Tags
+                                    <Printer className="w-3.5 h-3.5" /> Print Sheet
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingBatch(batch);
+                                      setEditBatchForm({
+                                        title: batch.title,
+                                        category: batch.category,
+                                        sizeGroup: batch.sizeGroup
+                                      });
+                                    }}
+                                    title="Edit Batch Details (Fix spelling or change title/category)"
+                                    className="p-2 bg-slate-100 hover:bg-amber-100 text-slate-700 hover:text-amber-900 border border-slate-200 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1"
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                    <span className="hidden sm:inline">Edit</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRequestDeleteBatch(batch)}
+                                    title={batch.isPrinted ? "Locked: Cannot delete printed batch sheet" : "Delete unprinted batch"}
+                                    className={`p-2 rounded-xl text-xs font-bold border transition cursor-pointer flex items-center gap-1 ${
+                                      batch.isPrinted
+                                        ? 'bg-slate-50 text-slate-400 border-slate-200 opacity-60'
+                                        : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                                    }`}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
                               </div>
@@ -9152,6 +10898,22 @@ export default function KiltHireApp() {
                               </div>
 
                               <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingBatch(selectedBatchForPrint);
+                                    setEditBatchForm({
+                                      title: selectedBatchForPrint.title,
+                                      category: selectedBatchForPrint.category,
+                                      sizeGroup: selectedBatchForPrint.sizeGroup
+                                    });
+                                  }}
+                                  className="px-3 py-2 bg-slate-100 hover:bg-amber-100 text-slate-800 font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                                  title="Edit Batch Title or Spelling"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5 text-amber-600" /> Edit Details
+                                </button>
+
                                 <button
                                   type="button"
                                   onClick={() => window.print()}
@@ -10292,6 +12054,197 @@ export default function KiltHireApp() {
                       </div>
                     </div>
 
+                    {/* SEARCH, FILTER & QUEUE SORTING TOOLBAR */}
+                    {(() => {
+                      const countPick = activePosList.filter(p => p.orderStatus === 'DEPOSIT_PAID_CONFIRMED' || p.orderStatus === 'RESERVED_PENDING_PAYMENT' || p.orderStatus === 'ASSEMBLY_DUE').length;
+                      const countReady = activePosList.filter(p => p.orderStatus === 'READY_FOR_COLLECTION').length;
+                      const countOnHire = activePosList.filter(p => p.orderStatus === 'OUT_ON_HIRE').length;
+                      const countOverdue = activePosList.filter(p => p.orderStatus === 'OUT_ON_HIRE' && !p.items.every(i => i.returned) && getOverdueStatus(p.hireEndDate, false).level !== 'ON_TIME').length;
+                      const countCapped = activePosList.filter(p => p.fullRigoutCapApplied).length;
+
+                      return (
+                        <div className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 space-y-3.5 shadow-2xs">
+                          {/* TOP ROW: SEARCH BAR + SORT SELECTOR + TIMEFRAME */}
+                          <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                            {/* SEARCH INPUT */}
+                            <div className="md:col-span-6 relative">
+                              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                              <input
+                                type="text"
+                                placeholder="Search by PO #, Customer Name, Phone, Email, QR Tag, Tartan..."
+                                value={poSearchQuery}
+                                onChange={e => setPoSearchQuery(e.target.value)}
+                                className="w-full pl-10 pr-9 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200 shadow-2xs"
+                              />
+                              {poSearchQuery && (
+                                <button
+                                  type="button"
+                                  onClick={() => setPoSearchQuery('')}
+                                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                                  title="Clear search"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+
+                            {/* QUEUE SORT SELECTOR */}
+                            <div className="md:col-span-3">
+                              <select
+                                value={poSortOption}
+                                onChange={e => setPoSortOption(e.target.value as any)}
+                                className="w-full py-2.5 px-3 bg-white border border-slate-300 rounded-xl text-xs font-extrabold text-slate-800 outline-none focus:border-amber-500 shadow-2xs cursor-pointer"
+                              >
+                                <option value="ACTION_DATE_ASC">⚡ Next in Queue (Soonest Action First)</option>
+                                <option value="HIRE_START_ASC">📅 Collection Date (Earliest First)</option>
+                                <option value="HIRE_START_DESC">📅 Collection Date (Latest First)</option>
+                                <option value="EVENT_DATE_ASC">🎪 Event Date (Earliest First)</option>
+                                <option value="RETURN_DUE_ASC">🚚 Return Due Date (Earliest First)</option>
+                                <option value="PO_NEWEST">🆕 Newest PO Created</option>
+                              </select>
+                            </div>
+
+                            {/* TIMEFRAME SELECTOR */}
+                            <div className="md:col-span-3">
+                              <select
+                                value={poDateRangeFilter}
+                                onChange={e => setPoDateRangeFilter(e.target.value as any)}
+                                className="w-full py-2.5 px-3 bg-white border border-slate-300 rounded-xl text-xs font-extrabold text-slate-800 outline-none focus:border-amber-500 shadow-2xs cursor-pointer"
+                              >
+                                <option value="ALL">🗓️ All Dates (Full Calendar)</option>
+                                <option value="TODAY">📅 Today's Actions</option>
+                                <option value="THIS_WEEK">📅 This Week</option>
+                                <option value="THIS_MONTH">📅 This Month</option>
+                                <option value="CUSTOM">🔍 Custom Date Range...</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* CUSTOM DATE RANGE ROW (IF SELECTED) */}
+                          {poDateRangeFilter === 'CUSTOM' && (
+                            <div className="flex flex-wrap items-center gap-3 p-2.5 bg-white rounded-xl border border-slate-300 text-xs">
+                              <span className="font-bold text-slate-600">From Date:</span>
+                              <input
+                                type="date"
+                                value={poCustomStartDate}
+                                onChange={e => setPoCustomStartDate(e.target.value)}
+                                className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-800 outline-none"
+                              />
+                              <span className="font-bold text-slate-600">To Date:</span>
+                              <input
+                                type="date"
+                                value={poCustomEndDate}
+                                onChange={e => setPoCustomEndDate(e.target.value)}
+                                className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-800 outline-none"
+                              />
+                            </div>
+                          )}
+
+                          {/* STAGE & STATUS FILTER PILLS */}
+                          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/80">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setPoStageFilter('ALL')}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
+                                  poStageFilter === 'ALL'
+                                    ? 'bg-slate-900 text-white shadow-2xs'
+                                    : 'bg-white text-slate-700 hover:bg-slate-200 border border-slate-300'
+                                }`}
+                              >
+                                All Active ({activePosList.length})
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setPoStageFilter('AWAITING_PICK')}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1 ${
+                                  poStageFilter === 'AWAITING_PICK'
+                                    ? 'bg-amber-500 text-slate-950 shadow-2xs ring-2 ring-amber-400'
+                                    : 'bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-300'
+                                }`}
+                              >
+                                <span>📦 Awaiting Pick &amp; Pack</span>
+                                <span className="px-1.5 py-0.2 bg-white/80 rounded-full text-[10px] font-black">{countPick}</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setPoStageFilter('READY_FOR_COLLECTION')}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1 ${
+                                  poStageFilter === 'READY_FOR_COLLECTION'
+                                    ? 'bg-indigo-600 text-white shadow-2xs ring-2 ring-indigo-400'
+                                    : 'bg-indigo-50 text-indigo-900 hover:bg-indigo-100 border border-indigo-300'
+                                }`}
+                              >
+                                <span>🏷️ Ready for Collection</span>
+                                <span className="px-1.5 py-0.2 bg-white/80 rounded-full text-[10px] font-black">{countReady}</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setPoStageFilter('OUT_ON_HIRE')}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1 ${
+                                  poStageFilter === 'OUT_ON_HIRE'
+                                    ? 'bg-blue-600 text-white shadow-2xs ring-2 ring-blue-400'
+                                    : 'bg-blue-50 text-blue-900 hover:bg-blue-100 border border-blue-300'
+                                }`}
+                              >
+                                <span>🚚 Out on Hire</span>
+                                <span className="px-1.5 py-0.2 bg-white/80 rounded-full text-[10px] font-black">{countOnHire}</span>
+                              </button>
+
+                              {countOverdue > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setPoStageFilter('OVERDUE')}
+                                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1 animate-pulse ${
+                                    poStageFilter === 'OVERDUE'
+                                      ? 'bg-rose-600 text-white shadow-2xs ring-2 ring-rose-400'
+                                      : 'bg-rose-100 text-rose-900 hover:bg-rose-200 border border-rose-400'
+                                  }`}
+                                >
+                                  <span>⚠️ Overdue Returns</span>
+                                  <span className="px-1.5 py-0.2 bg-rose-200 text-rose-950 rounded-full text-[10px] font-black">{countOverdue}</span>
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => setPoCapFilter(prev => prev === 'CAPPED_ONLY' ? 'ALL' : 'CAPPED_ONLY')}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1 ${
+                                  poCapFilter === 'CAPPED_ONLY'
+                                    ? 'bg-amber-600 text-white shadow-2xs ring-2 ring-amber-400'
+                                    : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-300'
+                                }`}
+                                title="Filter orders with Rigout Price Caps applied"
+                              >
+                                <span>✨ Price Capped ({countCapped})</span>
+                              </button>
+                            </div>
+
+                            {/* RESET ALL FILTERS IF ANY ACTIVE */}
+                            {(poSearchQuery || poStageFilter !== 'ALL' || poDateRangeFilter !== 'ALL' || poCapFilter !== 'ALL') && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPoSearchQuery('');
+                                  setPoStageFilter('ALL');
+                                  setPoDateRangeFilter('ALL');
+                                  setPoCapFilter('ALL');
+                                  setPoCustomStartDate('');
+                                  setPoCustomEndDate('');
+                                }}
+                                className="text-xs font-extrabold text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-2.5 py-1 rounded-lg transition cursor-pointer flex items-center gap-1"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" /> Reset Filters
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     {activePosList.length === 0 ? (
                       <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center space-y-3 shadow-sm">
                         <div className="w-14 h-14 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto border border-amber-200">
@@ -10323,7 +12276,130 @@ export default function KiltHireApp() {
                       </div>
                     ) : (
                       <div className="space-y-4">
-                        {activePosList.map(po => {
+                        {(() => {
+                          const displayPosList = activePosList.filter(po => {
+                            const isComplete = po.items.length > 0 && po.items.every(i => i.returned);
+                            const overdueInfo = getOverdueStatus(po.hireEndDate, isComplete);
+                            const isPickPending = po.orderStatus === 'DEPOSIT_PAID_CONFIRMED' || po.orderStatus === 'RESERVED_PENDING_PAYMENT' || po.orderStatus === 'ASSEMBLY_DUE';
+                            const isReadyForCollection = po.orderStatus === 'READY_FOR_COLLECTION';
+                            const isOutOnHire = po.orderStatus === 'OUT_ON_HIRE';
+                            const isOverdue = isOutOnHire && !isComplete && overdueInfo.level !== 'ON_TIME';
+
+                            // 1. Text Search Filter
+                            if (poSearchQuery.trim()) {
+                              const q = poSearchQuery.trim().toLowerCase();
+                              const matchPoId = (po.id || '').toLowerCase().includes(q);
+                              const matchCustomer = (po.customerName || '').toLowerCase().includes(q);
+                              const matchPhone = (po.customerPhone || '').toLowerCase().includes(q);
+                              const matchEmail = (po.customerEmail || '').toLowerCase().includes(q);
+                              const matchHanger = (po.hangerQr || '').toLowerCase().includes(q);
+                              const matchBag = (po.outfitBagQr || '').toLowerCase().includes(q);
+                              const matchNotes = (po.notes || '').toLowerCase().includes(q);
+                              const matchItems = po.items.some(item => 
+                                (item.qrCodeId || '').toLowerCase().includes(q) ||
+                                (item.itemName || '').toLowerCase().includes(q)
+                              );
+                              if (!matchPoId && !matchCustomer && !matchPhone && !matchEmail && !matchHanger && !matchBag && !matchNotes && !matchItems) {
+                                return false;
+                              }
+                            }
+
+                            // 2. Stage Filter
+                            if (poStageFilter === 'AWAITING_PICK' && !isPickPending) return false;
+                            if (poStageFilter === 'READY_FOR_COLLECTION' && !isReadyForCollection) return false;
+                            if (poStageFilter === 'OUT_ON_HIRE' && !isOutOnHire) return false;
+                            if (poStageFilter === 'OVERDUE' && !isOverdue) return false;
+
+                            // 3. Price Cap Filter
+                            if (poCapFilter === 'CAPPED_ONLY' && !po.fullRigoutCapApplied) return false;
+                            if (poCapFilter === 'UNCAPPED' && po.fullRigoutCapApplied) return false;
+
+                            // 4. Date Range Filter
+                            if (poDateRangeFilter !== 'ALL') {
+                              const todayStr = new Date().toISOString().slice(0, 10);
+                              const poDate = po.hireStartDate || po.eventDate || '';
+                              
+                              if (poDateRangeFilter === 'TODAY') {
+                                if (po.hireStartDate !== todayStr && po.hireEndDate !== todayStr && po.eventDate !== todayStr) return false;
+                              } else if (poDateRangeFilter === 'THIS_WEEK') {
+                                const now = new Date();
+                                const currentDay = now.getDay();
+                                const startOfWeek = new Date(now);
+                                startOfWeek.setDate(now.getDate() - currentDay);
+                                const endOfWeek = new Date(now);
+                                endOfWeek.setDate(now.getDate() - currentDay + 6);
+                                const startStr = startOfWeek.toISOString().slice(0, 10);
+                                const endStr = endOfWeek.toISOString().slice(0, 10);
+                                if (poDate < startStr || poDate > endStr) return false;
+                              } else if (poDateRangeFilter === 'THIS_MONTH') {
+                                const currentMonthPrefix = todayStr.slice(0, 7);
+                                if (!poDate.startsWith(currentMonthPrefix)) return false;
+                              } else if (poDateRangeFilter === 'CUSTOM') {
+                                if (poCustomStartDate && poDate < poCustomStartDate) return false;
+                                if (poCustomEndDate && poDate > poCustomEndDate) return false;
+                              }
+                            }
+
+                            return true;
+                          }).sort((a, b) => {
+                            if (poSortOption === 'ACTION_DATE_ASC') {
+                              const getActionDate = (po: PurchaseOrder) => {
+                                if (po.orderStatus === 'DEPOSIT_PAID_CONFIRMED' || po.orderStatus === 'RESERVED_PENDING_PAYMENT' || po.orderStatus === 'ASSEMBLY_DUE') {
+                                  const d = new Date(po.hireStartDate);
+                                  return isNaN(d.getTime()) ? (po.hireStartDate || '') : new Date(d.getTime() - 2 * 86400000).toISOString().slice(0, 10);
+                                }
+                                if (po.orderStatus === 'READY_FOR_COLLECTION') {
+                                  return po.hireStartDate || '';
+                                }
+                                return po.hireEndDate || po.hireStartDate || '';
+                              };
+                              return getActionDate(a).localeCompare(getActionDate(b));
+                            }
+                            if (poSortOption === 'HIRE_START_ASC') {
+                              return (a.hireStartDate || '').localeCompare(b.hireStartDate || '');
+                            }
+                            if (poSortOption === 'HIRE_START_DESC') {
+                              return (b.hireStartDate || '').localeCompare(a.hireStartDate || '');
+                            }
+                            if (poSortOption === 'EVENT_DATE_ASC') {
+                              return (a.eventDate || '').localeCompare(b.eventDate || '');
+                            }
+                            if (poSortOption === 'RETURN_DUE_ASC') {
+                              return (a.hireEndDate || '').localeCompare(b.hireEndDate || '');
+                            }
+                            if (poSortOption === 'PO_NEWEST') {
+                              return (b.createdAt || b.id || '').localeCompare(a.createdAt || a.id || '');
+                            }
+                            return 0;
+                          });
+
+                          if (displayPosList.length === 0) {
+                            return (
+                              <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                                <Search className="w-10 h-10 text-slate-400 mx-auto" />
+                                <h4 className="font-extrabold text-slate-900 text-sm">No Purchase Orders Match Your Filters</h4>
+                                <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                                  Try clearing your search query or switching the state filter tab to see matching orders.
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPoSearchQuery('');
+                                    setPoStageFilter('ALL');
+                                    setPoDateRangeFilter('ALL');
+                                    setPoCapFilter('ALL');
+                                    setPoCustomStartDate('');
+                                    setPoCustomEndDate('');
+                                  }}
+                                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs rounded-xl shadow transition inline-flex items-center gap-1.5 cursor-pointer"
+                                >
+                                  <RotateCcw className="w-4 h-4" /> Reset All Filters ({activePosList.length} Active Orders)
+                                </button>
+                              </div>
+                            );
+                          }
+
+                          return displayPosList.map(po => {
                         const returnedCount = po.items.filter(i => i.returned).length;
                         const totalCount = po.items.length;
                         const isComplete = returnedCount === totalCount && totalCount > 0;
@@ -10339,68 +12415,85 @@ export default function KiltHireApp() {
                         const pickDateStr = isNaN(pickDateObj.getTime()) ? po.hireStartDate : pickDateObj.toISOString().slice(0, 10);
 
                         return (
-                          <div key={po.id} className={`bg-white border rounded-2xl p-5 shadow-sm space-y-4 ${isCancelled ? 'border-rose-200 bg-rose-50/30 opacity-80' : 'border-slate-200'}`}>
-                            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                          <div 
+                            key={po.id} 
+                            className={`bg-white border-2 rounded-3xl shadow-md overflow-hidden transition ${
+                              isCancelled 
+                                ? 'border-rose-300 bg-rose-50/30 opacity-85' 
+                                : isOutOnHire
+                                ? 'border-blue-400 shadow-md'
+                                : isReadyForCollection
+                                ? 'border-indigo-400 shadow-md'
+                                : 'border-slate-300 hover:border-slate-400 shadow-md'
+                            }`}
+                          >
+                            {/* TOP HEADER RIBBON WITH DARK BORDER & ORDER METADATA */}
+                            <div className="bg-slate-100/90 border-b-2 border-slate-200 p-4 flex flex-wrap items-center justify-between gap-3">
                               <div>
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="font-mono font-extrabold text-amber-700 text-base">{po.id}</span>
-                                  <span className={`px-2.5 py-0.5 text-xs font-bold rounded-full border ${
-                                    isCancelled ? 'bg-rose-100 text-rose-800 border-rose-300' : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                  <span className="font-mono font-black text-amber-900 text-base bg-white px-2.5 py-0.5 rounded-lg border-2 border-amber-300 shadow-2xs">
+                                    {po.id}
+                                  </span>
+                                  <span className="font-black text-slate-900 text-sm">
+                                    {po.customerName}
+                                  </span>
+                                  <span className="text-xs text-slate-600 font-semibold">
+                                    ({po.customerPhone} • {po.customerEmail})
+                                  </span>
+
+                                  <span className={`px-2.5 py-0.5 text-xs font-black rounded-full border shadow-2xs ${
+                                    isCancelled 
+                                      ? 'bg-rose-100 text-rose-900 border-rose-300' 
+                                      : 'bg-emerald-100 text-emerald-900 border-emerald-300'
                                   }`}>
                                     {isCancelled ? 'CANCELLED' : po.paymentStatus}
                                   </span>
-                                  {isPickPending && (
-                                    <span className="flex items-center gap-2">
-                                      <button
-                                        type="button"
-                                        onClick={() => setShowPrintPickSheetModal(po)}
-                                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-xl font-extrabold text-xs shadow-2xs transition flex items-center gap-1 cursor-pointer"
-                                        title="Print physical paper pick sheet"
-                                      >
-                                        <Printer className="w-3.5 h-3.5 text-slate-700" /> Paper Sheet
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => openAssemblyModal(po)}
-                                        className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition flex items-center gap-1 cursor-pointer"
-                                      >
-                                        <CheckCircle2 className="w-3.5 h-3.5" /> Assembly &amp; Scan QRs
-                                      </button>
-                                    </span>
-                                  )}
+
                                   {po.fullRigoutCapApplied && (
-                                    <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 rounded">
+                                    <span className="px-2 py-0.5 text-[10px] font-black bg-amber-100 text-amber-950 border border-amber-300 rounded shadow-2xs">
                                       ✨ Full Rigout Price Cap Applied (-£{po.fullRigoutDiscount})
                                     </span>
                                   )}
                                 </div>
-                                <p className="text-xs text-slate-700 mt-1">
-                                  <strong>Customer:</strong> {po.customerName} ({po.customerPhone} • {po.customerEmail})
-                                </p>
+
+                                <div className="text-xs text-slate-600 font-medium mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+                                  <span>📅 Hire Period: <strong className="text-slate-900">{po.hireStartDate}</strong> to <strong className="text-slate-900">{po.hireEndDate}</strong></span>
+                                  <span>🎪 Event: <strong className="text-slate-900">{po.eventDate}</strong></span>
+                                  <span>💳 Final Hire: <strong className="text-amber-800 font-mono font-bold">£{po.totalHireFee}</strong> | Deposit: <strong className="text-emerald-800 font-mono font-bold">£{po.totalDepositHeld}</strong></span>
+                                </div>
                               </div>
 
+                              {/* STAGE-DRIVEN ACTION BUTTONS */}
                               <div className="flex flex-wrap items-center gap-2">
-                                {/* SAFEGUARD STATE MACHINE BUTTONS */}
                                 {isPickPending && (
                                   <>
-                                    <span className="px-3 py-1.5 bg-amber-100 text-amber-900 border border-amber-300 rounded-xl font-extrabold text-xs shadow-2xs">
+                                    <span className="px-3 py-1.5 bg-amber-100 text-amber-950 border-2 border-amber-300 rounded-xl font-extrabold text-xs shadow-2xs">
                                       📦 Due Picked on {pickDateStr}
                                     </span>
                                     <button
                                       type="button"
-                                      onClick={() => openAssemblyModal(po)}
-                                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition flex items-center gap-1 cursor-pointer"
+                                      onClick={() => setShowPrintPickSheetModal(po)}
+                                      className="px-3 py-1.5 bg-white hover:bg-slate-200 text-slate-800 border-2 border-slate-300 rounded-xl font-extrabold text-xs shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                                      title="Print physical paper pick sheet"
                                     >
-                                      <CheckCircle2 className="w-3.5 h-3.5" /> Assembly &amp; Scan QRs
+                                      <Printer className="w-3.5 h-3.5 text-slate-700" /> Paper Sheet
                                     </button>
                                     <button
+                                      type="button"
+                                      onClick={() => openAssemblyModal(po)}
+                                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition flex items-center gap-1 cursor-pointer ring-2 ring-emerald-400/40"
+                                    >
+                                      <PackageCheck className="w-3.5 h-3.5" /> Assembly &amp; Scan QRs
+                                    </button>
+                                    <button
+                                      type="button"
                                       onClick={() => {
                                         setShowCancelPoModal(po);
                                         setCancelPinInput('');
                                         setCancelReasonInput('');
                                         setCancelRefundOption(po.totalDepositHeld > 0 ? 'FULL_REFUND_ISSUED' : 'NO_DEPOSIT_WAS_PAID');
                                       }}
-                                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-xl font-extrabold text-xs shadow-2xs transition flex items-center gap-1"
+                                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-xl font-extrabold text-xs shadow-2xs transition flex items-center gap-1 cursor-pointer"
                                     >
                                       <XCircle className="w-3.5 h-3.5 text-rose-600" /> Cancel Hire
                                     </button>
@@ -10409,28 +12502,33 @@ export default function KiltHireApp() {
 
                                 {isReadyForCollection && (
                                   <>
-                                    <span className="px-3 py-1.5 bg-indigo-100 text-indigo-900 border border-indigo-300 rounded-xl font-extrabold text-xs shadow-2xs">
+                                    <span className="px-3 py-1.5 bg-indigo-100 text-indigo-950 border-2 border-indigo-300 rounded-xl font-extrabold text-xs shadow-2xs">
                                       🏷️ Due Out on {po.hireStartDate}
                                     </span>
                                     <button
-                                      onClick={async () => {
-                                        const updatedPo = { ...po, orderStatus: 'OUT_ON_HIRE' as const };
-                                        await upsertPurchaseOrder(updatedPo);
-                                        setPos(prev => prev.map(p => p.id === po.id ? updatedPo : p));
-                                        showToast(`🚀 PO ${po.id} handed out to customer! Now marked OUT ON HIRE.`, 'success');
-                                      }}
-                                      className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition flex items-center gap-1"
+                                      type="button"
+                                      onClick={() => setShowPrintPickSheetModal(po)}
+                                      className="px-3 py-1.5 bg-white hover:bg-slate-200 text-slate-800 border-2 border-slate-300 rounded-xl font-extrabold text-xs shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                                      title="Print physical paper bag tag / pick sheet"
                                     >
-                                      🚀 Hand Out to Customer
+                                      <Printer className="w-3.5 h-3.5 text-slate-700" /> Bag Tag
                                     </button>
                                     <button
+                                      type="button"
+                                      onClick={() => handleMarkHandedOut(po)}
+                                      className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer ring-2 ring-blue-400/40"
+                                    >
+                                      <Send className="w-3.5 h-3.5" /> 🚀 Hand Out to Customer
+                                    </button>
+                                    <button
+                                      type="button"
                                       onClick={() => {
                                         setShowCancelPoModal(po);
                                         setCancelPinInput('');
                                         setCancelReasonInput('');
                                         setCancelRefundOption(po.totalDepositHeld > 0 ? 'FULL_REFUND_ISSUED' : 'NO_DEPOSIT_WAS_PAID');
                                       }}
-                                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-xl font-extrabold text-xs shadow-2xs transition flex items-center gap-1"
+                                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-xl font-extrabold text-xs shadow-2xs transition flex items-center gap-1 cursor-pointer"
                                     >
                                       <XCircle className="w-3.5 h-3.5 text-rose-600" /> Cancel Hire
                                     </button>
@@ -10439,12 +12537,13 @@ export default function KiltHireApp() {
 
                                 {isOutOnHire && (
                                   <>
-                                    <span className="px-3 py-1.5 bg-blue-100 text-blue-900 border border-blue-300 rounded-xl font-extrabold text-xs shadow-2xs">
+                                    <span className="px-3 py-1.5 bg-blue-100 text-blue-950 border-2 border-blue-300 rounded-xl font-extrabold text-xs shadow-2xs">
                                       🚚 Out on Hire — Due Back {po.hireEndDate}
                                     </span>
                                     <button
+                                      type="button"
                                       onClick={() => openPoReturnChecklist(po)}
-                                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1"
+                                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-xs transition flex items-center gap-1 cursor-pointer ring-2 ring-emerald-400/40"
                                     >
                                       <RotateCcw className="w-3.5 h-3.5" /> Process PO Batch Return
                                     </button>
@@ -10452,18 +12551,20 @@ export default function KiltHireApp() {
                                 )}
 
                                 <button
+                                  type="button"
                                   onClick={() => {
                                     setShowEditPoModal(po);
                                     setEditPoNotes(po.notes || '');
                                   }}
-                                  className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold flex items-center gap-1 shadow-xs transition"
+                                  className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border-2 border-slate-300 rounded-xl text-xs font-bold flex items-center gap-1 shadow-2xs transition cursor-pointer"
                                 >
                                   <Edit3 className="w-3.5 h-3.5 text-amber-600" /> Edit Notes
                                 </button>
 
                                 <button
+                                  type="button"
                                   onClick={() => handleDeleteSinglePoFromFirestore(po.id)}
-                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition border border-slate-200"
+                                  className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition border border-slate-300 cursor-pointer"
                                   title="Delete Purchase Order from Database"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -10471,104 +12572,136 @@ export default function KiltHireApp() {
                               </div>
                             </div>
 
-                            <div className="flex flex-wrap items-center justify-between text-xs gap-2">
-                              <div>
-                                <span className="text-slate-500 block">Hire Period: <strong>{po.hireStartDate}</strong> to <strong>{po.hireEndDate}</strong></span>
-                                <span className="text-slate-900 font-mono font-bold text-sm">
-                                  {po.fullRigoutCapApplied && <span className="line-through text-slate-400 mr-1.5">£{po.itemizedSubtotal}</span>}
-                                  Final Hire: <span className="text-amber-700">£{po.totalHireFee}</span> | Deposit: <span className="text-emerald-700">£{po.totalDepositHeld}</span>
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* CANCELLATION RECORD BANNER IF CANCELLED */}
-                            {isCancelled && po.cancellationRecord && (
-                              <div className="bg-rose-100/70 border border-rose-300 rounded-xl p-3 text-xs text-rose-950 space-y-1">
-                                <div className="font-extrabold text-rose-900 flex items-center gap-1.5">
-                                  <XCircle className="w-4 h-4 text-rose-600" /> Cancelled Order — Refund Status: {po.cancellationRecord.depositRefundStatus} (Amount: £{po.cancellationRecord.refundAmount})
+                            {/* CARD BODY WITH STAGE INSTRUCTIONS & LINE ITEMS */}
+                            <div className="p-5 space-y-4">
+                              {/* STAGE INSTRUCTIONAL BANNER */}
+                              {isPickPending && (
+                                <div className="p-3 bg-amber-50 rounded-2xl border-2 border-amber-200 text-xs text-amber-950 flex items-center gap-2">
+                                  <Clock className="w-4 h-4 text-amber-700 shrink-0" />
+                                  <span>
+                                    <strong>Step 1 (Stock Picking):</strong> Outfits must be picked from stock and scanned onto bespoke hangers &amp; bags prior to collection date ({po.hireStartDate}).
+                                  </span>
                                 </div>
-                                <p className="text-[11px] text-rose-900">
-                                  <strong>Reason:</strong> "{po.cancellationRecord.reason}" • <strong>Authorized by Staff PIN:</strong> {po.cancellationRecord.cancelledByStaff} on {po.cancellationRecord.cancelledAt}
-                                </p>
-                              </div>
-                            )}
+                              )}
 
-                            {/* AUTOMATED RETURN PROGRESS BAR */}
-                            {!isCancelled && (
-                              <div className="space-y-1">
-                                <div className="flex justify-between text-[11px] font-bold text-slate-600">
-                                  <span>Automated Return Progress:</span>
-                                  <span>{returnedCount} of {totalCount} Garments Returned</span>
+                              {isReadyForCollection && (
+                                <div className="p-3 bg-indigo-50 rounded-2xl border-2 border-indigo-200 text-xs text-indigo-950 flex items-center gap-2">
+                                  <CheckCircle2 className="w-4 h-4 text-indigo-700 shrink-0" />
+                                  <span>
+                                    <strong>Step 2 (Ready in Store):</strong> Garments bagged (Hanger: <strong>{po.hangerQr || '—'}</strong>, Bag: <strong>{po.outfitBagQr || '—'}</strong>). Click <strong>"🚀 Hand Out to Customer"</strong> when collected.
+                                  </span>
                                 </div>
-                                <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
-                                  <div 
-                                    className={`h-full transition-all duration-500 ${isComplete ? 'bg-emerald-500' : 'bg-blue-600'}`}
-                                    style={{ width: `${(returnedCount / totalCount) * 100}%` }}
-                                  />
-                                </div>
-                              </div>
-                            )}
+                              )}
 
-                            {po.notes && (
-                              <div className="text-xs bg-amber-50/70 p-2.5 rounded-lg border border-amber-200 text-amber-900">
-                                <strong>Staff Notes:</strong> {po.notes}
-                              </div>
-                            )}
-
-                            <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
-                              <h4 className="text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Hired Garments & Real-Time Scan Status:</h4>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                {po.items.map(item => (
-                                  <div key={item.qrCodeId} className={`flex items-center justify-between p-2.5 rounded-lg border text-xs shadow-xs ${
-                                    item.returned ? 'bg-emerald-50/80 border-emerald-200' : 'bg-white border-slate-200'
-                                  }`}>
-                                    <div>
-                                      <span className="font-mono font-bold text-amber-800 mr-2">{item.qrCodeId}</span>
-                                      <span className="text-slate-900 font-semibold">{item.itemName}</span>
-                                      <span className={`ml-2 px-1.5 py-0.5 text-[9px] font-bold rounded ${item.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900' : 'bg-blue-100 text-blue-900'}`}>
-                                        {item.sizeGroup}
-                                      </span>
-                                    </div>
-                                    <div>
-                                      {item.returned ? (
-                                        <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${
-                                          item.returnCondition === 'GOOD_CLEAN' 
-                                            ? 'bg-emerald-100 text-emerald-800' 
-                                            : 'bg-rose-100 text-rose-800'
-                                        }`}>
-                                          {item.returnCondition === 'GOOD_CLEAN' ? 'Returned (Deposit Refunded)' : 'Damaged (Deposit Held)'}
-                                        </span>
-                                      ) : isOutOnHire ? (
-                                        <button
-                                          onClick={() => openPoReturnChecklist(po, item.qrCodeId)}
-                                          className="px-2.5 py-1 bg-blue-600 text-white hover:bg-blue-700 rounded text-[11px] font-extrabold shadow-2xs transition"
-                                        >
-                                          Scan Return
-                                        </button>
-                                      ) : isPickPending ? (
-                                        <span className="text-[10px] font-extrabold text-amber-900 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
-                                          Due Picked ({pickDateStr})
-                                        </span>
-                                      ) : isReadyForCollection ? (
-                                        <span className="text-[10px] font-extrabold text-indigo-900 bg-indigo-100 px-2 py-0.5 rounded border border-indigo-300">
-                                          Due Out ({po.hireStartDate})
-                                        </span>
-                                      ) : (
-                                        <span className="text-[10px] font-extrabold text-rose-800 bg-rose-100 px-2 py-0.5 rounded border border-rose-300">
-                                          Order Cancelled
-                                        </span>
-                                      )}
-                                    </div>
+                              {isOutOnHire && (
+                                <div className="space-y-1.5">
+                                  <div className="flex justify-between text-[11px] font-extrabold text-slate-700">
+                                    <span><strong>Step 3 (Returns &amp; PayPal Refund Ledger):</strong> {returnedCount} of {totalCount} Garments Returned</span>
+                                    <span className="font-mono">{Math.round((returnedCount / totalCount) * 100)}%</span>
                                   </div>
-                                ))}
+                                  <div className="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden border border-slate-300">
+                                    <div 
+                                      className={`h-full transition-all duration-500 ${isComplete ? 'bg-emerald-500' : 'bg-blue-600'}`}
+                                      style={{ width: `${(returnedCount / totalCount) * 100}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* CANCELLATION RECORD BANNER IF CANCELLED */}
+                              {isCancelled && po.cancellationRecord && (
+                                <div className="bg-rose-100/80 border-2 border-rose-300 rounded-2xl p-3 text-xs text-rose-950 space-y-1">
+                                  <div className="font-extrabold text-rose-900 flex items-center gap-1.5">
+                                    <XCircle className="w-4 h-4 text-rose-600" /> Cancelled Order — Refund Status: {po.cancellationRecord.depositRefundStatus} (Amount: £{po.cancellationRecord.refundAmount})
+                                  </div>
+                                  <p className="text-[11px] text-rose-900">
+                                    <strong>Reason:</strong> "{po.cancellationRecord.reason}" • <strong>Authorized by Staff PIN:</strong> {po.cancellationRecord.cancelledByStaff} on {po.cancellationRecord.cancelledAt}
+                                  </p>
+                                </div>
+                              )}
+
+                              {po.notes && (
+                                <div className="text-xs bg-amber-50/80 p-3 rounded-2xl border-2 border-amber-200/80 text-amber-950 font-medium">
+                                  <strong className="text-amber-900">Staff Notes:</strong> {po.notes}
+                                </div>
+                              )}
+
+                              {/* LINE ITEMS */}
+                              <div className="space-y-2 pt-1 border-t border-slate-100">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">
+                                  Hired Garments &amp; Inventory Line Items ({po.items.length}):
+                                </span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                  {po.items.map(item => (
+                                    <div 
+                                      key={item.qrCodeId} 
+                                      className={`p-3 rounded-2xl border-2 text-xs flex items-center justify-between transition shadow-2xs ${
+                                        item.returned 
+                                          ? 'bg-emerald-50/90 border-emerald-300' 
+                                          : isOutOnHire
+                                          ? 'bg-white border-blue-200 hover:border-blue-400'
+                                          : isReadyForCollection
+                                          ? 'bg-white border-indigo-200'
+                                          : 'bg-white border-slate-300'
+                                      }`}
+                                    >
+                                      <div>
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-mono font-extrabold text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-300">
+                                            {item.qrCodeId}
+                                          </span>
+                                          <span className="text-slate-900 font-extrabold">
+                                            {item.itemName}
+                                          </span>
+                                        </div>
+                                        <span className={`text-[10px] block mt-1 ${item.sizeGroup === 'Kid' ? 'text-purple-800 font-bold' : 'text-blue-800 font-bold'}`}>
+                                          {item.sizeGroup} ({item.size}) • Deposit £{item.depositAmount}
+                                        </span>
+                                      </div>
+
+                                      <div>
+                                        {item.returned ? (
+                                          <div className="text-right">
+                                            <span className={`px-2.5 py-1 text-[10px] font-black rounded-lg inline-flex items-center gap-1 border ${
+                                              item.returnCondition === 'GOOD_CLEAN' 
+                                                ? 'bg-emerald-100 text-emerald-950 border-emerald-300' 
+                                                : 'bg-rose-100 text-rose-950 border-rose-300'
+                                            }`}>
+                                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                              {item.returnCondition === 'GOOD_CLEAN' ? 'Returned (Clean)' : 'Damaged / Needs Repair'}
+                                            </span>
+                                            <span className="text-[9px] text-slate-500 block font-mono mt-0.5">{item.returnedAt}</span>
+                                          </div>
+                                        ) : isOutOnHire ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => openPoReturnChecklist(po, item.qrCodeId)}
+                                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                                          >
+                                            <Zap className="w-3 h-3 text-amber-300" /> Scan Return
+                                          </button>
+                                        ) : isReadyForCollection ? (
+                                          <span className="px-2.5 py-1 text-[10px] font-extrabold bg-indigo-50 text-indigo-900 border border-indigo-200 rounded-lg">
+                                            🏷️ In Outfit Bag
+                                          </span>
+                                        ) : (
+                                          <span className="px-2.5 py-1 text-[10px] font-extrabold bg-slate-100 text-slate-700 border border-slate-200 rounded-lg">
+                                            📦 Awaiting Pick
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
                             </div>
                           </div>
                         );
-                      })}
-                    </div>
-                  )}
-                </div>
+                      });
+                    })()}
+                  </div>
+                )}
+              </div>
               );
             })()}
 
@@ -10754,7 +12887,7 @@ export default function KiltHireApp() {
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                             <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm space-y-1">
                               <span className="text-xs text-slate-500 font-bold block flex items-center gap-1">
-                                <DollarSign className="w-4 h-4 text-amber-600" /> Gross Hire Revenue
+                                <PoundIcon className="w-4 h-4 text-amber-600" /> Gross Hire Revenue
                               </span>
                               <span className="text-2xl font-extrabold text-slate-900">£{grossRevenue.toLocaleString()}</span>
                               <span className="text-[10px] text-slate-400 block">From {pos.length} Customer POs</span>
@@ -10914,7 +13047,7 @@ export default function KiltHireApp() {
                         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
                           <div>
                             <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                              <DollarSign className="w-5 h-5 text-amber-600" /> Individual Garment ROI & Financial Lifetime Ledger
+                              <PoundIcon className="w-5 h-5 text-amber-600" /> Individual Garment ROI & Financial Lifetime Ledger
                             </h3>
                             <p className="text-xs text-slate-500">
                               Track purchase cost vs lifetime rental revenue earned for every registered garment in stock.
@@ -12048,44 +14181,95 @@ export default function KiltHireApp() {
             <div className="space-y-2">
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">Select Action for this Garment:</span>
 
-              {/* ACTION 1: START / ADD TO ORDER PO */}
-              <button
-                onClick={() => {
-                  const scannedItem = scanActionItem;
-                  setScanActionItem(null);
-                  setShowCreatePoModal(false);
-                  
-                  // Switch to full-page Fitting & Order Station
-                  setAssistantTab('start_fitting');
-                  setActiveTab('start_fitting');
-                  setActiveCamera(true);
+              {/* ACTION 1: ADD TO CURRENT ORDER OR START ORDER */}
+              {(() => {
+                const hasActivePo = showCreatePoModal || newPoForm.selectedItemIds.length > 0;
+                const isFitting = assistantTab === 'start_fitting' || activeTab === 'start_fitting';
 
-                  // Add scanned garment into fitting outfits
-                  setFittingForm(prev => {
-                    const updatedOutfits = [...prev.outfits];
-                    if (updatedOutfits.length > 0) {
-                      const first = updatedOutfits[0];
-                      const alreadyAdded = first.selectedItemIds.includes(scannedItem.id);
-                      if (!alreadyAdded) {
-                        updatedOutfits[0] = {
-                          ...first,
-                          selectedItemIds: [...first.selectedItemIds, scannedItem.id]
-                        };
-                      }
-                    }
-                    return { ...prev, outfits: updatedOutfits };
-                  });
+                if (hasActivePo) {
+                  return (
+                    <button
+                      onClick={() => {
+                        const scannedItem = scanActionItem;
+                        setScanActionItem(null);
+                        setNewPoForm(prev => ({
+                          ...prev,
+                          selectedItemIds: prev.selectedItemIds.includes(scannedItem.id) ? prev.selectedItemIds : [...prev.selectedItemIds, scannedItem.id]
+                        }));
+                        setShowCreatePoModal(true);
+                        showToast(`➕ Added ${scannedItem.name} (${scannedItem.id}) to current Order (PO)!`, 'success');
+                      }}
+                      className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-2xl shadow-sm transition flex items-center justify-between cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <ShoppingCart className="w-4 h-4 text-emerald-200" />
+                        <span>Add to Current Open Order ({newPoForm.selectedItemIds.length} in draft)</span>
+                      </div>
+                      <span className="text-[10px] bg-emerald-700 text-emerald-100 px-2.5 py-0.5 rounded-full font-black">➕ Add to Order</span>
+                    </button>
+                  );
+                }
 
-                  showToast(`🛒 Switched to Customer Fitting & Order Station with ${scannedItem.id}!`, 'success');
-                }}
-                className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-2xl shadow-sm transition flex items-center justify-between cursor-pointer"
-              >
-                <div className="flex items-center gap-2.5">
-                  <ShoppingCart className="w-4 h-4 text-emerald-200" />
-                  <span>Start New Order PO (Hire Out)</span>
-                </div>
-                <span className="text-[10px] bg-emerald-700 text-emerald-100 px-2 py-0.5 rounded-full font-bold">🛒 Hire Out</span>
-              </button>
+                if (isFitting) {
+                  return (
+                    <button
+                      onClick={() => {
+                        const scannedItem = scanActionItem;
+                        setScanActionItem(null);
+                        setFittingForm(prev => {
+                          const updatedOutfits = [...prev.outfits];
+                          if (updatedOutfits.length > 0) {
+                            const first = updatedOutfits[0];
+                            if (!first.selectedItemIds.includes(scannedItem.id)) {
+                              updatedOutfits[0] = {
+                                ...first,
+                                selectedItemIds: [...first.selectedItemIds, scannedItem.id]
+                              };
+                            }
+                          }
+                          return { ...prev, outfits: updatedOutfits };
+                        });
+                        showToast(`➕ Added ${scannedItem.name} (${scannedItem.id}) to Fitting Outfit!`, 'success');
+                      }}
+                      className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-2xl shadow-sm transition flex items-center justify-between cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <ShoppingCart className="w-4 h-4 text-emerald-200" />
+                        <span>Add to Current Fitting Outfit</span>
+                      </div>
+                      <span className="text-[10px] bg-emerald-700 text-emerald-100 px-2.5 py-0.5 rounded-full font-black">➕ Add to Fitting</span>
+                    </button>
+                  );
+                }
+
+                return (
+                  <button
+                    onClick={() => {
+                      const scannedItem = scanActionItem;
+                      setScanActionItem(null);
+                      setNewPoForm({
+                        customerName: '',
+                        customerEmail: '',
+                        customerPhone: '',
+                        eventDate: '',
+                        hireStartDate: new Date().toISOString().split('T')[0],
+                        hireEndDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                        notes: '',
+                        selectedItemIds: [scannedItem.id]
+                      });
+                      setShowCreatePoModal(true);
+                      showToast(`🛒 Started new order with ${scannedItem.id}!`, 'success');
+                    }}
+                    className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-2xl shadow-sm transition flex items-center justify-between cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <ShoppingCart className="w-4 h-4 text-emerald-200" />
+                      <span>Start New Order PO with this Garment</span>
+                    </div>
+                    <span className="text-[10px] bg-emerald-700 text-emerald-100 px-2 py-0.5 rounded-full font-bold">🛒 Hire Out</span>
+                  </button>
+                );
+              })()}
 
               {/* ACTION 2: PLACE BACK IN AVAILABLE STOCK (IF CURRENTLY OUT/REPAIR/CLEANING/RETIRED) */}
               {scanActionItem.status !== 'AVAILABLE' && (
@@ -12338,12 +14522,72 @@ export default function KiltHireApp() {
 
 
 
-              <button
-                type="submit"
-                className="w-full py-3.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow transition"
-              >
-                ✓ Save {regForm.sizeGroup} Garment into Stock Database
-              </button>
+              {/* ACTIVE ORDER CONTEXT BANNER */}
+              {(showCreatePoModal || newPoForm.selectedItemIds.length > 0 || assistantTab === 'start_fitting' || activeTab === 'start_fitting') && (
+                <div className="bg-emerald-50 border-2 border-emerald-300 p-3 rounded-xl flex items-center justify-between gap-2 shadow-2xs">
+                  <div className="flex items-center gap-2">
+                    <ShoppingCart className="w-4 h-4 text-emerald-700 shrink-0" />
+                    <div>
+                      <span className="font-extrabold text-emerald-950 block text-[11px]">
+                        Order in Progress ({showCreatePoModal || newPoForm.selectedItemIds.length > 0 ? `${newPoForm.selectedItemIds.length} items in PO draft` : 'Fitting Station Active'})
+                      </span>
+                      <span className="text-[10px] text-emerald-800 font-semibold">
+                        Add to current order automatically once saved to stock?
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-emerald-300">
+                    <button
+                      type="button"
+                      onClick={() => setAutoAddToActiveOrder(true)}
+                      className={`px-2.5 py-1 rounded text-xs font-black transition cursor-pointer ${
+                        autoAddToActiveOrder
+                          ? 'bg-emerald-600 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Yes
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAutoAddToActiveOrder(false)}
+                      className={`px-2.5 py-1 rounded text-xs font-black transition cursor-pointer ${
+                        !autoAddToActiveOrder
+                          ? 'bg-slate-800 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      No (Stock Only)
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowRegisterModal(false);
+                    setScannedCode('');
+                    setSimulatedInput('');
+                    showToast('Scan cancelled and cleared.', 'info');
+                  }}
+                  className="px-5 py-3.5 bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-700 border border-slate-300 hover:border-rose-300 font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <X className="w-4 h-4" /> Cancel &amp; Clear Scan
+                </button>
+
+                <button
+                  type="submit"
+                  className="flex-1 py-3.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow transition cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <CheckCircle2 className="w-4 h-4 text-slate-950" />
+                  {autoAddToActiveOrder && (showCreatePoModal || newPoForm.selectedItemIds.length > 0 || assistantTab === 'start_fitting' || activeTab === 'start_fitting')
+                    ? `✓ Save into Stock & Add to Current Order`
+                    : `✓ Save ${regForm.sizeGroup} Garment into Stock Database`
+                  }
+                </button>
+              </div>
             </form>
           </div>
         </div>
@@ -12825,7 +15069,7 @@ export default function KiltHireApp() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => window.print()}
+                    onClick={() => handlePrintBulkBinLabel(bin)}
                     className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
                   >
                     <Printer className="w-4 h-4" /> Send {boxDisplay} Label to Printer
@@ -12844,7 +15088,7 @@ export default function KiltHireApp() {
 
               {/* PRINTABLE BOX STICKER LABEL CARD */}
               <div className="p-6 bg-slate-100 overflow-y-auto flex items-center justify-center">
-                <div className="bg-white border-4 border-slate-900 rounded-3xl p-6 shadow-xl max-w-md w-full text-center space-y-4 print:border-4 print:border-black print:shadow-none print:m-0 print:max-w-none print:w-full">
+                <div className="bg-white border-4 border-slate-900 rounded-3xl p-6 shadow-xl max-w-md w-full text-center space-y-4 print:border-4 print:border-black print:shadow-none print:m-0 print:max-w-none print:w-full bulk-box-label-print">
                   
                   {/* HEADER */}
                   <div className="border-b-2 border-slate-900 pb-3 flex items-center justify-between">
@@ -12899,8 +15143,8 @@ export default function KiltHireApp() {
                       <span className="font-extrabold text-slate-900">{bin.tartanOrColour || 'Standard'}</span>
                     </div>
                     <div>
-                      <span className="text-slate-500 font-bold block text-[10px] uppercase">Hire Rate & Dep</span>
-                      <span className="font-mono font-extrabold text-slate-900">£{bin.hireRate.toFixed(2)} / £{bin.depositAmount.toFixed(2)}</span>
+                      <span className="text-slate-500 font-bold block text-[10px] uppercase">Hire Rate &amp; Dep</span>
+                      <span className="font-mono font-extrabold text-slate-900">£{(bin.hireRate || 0).toFixed(2)} / £{(bin.depositAmount || 0).toFixed(2)}</span>
                     </div>
                   </div>
 
@@ -12916,6 +15160,310 @@ export default function KiltHireApp() {
           </div>
         );
       })()}
+
+      {/* EDIT SERIALIZED QR BATCH MODAL */}
+      {editingBatch && (() => {
+        const allCategories = Array.from(new Set([...pricingMatrix.map(pm => pm.category), ...CATEGORIES])).filter(Boolean);
+        return (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl">
+              <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 bg-amber-100 text-amber-900 font-mono font-bold text-xs rounded-md">
+                      {editingBatch.id}
+                    </span>
+                    <span className="text-xs font-bold text-slate-500">{editingBatch.count} QR Codes</span>
+                  </div>
+                  <h3 className="text-base font-extrabold text-slate-900 mt-1 flex items-center gap-2">
+                    <Edit3 className="w-4 h-4 text-amber-600" /> Edit Batch Details
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingBatch(null)}
+                  className="p-1 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleEditBatchSubmit} className="space-y-4 text-xs">
+                <div>
+                  <label className="block text-slate-700 font-extrabold mb-1">Batch Title / Description</label>
+                  <input
+                    type="text"
+                    required
+                    value={editBatchForm.title}
+                    onChange={e => setEditBatchForm({ ...editBatchForm, title: e.target.value })}
+                    className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                    placeholder="e.g. Royal Stewart Heavyweight Kilts Batch 1"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">Correct any spelling mistakes or adjust the batch label.</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-700 font-extrabold mb-1">Category</label>
+                    <select
+                      value={editBatchForm.category}
+                      onChange={e => setEditBatchForm({ ...editBatchForm, category: e.target.value as ItemCategory })}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                    >
+                      {allCategories.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-extrabold mb-1">Size Group</label>
+                    <select
+                      value={editBatchForm.sizeGroup}
+                      onChange={e => setEditBatchForm({ ...editBatchForm, sizeGroup: e.target.value as SizeGroup })}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                    >
+                      <option value="Adult">Adult</option>
+                      <option value="Kid">Kid</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingBatch(null)}
+                    className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition cursor-pointer border border-slate-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold rounded-xl transition cursor-pointer shadow-sm flex items-center justify-center gap-1.5"
+                  >
+                    <Check className="w-4 h-4" /> Save Changes
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* EDIT BULK STORAGE BOX BIN MODAL */}
+      {editingBulkBin && (() => {
+        const allCategories = Array.from(new Set([...pricingMatrix.map(pm => pm.category), ...CATEGORIES])).filter(Boolean);
+        return (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl">
+              <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-900 font-mono font-bold text-xs rounded-md">
+                      {editingBulkBin.id}
+                    </span>
+                    <span className="text-xs font-bold text-slate-500">Bulk Storage Container</span>
+                  </div>
+                  <h3 className="text-base font-extrabold text-slate-900 mt-1 flex items-center gap-2">
+                    <Edit3 className="w-4 h-4 text-emerald-600" /> Edit Box Bin Details
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingBulkBin(null)}
+                  className="p-1 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleEditBulkBinSubmit} className="space-y-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-700 font-extrabold mb-1">Box / Container #</label>
+                    <input
+                      type="text"
+                      required
+                      value={editBulkBinForm.boxNumber}
+                      onChange={e => setEditBulkBinForm({ ...editBulkBinForm, boxNumber: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-bold outline-none focus:border-emerald-500 shadow-sm"
+                      placeholder="e.g. 1, 2, Box 1, Bin A"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-extrabold mb-1">Category</label>
+                    <select
+                      value={editBulkBinForm.category}
+                      onChange={e => setEditBulkBinForm({ ...editBulkBinForm, category: e.target.value as ItemCategory })}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-bold outline-none focus:border-emerald-500 shadow-sm"
+                    >
+                      {allCategories.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-extrabold mb-1">Item Title / Description</label>
+                  <input
+                    type="text"
+                    required
+                    value={editBulkBinForm.name}
+                    onChange={e => setEditBulkBinForm({ ...editBulkBinForm, name: e.target.value })}
+                    className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-bold outline-none focus:border-emerald-500 shadow-sm"
+                    placeholder="e.g. Polished Chrome Celtic Kilt Pins"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-700 font-extrabold mb-1">Colour / Finish</label>
+                    <input
+                      type="text"
+                      value={editBulkBinForm.tartanOrColour}
+                      onChange={e => setEditBulkBinForm({ ...editBulkBinForm, tartanOrColour: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-bold outline-none focus:border-emerald-500 shadow-sm"
+                      placeholder="e.g. Chrome Silver, Antique Pewter"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-extrabold mb-1">Size Group</label>
+                    <select
+                      value={editBulkBinForm.sizeGroup}
+                      onChange={e => setEditBulkBinForm({ ...editBulkBinForm, sizeGroup: e.target.value as SizeGroup })}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-bold outline-none focus:border-emerald-500 shadow-sm"
+                    >
+                      <option value="Adult">Adult</option>
+                      <option value="Kid">Kid</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Rental Rate (£)</label>
+                    <input
+                      type="number" min={0} required
+                      value={editBulkBinForm.hireRate}
+                      onChange={e => setEditBulkBinForm({ ...editBulkBinForm, hireRate: Number(e.target.value) })}
+                      className="w-full bg-white border border-slate-300 rounded-lg p-2 font-mono font-bold text-slate-900 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Deposit Amount (£)</label>
+                    <input
+                      type="number" min={0} required
+                      value={editBulkBinForm.depositAmount}
+                      onChange={e => setEditBulkBinForm({ ...editBulkBinForm, depositAmount: Number(e.target.value) })}
+                      className="w-full bg-white border border-slate-300 rounded-lg p-2 font-mono font-bold text-slate-900 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingBulkBin(null)}
+                    className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition cursor-pointer border border-slate-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl transition cursor-pointer shadow-sm flex items-center justify-center gap-1.5"
+                  >
+                    <Check className="w-4 h-4" /> Save Changes
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* DELETE SAFEGUARD MODAL (PROTECTED BY ADMIN PIN) */}
+      {(batchToDelete || bulkBinToDelete) && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl">
+            <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+              <div>
+                <span className="px-2.5 py-0.5 bg-rose-100 text-rose-900 font-bold text-[10px] rounded-full border border-rose-300">
+                  ⚠️ Deletion Safeguard
+                </span>
+                <h3 className="text-base font-extrabold text-slate-900 mt-1 flex items-center gap-1.5">
+                  <Trash2 className="w-4 h-4 text-rose-600" />
+                  {batchToDelete ? `Delete QR Batch ${batchToDelete.id}` : `Delete Storage Box ${bulkBinToDelete?.boxNumber || bulkBinToDelete?.id}`}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setBatchToDelete(null);
+                  setBulkBinToDelete(null);
+                }}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={batchToDelete ? handleConfirmDeleteBatch : handleConfirmDeleteBulkBin}
+              className="space-y-4 text-xs"
+            >
+              <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-rose-950 space-y-2">
+                <p className="font-bold text-xs">
+                  Are you sure you want to permanently delete {batchToDelete ? `unprinted batch "${batchToDelete.title}"` : `storage box "${bulkBinToDelete?.name}"`}?
+                </p>
+                <p className="text-[11px] text-rose-800 leading-relaxed">
+                  This action cannot be undone. This batch has not been printed and has no active items currently out on hire.
+                </p>
+              </div>
+
+              {deleteSafeguardError && (
+                <div className="p-3 bg-rose-100 text-rose-900 font-bold rounded-xl text-xs border border-rose-300">
+                  {deleteSafeguardError}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-slate-700 font-extrabold mb-1">Enter Master Admin PIN to Authorize:</label>
+                <input
+                  type="password"
+                  required
+                  placeholder="Enter PIN (e.g. 1234)"
+                  value={deleteSafeguardPin}
+                  onChange={e => setDeleteSafeguardPin(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-bold outline-none focus:border-rose-500 shadow-sm"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBatchToDelete(null);
+                    setBulkBinToDelete(null);
+                  }}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition cursor-pointer border border-slate-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-extrabold rounded-xl transition cursor-pointer shadow-sm flex items-center justify-center gap-1.5"
+                >
+                  <Trash2 className="w-4 h-4" /> Confirm Deletion
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* CREATE PO MODAL WITH DYNAMIC FULL RIGOUT PRICE CAP BREAKDOWN & MULTI-OUTFIT WEDDING PARTY SCANNER */}
       {showCreatePoModal && (
@@ -13241,7 +15789,7 @@ export default function KiltHireApp() {
                 type="submit"
                 className="w-full py-3.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 transition"
               >
-                <DollarSign className="w-4 h-4" /> Process PayPal Payment & Issue Purchase Order ({newPoForm.selectedItemIds.length} Items)
+                <PoundIcon className="w-4 h-4" /> Process PayPal Payment & Issue Purchase Order ({newPoForm.selectedItemIds.length} Items)
               </button>
             </form>
           </div>
@@ -14368,7 +16916,7 @@ export default function KiltHireApp() {
           <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-5 border border-slate-200">
             <div className="flex items-center gap-3">
               <div className="w-11 h-11 bg-amber-100 text-amber-800 rounded-2xl flex items-center justify-center border border-amber-300 shrink-0">
-                <PriceTag className="w-6 h-6 text-amber-600" />
+                <PoundIcon className="w-6 h-6 text-amber-600" />
               </div>
               <div>
                 <h3 className="text-base font-extrabold text-slate-900 leading-tight">Add New Product Category</h3>
@@ -14389,18 +16937,19 @@ export default function KiltHireApp() {
                   ...pricingMatrix,
                   {
                     category: cleanName,
-                    adultHireRate: Number(newCategoryForm.adultHireRate) || 50,
-                    adultDeposit: Number(newCategoryForm.adultDeposit) || 50,
-                    kidHireRate: Number(newCategoryForm.kidHireRate) || 30,
-                    kidDeposit: Number(newCategoryForm.kidDeposit) || 30
+                    adultHireRate: 50,
+                    adultDeposit: 50,
+                    kidHireRate: 30,
+                    kidDeposit: 30,
+                    allowAlterations: newCategoryForm.allowAlterations
                   }
                 ];
                 setPricingMatrix(updated);
-                savePricing(updated, maxRigoutCapPrice, kidMaxRigoutCapPrice, tartanList).catch(err => console.warn(err));
-                addAuditLog('ADDED_CATEGORY', `Added new product category "${cleanName}" to Master Pricing Matrix.`);
-                showToast(`✨ Category "${cleanName}" added to Master Pricing Matrix across all devices!`, 'success');
+                savePricing(updated, maxRigoutCapPrice, kidMaxRigoutCapPrice, tartanList, adultMaxDepositCapPrice, kidMaxDepositCapPrice).catch(err => console.warn(err));
+                addAuditLog('ADDED_CATEGORY', `Added new product category "${cleanName}" to Master Pricing Matrix (Alterable: ${newCategoryForm.allowAlterations ? 'Yes' : 'No'}).`);
+                showToast(`✨ Category "${cleanName}" added!`, 'success');
                 setShowAddCategoryModal(false);
-                setNewCategoryForm({ category: '', adultHireRate: 50, adultDeposit: 50, kidHireRate: 30, kidDeposit: 30 });
+                setNewCategoryForm({ category: '', allowAlterations: true });
               }}
               className="space-y-4 text-xs"
             >
@@ -14413,49 +16962,41 @@ export default function KiltHireApp() {
                   value={newCategoryForm.category}
                   onChange={e => setNewCategoryForm({ ...newCategoryForm, category: e.target.value })}
                   className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
+                  autoFocus
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3 bg-amber-50/50 p-3 rounded-2xl border border-amber-200">
-                <div>
-                  <label className="block text-[11px] font-extrabold text-amber-950 mb-1">Adult Hire Rate (£)</label>
-                  <input
-                    type="number" min={0} required
-                    value={newCategoryForm.adultHireRate}
-                    onChange={e => setNewCategoryForm({ ...newCategoryForm, adultHireRate: Number(e.target.value) })}
-                    className="w-full bg-white border border-amber-300 rounded-lg p-2 font-mono font-extrabold text-amber-900 outline-none"
-                  />
+              <div>
+                <label className="block text-slate-700 font-extrabold mb-1.5">Alteration &amp; Made-to-Measure Capability</label>
+                <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setNewCategoryForm({ ...newCategoryForm, allowAlterations: true })}
+                    className={`py-2 px-3 rounded-xl font-extrabold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                      newCategoryForm.allowAlterations
+                        ? 'bg-purple-600 text-white shadow-sm'
+                        : 'text-slate-600 hover:bg-white/50'
+                    }`}
+                  >
+                    <Scissors className="w-3.5 h-3.5" /> ✂️ Alterable Garment
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewCategoryForm({ ...newCategoryForm, allowAlterations: false })}
+                    className={`py-2 px-3 rounded-xl font-extrabold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                      !newCategoryForm.allowAlterations
+                        ? 'bg-slate-900 text-white shadow-sm'
+                        : 'text-slate-600 hover:bg-white/50'
+                    }`}
+                  >
+                    <Lock className="w-3.5 h-3.5" /> 🔒 Fixed Accessory
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-[11px] font-extrabold text-amber-950 mb-1">Adult Deposit (£)</label>
-                  <input
-                    type="number" min={0} required
-                    value={newCategoryForm.adultDeposit}
-                    onChange={e => setNewCategoryForm({ ...newCategoryForm, adultDeposit: Number(e.target.value) })}
-                    className="w-full bg-white border border-amber-300 rounded-lg p-2 font-mono font-extrabold text-emerald-900 outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 bg-purple-50/50 p-3 rounded-2xl border border-purple-200">
-                <div>
-                  <label className="block text-[11px] font-extrabold text-purple-950 mb-1">Kids Hire Rate (£)</label>
-                  <input
-                    type="number" min={0} required
-                    value={newCategoryForm.kidHireRate}
-                    onChange={e => setNewCategoryForm({ ...newCategoryForm, kidHireRate: Number(e.target.value) })}
-                    className="w-full bg-white border border-purple-300 rounded-lg p-2 font-mono font-extrabold text-purple-900 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-extrabold text-purple-950 mb-1">Kids Deposit (£)</label>
-                  <input
-                    type="number" min={0} required
-                    value={newCategoryForm.kidDeposit}
-                    onChange={e => setNewCategoryForm({ ...newCategoryForm, kidDeposit: Number(e.target.value) })}
-                    className="w-full bg-white border border-purple-300 rounded-lg p-2 font-mono font-extrabold text-emerald-900 outline-none"
-                  />
-                </div>
+                <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+                  {newCategoryForm.allowAlterations 
+                    ? '✂️ Tailoring & strap alterations can be made for this category (e.g. Kilts, Jackets, Waistcoats).' 
+                    : '🔒 Fixed hardware/accessory with no alterations (e.g. Sporrans, Kilt Pins, Brogues).'}
+                </p>
               </div>
 
               <div className="flex gap-2 pt-1">

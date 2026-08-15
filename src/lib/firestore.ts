@@ -109,6 +109,10 @@ export async function upsertBatch(batch: QRBatch): Promise<void> {
   await setDoc(doc(requireDb(), 'batches', batch.id), sanitizeForFirestore(batch), { merge: true });
 }
 
+export async function deleteBatchFS(id: string): Promise<void> {
+  await deleteDoc(doc(requireDb(), 'batches', id));
+}
+
 // --- PURCHASE ORDERS ----------------------------------------------------------
 
 export async function getPurchaseOrders(): Promise<PurchaseOrder[]> {
@@ -154,6 +158,8 @@ export interface PricingSettingsDoc {
   matrix: CategoryPriceSetting[];
   maxRigoutCapPrice?: number;
   kidMaxRigoutCapPrice?: number;
+  adultMaxDepositCapPrice?: number;
+  kidMaxDepositCapPrice?: number;
   tartanList?: string[];
 }
 
@@ -163,10 +169,24 @@ export async function getPricing(): Promise<PricingSettingsDoc | null> {
   return pricingDoc ? (pricingDoc.data() as PricingSettingsDoc) : null;
 }
 
-export async function savePricing(matrix: CategoryPriceSetting[], maxRigoutCapPrice?: number, kidMaxRigoutCapPrice?: number, tartanList?: string[]): Promise<void> {
+export async function savePricing(
+  matrix: CategoryPriceSetting[], 
+  maxRigoutCapPrice?: number, 
+  kidMaxRigoutCapPrice?: number, 
+  tartanList?: string[],
+  adultMaxDepositCapPrice?: number,
+  kidMaxDepositCapPrice?: number
+): Promise<void> {
   await setDoc(
     doc(requireDb(), 'settings', 'pricing'), 
-    sanitizeForFirestore({ matrix, maxRigoutCapPrice, kidMaxRigoutCapPrice, tartanList }), 
+    sanitizeForFirestore({ 
+      matrix, 
+      maxRigoutCapPrice, 
+      kidMaxRigoutCapPrice, 
+      tartanList,
+      adultMaxDepositCapPrice,
+      kidMaxDepositCapPrice
+    }), 
     { merge: true }
   );
 }

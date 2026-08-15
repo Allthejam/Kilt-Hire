@@ -111,4 +111,20 @@ body {
     page-break-after: always !important;
     break-after: page !important;
   }
+
+  /* Bulk Storage Box Bin Sticker Side Label Print Styling */
+  .bulk-box-label-print {
+    box-sizing: border-box !important;
+    width: 100% !important;
+    max-width: 135mm !important;
+    margin: 8mm auto !important;
+    border: 3px solid #000000 !important;
+    border-radius: 16px !important;
+    padding: 6mm !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    display: block !important;
+  }
 }

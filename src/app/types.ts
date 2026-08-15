@@ -10,6 +10,7 @@ export interface CategoryPriceSetting {
   adultDeposit: number;
   kidHireRate: number;
   kidDeposit: number;
+  allowAlterations?: boolean; // Can this garment category be altered / made-to-measure (e.g. Kilts, Jackets) vs fixed (Sporrans, Pins)
 }
 
 export interface LaundryRecord {
@@ -64,6 +65,9 @@ export interface KiltItem {
   bulkQuantity?: number; // Current available count in shop bin
   bulkTotal?: number; // Total pool inventory count
   boxNumber?: string; // e.g. "Box 1", "Box 2", "Bin A"
+  isPrinted?: boolean; // True once side label has been printed
+  printedAt?: string;
+  printedBy?: string;
   retiredReason?: string; // Audit explanation if retired from rotation (Sold, Stolen, Destroyed)
   retiredAt?: string;
   retiredByStaff?: string;
