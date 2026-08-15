@@ -362,6 +362,7 @@ export default function KiltHireApp() {
 
   // Scanner & Selected QR State
   const [scannedCode, setScannedCode] = useState<string>('');
+  const [scanError, setScanError] = useState<string>('');
   const [simulatedInput, setSimulatedInput] = useState<string>('');
   const [activeCamera, setActiveCamera] = useState<boolean>(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -606,11 +607,20 @@ export default function KiltHireApp() {
       const dismissed = localStorage.getItem('kilt_pwa_dismissed');
       if (dismissed === 'true') setInstallDismissed(true);
 
-      // Register Service Worker for PWA installation & caching
+      // Register Service Worker for PWA — only in production (not localhost dev)
+      // In development, actively unregister any stale SW that may be serving broken cached assets
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js').catch((err) => {
-          console.warn('PWA Service Worker registration skipped or failed:', err);
-        });
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        if (isLocalhost) {
+          // Unregister all service workers on localhost to prevent stale cache serving wireframe
+          navigator.serviceWorker.getRegistrations().then(regs => {
+            regs.forEach(reg => reg.unregister());
+          });
+        } else {
+          navigator.serviceWorker.register('/sw.js').catch((err) => {
+            console.warn('PWA Service Worker registration skipped or failed:', err);
+          });
+        }
       }
 
       // Capture beforeinstallprompt event for Android / Chrome / Edge
@@ -980,8 +990,16 @@ export default function KiltHireApp() {
           if (savedUser) setCurrentUser(JSON.parse(savedUser));
         }
       } else if (!firebaseUser) {
-        setCurrentUser(null);
-        localStorage.removeItem('kilt_current_user');
+        const savedUser = typeof window !== 'undefined' ? localStorage.getItem('kilt_current_user') : null;
+        if (savedUser) {
+          try {
+            setCurrentUser(JSON.parse(savedUser));
+          } catch {
+            setCurrentUser(INITIAL_STAFF[0]);
+          }
+        } else {
+          setCurrentUser(INITIAL_STAFF[0]);
+        }
       }
     });
     return () => unsubscribe();
@@ -2090,13 +2108,14 @@ export default function KiltHireApp() {
         scanControlsRef.current.stop();
         scanControlsRef.current = null;
       }
+    };
   }, [activeCamera, videoElementMounted, selectedDeviceId, zoomLevel]);
 
   // =========================================================================
   // SCREEN WAKE LOCK API CONTROLLER (KEEPS APP/SCREEN OPEN ON ALL DEVICES)
   // Automatically engages during camera operation, order creation, returns & assembly
   // =========================================================================
-  const shouldKeepAwake = activeCamera || floorTab === 'fitting' || Boolean(showCreatePoModal) || Boolean(activeReturnPo) || Boolean(showAssemblyModal) || manualWakeLock;
+  const shouldKeepAwake = activeCamera || assistantTab === 'start_fitting' || Boolean(showCreatePoModal) || Boolean(activeReturnPo) || Boolean(showAssemblyModal) || manualWakeLock;
 
   useEffect(() => {
     let released = false;
@@ -3075,7 +3094,9 @@ export default function KiltHireApp() {
     }));
 
     await upsertPurchaseOrder(newPo);
-    setPos(prev => [newPo, ...prev]);
+    // NOTE: setPos is intentionally NOT called here — subscribePurchaseOrders real-time listener
+    // automatically updates pos state when Firestore is written to. Calling setPos manually
+    // here caused duplicate POs to appear (one from local state + one from listener).
     addAuditLog(
       'CREATED_PO_PAYPAL', 
       `Created Hire PO ${poId} for ${newPo.customerName}. Subtotal £${itemizedSubtotal}${fullRigoutCapApplied ? ` capped at £${applicableCap} (Discount -£${fullRigoutDiscount})` : ''} + £${totalDep} deposit. PayPal (${paypalTxId})`
