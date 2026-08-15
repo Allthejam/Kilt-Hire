@@ -364,8 +364,12 @@ export default function KiltHireApp() {
   const [scannedCode, setScannedCode] = useState<string>('');
   const [simulatedInput, setSimulatedInput] = useState<string>('');
   const [activeCamera, setActiveCamera] = useState<boolean>(false);
-  const [scanError, setScanError] = useState<string>('');
   const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  // Screen Wake Lock API State & Ref (prevents screen sleeping on mobile/tablet devices during scanning/orders)
+  const wakeLockRef = useRef<any>(null);
+  const [wakeLockActive, setWakeLockActive] = useState<boolean>(false);
+  const [manualWakeLock, setManualWakeLock] = useState<boolean>(false);
 
   // Modals state
   const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -2086,8 +2090,70 @@ export default function KiltHireApp() {
         scanControlsRef.current.stop();
         scanControlsRef.current = null;
       }
-    };
   }, [activeCamera, videoElementMounted, selectedDeviceId, zoomLevel]);
+
+  // =========================================================================
+  // SCREEN WAKE LOCK API CONTROLLER (KEEPS APP/SCREEN OPEN ON ALL DEVICES)
+  // Automatically engages during camera operation, order creation, returns & assembly
+  // =========================================================================
+  const shouldKeepAwake = activeCamera || floorTab === 'fitting' || Boolean(showCreatePoModal) || Boolean(activeReturnPo) || Boolean(showAssemblyModal) || manualWakeLock;
+
+  useEffect(() => {
+    let released = false;
+
+    const requestWakeLock = async () => {
+      if (typeof window === 'undefined' || !('wakeLock' in navigator)) return;
+      try {
+        if (wakeLockRef.current && !wakeLockRef.current.released) {
+          setWakeLockActive(true);
+          return;
+        }
+        const lock = await (navigator as any).wakeLock.request('screen');
+        if (released) {
+          lock.release().catch(() => {});
+          return;
+        }
+        wakeLockRef.current = lock;
+        setWakeLockActive(true);
+        lock.addEventListener('release', () => {
+          setWakeLockActive(false);
+          wakeLockRef.current = null;
+        });
+      } catch (err: any) {
+        console.warn('Screen Wake Lock note:', err?.message || err);
+      }
+    };
+
+    const releaseWakeLock = async () => {
+      if (wakeLockRef.current) {
+        try {
+          await wakeLockRef.current.release();
+        } catch (err) {}
+        wakeLockRef.current = null;
+      }
+      setWakeLockActive(false);
+    };
+
+    if (shouldKeepAwake) {
+      requestWakeLock();
+    } else {
+      releaseWakeLock();
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && shouldKeepAwake) {
+        requestWakeLock();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      released = true;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      releaseWakeLock();
+    };
+  }, [shouldKeepAwake]);
 
   // Get default price & deposit for a category and sizeGroup
   const getDefaultPriceForCategory = (cat: ItemCategory, isKid: boolean) => {
@@ -3767,6 +3833,34 @@ export default function KiltHireApp() {
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+            {/* SCREEN KEEP-AWAKE BADGE & FORCE TOGGLE BUTTON */}
+            <button
+              type="button"
+              onClick={() => {
+                const next = !manualWakeLock;
+                setManualWakeLock(next);
+                showToast(
+                  next 
+                    ? '💡 Screen Keep-Awake forced ON across all camera & order operations!' 
+                    : '💡 Screen Keep-Awake returned to Auto mode.',
+                  'info'
+                );
+              }}
+              className={`px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-extrabold flex items-center gap-1.5 transition border shadow-2xs cursor-pointer ${
+                wakeLockActive || shouldKeepAwake
+                  ? 'bg-amber-400 text-slate-950 border-amber-500 shadow-sm animate-pulse'
+                  : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
+              }`}
+              title="Screen Keep-Awake prevents your phone or tablet screen from dimming or locking during camera scanning, order creation, and returns."
+            >
+              <Zap className={`w-3.5 h-3.5 ${wakeLockActive || shouldKeepAwake ? 'text-slate-950 fill-slate-950' : 'text-slate-500'}`} />
+              <span className="hidden md:inline">
+                {wakeLockActive || shouldKeepAwake ? 'Screen Awake: ON' : 'Screen Awake: Auto'}
+              </span>
+              <span className="md:hidden text-[10px]">
+                {wakeLockActive || shouldKeepAwake ? 'Awake ON' : 'Awake'}
+              </span>
+            </button>
             {!isStandalone && (
               <button
                 onClick={handleInstallApp}
