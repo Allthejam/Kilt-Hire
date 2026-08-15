@@ -63,6 +63,7 @@ export interface KiltItem {
   isBulkPool?: boolean; // True for bulk bin items (Sgian-dubhs, Kilt Pins, Belts, Garters)
   bulkQuantity?: number; // Current available count in shop bin
   bulkTotal?: number; // Total pool inventory count
+  boxNumber?: string; // e.g. "Box 1", "Box 2", "Bin A"
   retiredReason?: string; // Audit explanation if retired from rotation (Sold, Stolen, Destroyed)
   retiredAt?: string;
   retiredByStaff?: string;
@@ -92,6 +93,8 @@ export interface QRBatch {
   printedAt?: string;
   printedBy?: string;
   reprintHistory?: QRReprintLog[];
+  isBulkBatch?: boolean;
+  bulkBinId?: string;
 }
 
 export interface CustomerMeasurements {

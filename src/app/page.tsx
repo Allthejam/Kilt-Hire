@@ -331,7 +331,15 @@ export default function KiltHireApp() {
     if (clean === '1234') return true;
     return staffList.some(s => (s.role === 'Master Admin' || s.role === 'Admin') && s.pin === clean);
   };
-  const [currentUser, setCurrentUser] = useState<StaffUser | null>(INITIAL_STAFF[0]);
+  const [currentUser, setCurrentUser] = useState<StaffUser | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('kilt_current_user');
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return null;
+  });
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   
   // Mobile sidebar toggle state
@@ -384,7 +392,6 @@ export default function KiltHireApp() {
   const [installDismissed, setInstallDismissed] = useState<boolean>(false);
   const [showCreatePoModal, setShowCreatePoModal] = useState(false);
   const [showEditPoModal, setShowEditPoModal] = useState<PurchaseOrder | null>(null);
-  const [showBatchModal, setShowBatchModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
 
   // MULTI-ITEM PO RETURN CHECKLIST MODAL STATE
@@ -453,6 +460,31 @@ export default function KiltHireApp() {
     count: 10
   });
 
+  const [showBatchModal, setShowBatchModal] = useState(false);
+  const [showBulkBinModal, setShowBulkBinModal] = useState<boolean>(false);
+  const [bulkBinForm, setBulkBinForm] = useState<{
+    boxNumber: string;
+    category: ItemCategory;
+    sizeGroup: SizeGroup;
+    name: string;
+    bulkTotal: number;
+    hireRate: number;
+    depositAmount: number;
+    tartanOrColour: string;
+    brandMake: string;
+  }>({
+    boxNumber: '1',
+    category: 'Kilt Pins',
+    sizeGroup: 'Adult',
+    name: 'Polished Chrome Celtic Kilt Pins',
+    bulkTotal: 50,
+    hireRate: 5,
+    depositAmount: 5,
+    tartanOrColour: 'Chrome Silver',
+    brandMake: 'Highland Craftsmen'
+  });
+  const [selectedBulkBinForPrint, setSelectedBulkBinForPrint] = useState<KiltItem | null>(null);
+  const [batchTabFilter, setBatchTabFilter] = useState<'ALL' | 'SERIALIZED' | 'BULK_BINS'>('ALL');
   const [selectedBatchForPrint, setSelectedBatchForPrint] = useState<QRBatch | null>(null);
   const [selectedCodesForReprint, setSelectedCodesForReprint] = useState<string[]>([]);
   const [reprintSearchQuery, setReprintSearchQuery] = useState<string>('');
@@ -970,48 +1002,51 @@ export default function KiltHireApp() {
   useEffect(() => {
     if (!auth) return; // not on server
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser && isLoaded) {
+      if (firebaseUser) {
         try {
           // Fetch live user document directly from Firestore /users/{uid}
           const liveProfile = await getStaffProfileById(firebaseUser.uid);
           if (liveProfile) {
             setCurrentUser(liveProfile);
             localStorage.setItem('kilt_current_user', JSON.stringify(liveProfile));
-          } else {
-            const profiles = await getStaffProfiles();
-            const match = profiles.find(p => p.email.toLowerCase() === firebaseUser.email?.toLowerCase());
-            if (match) {
-              setCurrentUser(match);
-              localStorage.setItem('kilt_current_user', JSON.stringify(match));
-            }
+            return;
+          }
+          const profiles = await getStaffProfiles();
+          const match = profiles.find(p => p.email.toLowerCase() === firebaseUser.email?.toLowerCase());
+          if (match) {
+            setCurrentUser(match);
+            localStorage.setItem('kilt_current_user', JSON.stringify(match));
+            return;
+          }
+        } catch (err) {
+          console.warn('Profile fetch error in onAuthStateChanged:', err);
+        }
+      }
+      
+      // If not authenticated in Firebase Auth, check persistent localStorage session
+      const savedUser = typeof window !== 'undefined' ? localStorage.getItem('kilt_current_user') : null;
+      if (savedUser) {
+        try {
+          const parsed = JSON.parse(savedUser);
+          if (parsed && parsed.email) {
+            setCurrentUser(parsed);
+            return;
           }
         } catch {
-          const savedUser = localStorage.getItem('kilt_current_user');
-          if (savedUser) setCurrentUser(JSON.parse(savedUser));
+          setCurrentUser(null);
         }
-      } else if (!firebaseUser) {
-        const savedUser = typeof window !== 'undefined' ? localStorage.getItem('kilt_current_user') : null;
-        if (savedUser) {
-          try {
-            setCurrentUser(JSON.parse(savedUser));
-          } catch {
-            setCurrentUser(INITIAL_STAFF[0]);
-          }
-        } else {
-          setCurrentUser(INITIAL_STAFF[0]);
-        }
+      } else {
+        setCurrentUser(null);
       }
     });
     return () => unsubscribe();
-  }, [isLoaded]);
+  }, []);
 
   // ─── SAVE UI PREFERENCES ONLY (DATA LIVES 100% IN FIRESTORE) ───────────────────
   useEffect(() => {
     if (!isLoaded) return;
     localStorage.setItem('kilt_interface_mode', interfaceMode);
   }, [interfaceMode, isLoaded]);
-
-
 
   // Toast notification trigger
   const showToast = (msg: string, type: 'success' | 'info' | 'warning' = 'success') => {
@@ -1068,15 +1103,30 @@ export default function KiltHireApp() {
     } catch {
       // Firebase Auth failed — fall back to local PIN check (for offline/demo use)
       const found = staffList.find(s =>
-        s.email.toLowerCase() === loginEmail.toLowerCase().trim() && s.pin === loginPin.trim()
+        s.email.toLowerCase() === loginEmail.toLowerCase().trim() && (s.pin === loginPin.trim() || !s.pin)
       );
       if (found) {
         setCurrentUser(found);
-        addAuditLog('STAFF_LOGIN', `${found.name} (${found.role}) logged in (offline mode).`);
+        localStorage.setItem('kilt_current_user', JSON.stringify(found));
+        addAuditLog('STAFF_LOGIN', `${found.name} (${found.role}) logged in.`);
       } else {
         setLoginError('Invalid Email or PIN. If this is your first login, use the PIN you set during account creation.');
       }
     }
+  };
+
+  // LOGOUT Handler — Clears Firebase Auth + Local Session
+  const handleLogout = async () => {
+    try {
+      if (auth) await signOut(auth);
+    } catch {
+      /* silent */
+    }
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('kilt_current_user');
+    }
+    setCurrentUser(null);
+    showToast('👋 Signed out successfully.', 'info');
   };
 
   // REGISTER WITH INVITE CODE Handler — Firebase Auth + Firestore
@@ -2665,18 +2715,23 @@ export default function KiltHireApp() {
 
   // Update Bulk Bin Pool Quantity
   const handleUpdateBulkBinQuantity = (binId: string, newTotal: number, newAvailable: number) => {
+    const cleanTotal = Math.max(0, newTotal);
+    const cleanAvail = Math.min(cleanTotal, Math.max(0, newAvailable));
     setItems(prev => prev.map(i => {
       if (i.id === binId) {
-        return {
+        const updated = {
           ...i,
-          bulkTotal: Math.max(0, newTotal),
-          bulkQuantity: Math.max(0, newAvailable)
+          bulkTotal: cleanTotal,
+          bulkQuantity: cleanAvail,
+          status: (cleanAvail > 0 ? 'AVAILABLE' : 'ON_HIRE') as ItemStatus
         };
+        upsertItem(updated).catch(err => console.warn('Failed to update bulk bin in Firestore:', err));
+        return updated;
       }
       return i;
     }));
-    addAuditLog('UPDATED_BULK_BIN', `Updated bulk storage bin (${binId}): ${newAvailable} available / ${newTotal} total.`, binId);
-    showToast(`📦 Adjusted ${binId} bin pool count to ${newAvailable} available.`, 'success');
+    addAuditLog('UPDATED_BULK_BIN', `Updated bulk storage bin (${binId}): ${cleanAvail} available / ${cleanTotal} total.`, binId);
+    showToast(`📦 Adjusted ${binId} bin pool count to ${cleanAvail} available.`, 'success');
   };
 
   // Bulk Confirm All Items at Dry Cleaners Cleaned & Available
@@ -2941,6 +2996,90 @@ export default function KiltHireApp() {
     addAuditLog('CREATED_QR_BATCH', `Generated batch of ${count} ${batchForm.sizeGroup} QR codes for ${batchForm.category} (${batchForm.title})`, batchId);
     setShowBatchModal(false);
     showToast(`🖨️ Batch of ${count} ${batchForm.sizeGroup} QR codes generated & saved to database! Ready for initial print.`, 'success');
+  };
+
+  // Step 1B: Create Bulk Storage Box Bin QR & Register Pool (MASTER ADMIN ONLY)
+  const handleCreateBulkBin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || currentUser.role !== 'Master Admin') {
+      alert('Permission Denied: Only Master Admin Allan can generate Bulk Box Bin QR codes.');
+      return;
+    }
+
+    const qty = Math.max(1, Number(bulkBinForm.bulkTotal) || 50);
+    const boxNumClean = (bulkBinForm.boxNumber || '').trim().replace(/^Box\s*/i, '');
+    const boxLabel = boxNumClean ? `Box ${boxNumClean}` : 'Box 1';
+    const rawName = bulkBinForm.name.trim() || `${bulkBinForm.category} (${bulkBinForm.tartanOrColour || 'Standard'})`;
+    const fullName = `${boxLabel}: ${rawName}`;
+    const prefix = getCategoryPrefix(bulkBinForm.category);
+    const sizeTag = bulkBinForm.sizeGroup === 'Kid' ? '-KID' : '';
+    
+    // Collect all existing codes across entire database
+    const existingCodes = new Set<string>();
+    items.forEach(i => existingCodes.add(i.id.toUpperCase()));
+    batches.forEach(b => (b.qrCodes || []).forEach(c => existingCodes.add(c.toUpperCase())));
+
+    const binPrefixTag = `BIN-${prefix}${sizeTag}-B${boxNumClean || '1'}-`;
+    let highestNum = 1000;
+    existingCodes.forEach(code => {
+      if (code.startsWith(binPrefixTag)) {
+        const numPart = parseInt(code.replace(binPrefixTag, ''), 10);
+        if (!isNaN(numPart) && numPart > highestNum) highestNum = numPart;
+      }
+    });
+
+    let currentNum = highestNum + 1;
+    let binId = `${binPrefixTag}${currentNum}`;
+    while (existingCodes.has(binId)) {
+      currentNum++;
+      binId = `${binPrefixTag}${currentNum}`;
+    }
+
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    
+    const newBinItem: KiltItem = {
+      id: binId,
+      name: fullName,
+      category: bulkBinForm.category,
+      sizeGroup: bulkBinForm.sizeGroup,
+      tartanOrColour: bulkBinForm.tartanOrColour.trim() || 'Standard',
+      size: 'One Size / Bulk Pool',
+      brandMake: bulkBinForm.brandMake.trim() || 'Highland Craftsmen',
+      hireRate: Number(bulkBinForm.hireRate) || 5,
+      depositAmount: Number(bulkBinForm.depositAmount) || 5,
+      status: 'AVAILABLE',
+      isBulkPool: true,
+      boxNumber: boxLabel,
+      bulkTotal: qty,
+      bulkQuantity: qty,
+      registeredAt: now
+    };
+
+    const batchId = `BATCH-BIN-${Date.now().toString().slice(-6)}`;
+    const newBatch: QRBatch = {
+      id: batchId,
+      title: `${fullName} (${qty} Items in Box)`,
+      category: bulkBinForm.category,
+      sizeGroup: bulkBinForm.sizeGroup,
+      count: qty,
+      createdAt: now,
+      createdByName: currentUser.name,
+      qrCodes: [binId],
+      isBulkBatch: true,
+      bulkBinId: binId
+    };
+
+    setItems(prev => [newBinItem, ...prev]);
+    setBatches(prev => [newBatch, ...prev]);
+
+    upsertItem(newBinItem).catch(err => console.warn('Failed to save Bulk Bin item to Firestore:', err));
+    upsertBatch(newBatch).catch(err => console.warn('Failed to save Bulk Bin batch to Firestore:', err));
+
+    addAuditLog('CREATED_BULK_BIN', `Created Bulk Storage Box Bin (${binId}) for ${fullName} with ${qty} items in this box.`, binId);
+
+    setShowBulkBinModal(false);
+    setSelectedBulkBinForPrint(newBinItem);
+    showToast(`📦 Created ${boxLabel} QR (${binId}) for ${qty} ${rawName}! Ready to print box label.`, 'success');
   };
 
   // ONE-TIME BATCH SHEET INITIAL PRINT HANDLER (MASTER ADMIN ONLY)
@@ -3745,9 +3884,9 @@ export default function KiltHireApp() {
                 <UserCog className="w-4 h-4" />
               </button>
               <button
-                onClick={() => setCurrentUser(null)}
+                onClick={handleLogout}
                 title="Sign Out"
-                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
               >
                 <LogOut className="w-4 h-4" />
               </button>
@@ -8712,82 +8851,276 @@ export default function KiltHireApp() {
                       <div className="no-print flex flex-wrap items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
                         <div>
                           <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                            <Printer className="w-5 h-5 text-amber-600" /> Batch QR Code Generator & Iron-On Printing
+                            <Printer className="w-5 h-5 text-amber-600" /> Batch QR Code Generator & Storage Bin Labels
                           </h2>
                           <p className="text-xs text-slate-500 mt-0.5">
-                            Generate batches of 1 to 100 QR codes for Kilts, Jackets, Sporrans or Accessories. Print directly on iron-on fabric sheets.
+                            Generate iron-on QR batches for garments (Kilts, Jackets, Sporrans) OR bulk storage box bin QR labels (Kilt Pins, Sgian-Dubhs, Belts, Cufflinks).
                           </p>
                         </div>
 
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            onClick={() => setShowBatchModal(true)}
+                            className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-sm flex items-center gap-2 transition cursor-pointer"
+                          >
+                            <PlusCircle className="w-4 h-4" /> 🏷️ Serialized Batch (1-100 QRs)
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              const defaultPinPrice = pricingMatrix.find(pm => pm.category.toLowerCase().includes('pin')) || { adultHireRate: 5, adultDeposit: 5 };
+                              setBulkBinForm({
+                                category: 'Kilt Pins',
+                                sizeGroup: 'Adult',
+                                name: 'Polished Chrome Celtic Kilt Pins (Box Bin)',
+                                bulkTotal: 50,
+                                hireRate: defaultPinPrice.adultHireRate || 5,
+                                depositAmount: defaultPinPrice.adultDeposit || 5,
+                                tartanOrColour: 'Chrome Silver',
+                                brandMake: 'Highland Craftsmen'
+                              });
+                              setShowBulkBinModal(true);
+                            }}
+                            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm flex items-center gap-2 transition cursor-pointer"
+                          >
+                            <Package className="w-4 h-4" /> 📦 Generate Bulk Box Bin QR (e.g. 50 Pins)
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* SUB-FILTER TABS */}
+                      <div className="no-print flex items-center gap-2 border-b border-slate-200 pb-2">
                         <button
-                          onClick={() => setShowBatchModal(true)}
-                          className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-sm flex items-center gap-2 transition"
+                          onClick={() => setBatchTabFilter('ALL')}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                            batchTabFilter === 'ALL'
+                              ? 'bg-slate-900 text-white shadow-sm'
+                              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                          }`}
                         >
-                          <PlusCircle className="w-4 h-4" /> Generate New QR Batch (Up to 100)
+                          All Labels ({batches.filter(b => !b.isBulkBatch).length + items.filter(i => i.isBulkPool && !i.isOutsourcedDefault).length})
+                        </button>
+                        <button
+                          onClick={() => setBatchTabFilter('SERIALIZED')}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                            batchTabFilter === 'SERIALIZED'
+                              ? 'bg-amber-500 text-slate-950 shadow-sm'
+                              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                          }`}
+                        >
+                          🏷️ Serialized Garment Batches ({batches.filter(b => !b.isBulkBatch).length})
+                        </button>
+                        <button
+                          onClick={() => setBatchTabFilter('BULK_BINS')}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                            batchTabFilter === 'BULK_BINS'
+                              ? 'bg-emerald-600 text-white shadow-sm'
+                              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                          }`}
+                        >
+                          📦 Bulk Storage Box Bins ({items.filter(i => i.isBulkPool && !i.isOutsourcedDefault).length})
                         </button>
                       </div>
 
-                      <div className="no-print grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {batches.map(batch => (
-                          <div key={batch.id} className={`bg-white border rounded-2xl p-5 shadow-sm transition ${
-                            batch.isPrinted ? 'border-emerald-300 bg-emerald-50/20' : 'border-slate-200 hover:border-amber-400'
-                          }`}>
-                            <div className="flex items-start justify-between mb-3">
-                              <div>
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 rounded">
-                                    {batch.category}
-                                  </span>
-                                  <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${batch.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900' : 'bg-blue-100 text-blue-900'}`}>
-                                    {batch.sizeGroup}s
-                                  </span>
-                                  {batch.isPrinted ? (
-                                    <span className="px-2 py-0.5 text-[10px] font-extrabold bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-full flex items-center gap-1">
-                                      <Lock className="w-3 h-3 text-emerald-700" /> PRINTED - LOCKED
-                                    </span>
-                                  ) : (
-                                    <span className="px-2 py-0.5 text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 rounded-full">
-                                      UNPRINTED SHEET
-                                    </span>
-                                  )}
-                                </div>
-                                <h3 className="text-base font-bold text-slate-900 mt-1">{batch.title}</h3>
-                                <span className="text-xs text-slate-500 font-mono">{batch.id}</span>
+                      {/* 1. BULK STORAGE BOX BINS SECTION */}
+                      {(batchTabFilter === 'ALL' || batchTabFilter === 'BULK_BINS') && (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                              <Package className="w-4 h-4 text-emerald-600" /> 📦 Bulk Storage Box Bins ({items.filter(i => i.isBulkPool && !i.isOutsourcedDefault).length})
+                            </h3>
+                            <span className="text-[11px] text-slate-500 font-semibold">Print box side labels & manage available quantities</span>
+                          </div>
+
+                          {items.filter(i => i.isBulkPool && !i.isOutsourcedDefault).length === 0 ? (
+                            <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center space-y-3 shadow-sm">
+                              <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
+                                <Package className="w-6 h-6" />
                               </div>
-                              <span className="px-2.5 py-1 text-xs font-mono font-bold bg-slate-100 text-slate-800 rounded-lg border border-slate-200">
-                                {batch.count} Codes
-                              </span>
-                            </div>
-
-                            <div className="text-xs text-slate-500 space-y-0.5 mb-4">
-                              <p>Created by <strong>{batch.createdByName}</strong> on {batch.createdAt}</p>
-                              {batch.isPrinted && (
-                                <p className="text-emerald-800 font-bold">
-                                  🖨️ Initial Sheet Printed by {batch.printedBy} ({batch.printedAt})
-                                </p>
-                              )}
-                              {batch.reprintHistory && batch.reprintHistory.length > 0 && (
-                                <p className="text-amber-800 font-semibold text-[11px]">
-                                  🔑 {batch.reprintHistory.length} Replacement Tag Reprint(s) Authorized
-                                </p>
-                              )}
-                            </div>
-
-                            <div className="flex gap-2 border-t border-slate-100 pt-3">
+                              <h4 className="text-sm font-bold text-slate-800">No Bulk Storage Box Bins Created Yet</h4>
+                              <p className="text-xs text-slate-500 max-w-md mx-auto">
+                                If you have a box of 50 kilt pins, cufflinks, or belts, create a Bulk Storage Box Bin QR to stick to the side of the container.
+                              </p>
                               <button
                                 onClick={() => {
-                                  setSelectedBatchForPrint(batch);
-                                  setSelectedCodesForReprint([]);
-                                  setReprintPrintMode(false);
+                                  setBulkBinForm({
+                                    category: 'Kilt Pins',
+                                    sizeGroup: 'Adult',
+                                    name: 'Polished Chrome Celtic Kilt Pins (Box Bin)',
+                                    bulkTotal: 50,
+                                    hireRate: 5,
+                                    depositAmount: 5,
+                                    tartanOrColour: 'Chrome Silver',
+                                    brandMake: 'Highland Craftsmen'
+                                  });
+                                  setShowBulkBinModal(true);
                                 }}
-                                className="flex-1 py-2 bg-slate-50 hover:bg-slate-100 text-slate-800 font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 border border-slate-200 transition"
+                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm inline-flex items-center gap-1.5 transition cursor-pointer"
                               >
-                                <Printer className="w-3.5 h-3.5 text-amber-600" /> Manage Batch & Print/Reprint Tags
+                                <PlusCircle className="w-4 h-4" /> Create First Box Bin (e.g. 50 Kilt Pins)
                               </button>
                             </div>
+                          ) : (
+                            <div className="no-print grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {items.filter(i => i.isBulkPool && !i.isOutsourcedDefault).map(bin => {
+                                const onHireCount = Math.max(0, (bin.bulkTotal || 0) - (bin.bulkQuantity || 0));
+                                const boxDisplay = bin.boxNumber || 'Box 1';
+                                return (
+                                  <div key={bin.id} className="bg-white border-2 border-emerald-200/80 rounded-2xl p-5 shadow-sm hover:border-emerald-400 transition space-y-3">
+                                    <div className="flex items-start justify-between">
+                                      <div>
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <span className="px-2 py-0.5 text-[10px] font-black bg-amber-400 text-slate-950 border border-slate-900 rounded">
+                                            📦 {boxDisplay}
+                                          </span>
+                                          <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300 rounded">
+                                            {bin.category}
+                                          </span>
+                                          <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${bin.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900' : 'bg-blue-100 text-blue-900'}`}>
+                                            {bin.sizeGroup}s
+                                          </span>
+                                        </div>
+                                        <h4 className="text-sm font-extrabold text-slate-900 mt-1">{bin.name}</h4>
+                                        <span className="text-xs text-emerald-800 font-mono font-bold">{bin.id}</span>
+                                      </div>
+
+                                      <div className="text-right">
+                                        <span className="text-xs font-mono font-bold text-slate-900 block">
+                                          Hire: £{bin.hireRate}
+                                        </span>
+                                        <span className="text-[10px] text-slate-500 block">
+                                          Dep: £{bin.depositAmount}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {/* POOL PROGRESS BAR */}
+                                    <div className="space-y-1.5 bg-slate-50 border border-slate-200 p-3 rounded-xl">
+                                      <div className="flex justify-between text-xs font-bold text-slate-700">
+                                        <span className="text-emerald-700 font-black">{bin.bulkQuantity} In {boxDisplay}</span>
+                                        <span className="text-slate-500">{onHireCount} Out on Hire</span>
+                                        <span className="text-slate-900 font-black">{bin.bulkTotal} Total</span>
+                                      </div>
+                                      <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden flex">
+                                        <div 
+                                          className="h-full bg-emerald-500 transition-all duration-300"
+                                          style={{ width: `${Math.min(100, Math.max(0, ((bin.bulkQuantity || 0) / (bin.bulkTotal || 1)) * 100))}%` }}
+                                        />
+                                        <div 
+                                          className="h-full bg-amber-500 transition-all duration-300"
+                                          style={{ width: `${Math.min(100, Math.max(0, (onHireCount / (bin.bulkTotal || 1)) * 100))}%` }}
+                                        />
+                                      </div>
+                                    </div>
+
+                                    {/* QUICK COUNT ADJUSTERS */}
+                                    <div className="flex items-center justify-between gap-1 pt-1">
+                                      <span className="text-[11px] font-bold text-slate-500">Restock {boxDisplay}:</span>
+                                      <div className="flex items-center gap-1">
+                                        {[5, 10, 25, 50].map(added => (
+                                          <button
+                                            key={added}
+                                            type="button"
+                                            onClick={() => handleUpdateBulkBinQuantity(bin.id, (bin.bulkTotal || 0) + added, (bin.bulkQuantity || 0) + added)}
+                                            className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-[10px] font-extrabold transition cursor-pointer"
+                                            title={`Add ${added} items to ${boxDisplay}`}
+                                          >
+                                            +{added}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+
+                                    <div className="border-t border-slate-100 pt-2 flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedBulkBinForPrint(bin)}
+                                        className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer"
+                                      >
+                                        <Printer className="w-3.5 h-3.5" /> 🖨️ Print {boxDisplay} Side Label
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* 2. SERIALIZED GARMENT BATCHES SECTION */}
+                      {(batchTabFilter === 'ALL' || batchTabFilter === 'SERIALIZED') && (
+                        <div className="space-y-3 pt-2">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                              <Printer className="w-4 h-4 text-amber-600" /> 🏷️ Serialized Garment Tag Batches ({batches.filter(b => !b.isBulkBatch).length})
+                            </h3>
+                            <span className="text-[11px] text-slate-500 font-semibold">Individual iron-on tags (Kilts, Jackets, Sporrans)</span>
                           </div>
-                        ))}
-                      </div>
+
+                          <div className="no-print grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {batches.filter(b => !b.isBulkBatch).map(batch => (
+                              <div key={batch.id} className={`bg-white border rounded-2xl p-5 shadow-sm transition ${
+                                batch.isPrinted ? 'border-emerald-300 bg-emerald-50/20' : 'border-slate-200 hover:border-amber-400'
+                              }`}>
+                                <div className="flex items-start justify-between mb-3">
+                                  <div>
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 rounded">
+                                        {batch.category}
+                                      </span>
+                                      <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${batch.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900' : 'bg-blue-100 text-blue-900'}`}>
+                                        {batch.sizeGroup}s
+                                      </span>
+                                      {batch.isPrinted ? (
+                                        <span className="px-2 py-0.5 text-[10px] font-extrabold bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-full flex items-center gap-1">
+                                          <Lock className="w-3 h-3 text-emerald-700" /> PRINTED - LOCKED
+                                        </span>
+                                      ) : (
+                                        <span className="px-2 py-0.5 text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 rounded-full">
+                                          UNPRINTED SHEET
+                                        </span>
+                                      )}
+                                    </div>
+                                    <h3 className="text-base font-bold text-slate-900 mt-1">{batch.title}</h3>
+                                    <span className="text-xs text-slate-500 font-mono">{batch.id}</span>
+                                  </div>
+                                  <span className="px-2.5 py-1 text-xs font-mono font-bold bg-slate-100 text-slate-800 rounded-lg border border-slate-200">
+                                    {batch.count} Codes
+                                  </span>
+                                </div>
+
+                                <div className="text-xs text-slate-500 space-y-0.5 mb-4">
+                                  <p>Created by <strong>{batch.createdByName}</strong> on {batch.createdAt}</p>
+                                  {batch.isPrinted && (
+                                    <p className="text-emerald-800 font-bold">
+                                      🖨️ Initial Sheet Printed by {batch.printedBy} ({batch.printedAt})
+                                    </p>
+                                  )}
+                                  {batch.reprintHistory && batch.reprintHistory.length > 0 && (
+                                    <p className="text-amber-800 font-semibold text-[11px]">
+                                      🔑 {batch.reprintHistory.length} Replacement Tag Reprint(s) Authorized
+                                    </p>
+                                  )}
+                                </div>
+
+                                <div className="flex gap-2 border-t border-slate-100 pt-3">
+                                  <button
+                                    onClick={() => {
+                                      setSelectedBatchForPrint(batch);
+                                      setSelectedCodesForReprint([]);
+                                      setReprintPrintMode(false);
+                                    }}
+                                    className="flex-1 py-2 bg-slate-50 hover:bg-slate-100 text-slate-800 font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 border border-slate-200 transition cursor-pointer"
+                                  >
+                                    <Printer className="w-3.5 h-3.5 text-amber-600" /> Manage Batch & Print/Reprint Tags
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       {/* BATCH PRINT PREVIEW & REPRINT MANAGER MODAL */}
                       {selectedBatchForPrint && (
@@ -12217,6 +12550,366 @@ export default function KiltHireApp() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* BULK STORAGE BOX BIN QR CREATION MODAL (e.g. Box 1: 22 Red Knives, Box 2: 34 Blue Knives) */}
+      {showBulkBinModal && (() => {
+        const allCategories = Array.from(new Set([...pricingMatrix.map(pm => pm.category), ...CATEGORIES])).filter(Boolean);
+        const dynamicPrefix = getCategoryPrefix(bulkBinForm.category);
+        const sizeTag = bulkBinForm.sizeGroup === 'Kid' ? '-KID' : '';
+        const boxNumClean = (bulkBinForm.boxNumber || '').trim().replace(/^Box\s*/i, '');
+        const boxLabel = boxNumClean ? `Box ${boxNumClean}` : 'Box 1';
+        const sampleTag = `BIN-${dynamicPrefix}${sizeTag}-B${boxNumClean || '1'}-1001`;
+
+        return (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl">
+              
+              <div className="flex items-start justify-between border-b border-slate-100 pb-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-900 text-[10px] font-extrabold rounded-full border border-emerald-300">
+                      📦 Bulk Storage Container
+                    </span>
+                    <span className="px-2 py-0.5 bg-amber-100 text-amber-900 text-[10px] font-bold rounded-full">
+                      {boxLabel} Label Setup
+                    </span>
+                  </div>
+                  <h3 className="text-base sm:text-lg font-extrabold text-slate-900 mt-1 flex items-center gap-2">
+                    <Package className="w-5 h-5 text-emerald-600" /> Create Box Side QR Code Label
+                  </h3>
+                </div>
+
+                <button 
+                  onClick={() => setShowBulkBinModal(false)} 
+                  className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateBulkBin} className="space-y-4 text-xs">
+                
+                {/* 1. BOX NUMBER & CATEGORY */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-700 font-extrabold mb-1">
+                      Box / Container Number
+                    </label>
+                    <div className="relative">
+                      <input 
+                        type="text" 
+                        required
+                        value={bulkBinForm.boxNumber}
+                        onChange={e => setBulkBinForm({...bulkBinForm, boxNumber: e.target.value})}
+                        placeholder="e.g. 1, 2, Box 1, Bin A"
+                        className="w-full bg-emerald-50/50 border-2 border-emerald-400/80 rounded-xl p-2.5 text-emerald-950 font-extrabold text-sm outline-none focus:border-emerald-600 shadow-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-extrabold mb-1">
+                      Product Category
+                    </label>
+                    <select 
+                      value={bulkBinForm.category}
+                      onChange={e => {
+                        const newCat = e.target.value as ItemCategory;
+                        const matchedPrice = pricingMatrix.find(pm => pm.category.toLowerCase() === newCat.toLowerCase());
+                        const isKid = bulkBinForm.sizeGroup === 'Kid';
+                        const hire = matchedPrice ? (isKid ? matchedPrice.kidHireRate : matchedPrice.adultHireRate) : 5;
+                        const dep = matchedPrice ? (isKid ? matchedPrice.kidDeposit : matchedPrice.adultDeposit) : 5;
+                        setBulkBinForm(prev => ({
+                          ...prev,
+                          category: newCat,
+                          name: `${newCat} (${prev.tartanOrColour || 'Standard'})`,
+                          hireRate: hire,
+                          depositAmount: dep
+                        }));
+                      }}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-extrabold outline-none focus:border-emerald-500 shadow-sm cursor-pointer"
+                    >
+                      {allCategories.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* 2. ITEM DESCRIPTION / NAME & DEMOGRAPHIC */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="block text-slate-700 font-extrabold mb-1">Item Title / Contents Description</label>
+                    <input 
+                      type="text" 
+                      required
+                      value={bulkBinForm.name}
+                      onChange={e => setBulkBinForm({...bulkBinForm, name: e.target.value})}
+                      placeholder="e.g. Red Gemstone Sgian-Dubhs, Blue Handle Knives"
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-extrabold outline-none focus:border-emerald-500 shadow-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-extrabold mb-1">Demographic</label>
+                    <select 
+                      value={bulkBinForm.sizeGroup}
+                      onChange={e => {
+                        const newGroup = e.target.value as SizeGroup;
+                        const matchedPrice = pricingMatrix.find(pm => pm.category.toLowerCase() === bulkBinForm.category.toLowerCase());
+                        const isKid = newGroup === 'Kid';
+                        const hire = matchedPrice ? (isKid ? matchedPrice.kidHireRate : matchedPrice.adultHireRate) : bulkBinForm.hireRate;
+                        const dep = matchedPrice ? (isKid ? matchedPrice.kidDeposit : matchedPrice.adultDeposit) : bulkBinForm.depositAmount;
+                        setBulkBinForm({
+                          ...bulkBinForm, 
+                          sizeGroup: newGroup,
+                          hireRate: hire,
+                          depositAmount: dep
+                        });
+                      }}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-extrabold text-purple-900 outline-none focus:border-purple-500 shadow-sm cursor-pointer"
+                    >
+                      <option value="Adult">Adult</option>
+                      <option value="Kid">Kids</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* 3. QUANTITY OF ITEMS IN THIS BOX */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-slate-700 font-extrabold">Quantity of Items in {boxLabel}</label>
+                    <span className="text-[11px] text-slate-500 font-semibold">e.g. 22 in Box 1, 34 in Box 2</span>
+                  </div>
+                  
+                  <div className="flex items-center gap-2 mb-1">
+                    <input 
+                      type="number" 
+                      min={1}
+                      max={1000}
+                      required
+                      value={bulkBinForm.bulkTotal}
+                      onChange={e => setBulkBinForm({...bulkBinForm, bulkTotal: Math.max(1, Number(e.target.value))})}
+                      className="w-28 bg-white border-2 border-emerald-400 rounded-xl p-2.5 text-slate-900 font-mono font-black text-sm text-emerald-950 outline-none focus:border-emerald-600 shadow-sm"
+                    />
+
+                    <div className="flex items-center gap-1.5 flex-1 flex-wrap">
+                      {[10, 22, 34, 50, 100].map(qty => (
+                        <button
+                          key={qty}
+                          type="button"
+                          onClick={() => setBulkBinForm({ ...bulkBinForm, bulkTotal: qty })}
+                          className={`flex-1 min-w-[50px] py-2 rounded-xl font-extrabold text-[11px] border transition cursor-pointer ${
+                            bulkBinForm.bulkTotal === qty
+                              ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                              : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                          }`}
+                        >
+                          {qty}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. RATES & FINISH / COLOUR */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-slate-700 font-extrabold mb-1">Hire Fee (£)</label>
+                    <input 
+                      type="number" 
+                      min={0}
+                      step={0.5}
+                      required
+                      value={bulkBinForm.hireRate}
+                      onChange={e => setBulkBinForm({...bulkBinForm, hireRate: Number(e.target.value)})}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 font-mono font-bold outline-none focus:border-emerald-500 shadow-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-extrabold mb-1">Deposit (£)</label>
+                    <input 
+                      type="number" 
+                      min={0}
+                      step={0.5}
+                      required
+                      value={bulkBinForm.depositAmount}
+                      onChange={e => setBulkBinForm({...bulkBinForm, depositAmount: Number(e.target.value)})}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 font-mono font-bold outline-none focus:border-emerald-500 shadow-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-extrabold mb-1">Colour / Finish</label>
+                    <input 
+                      type="text" 
+                      value={bulkBinForm.tartanOrColour}
+                      onChange={e => setBulkBinForm({...bulkBinForm, tartanOrColour: e.target.value})}
+                      placeholder="e.g. Red, Blue, Chrome"
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 font-bold outline-none focus:border-emerald-500 shadow-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* 5. LIVE PREVIEW CARD */}
+                <div className="bg-emerald-50/80 border-2 border-emerald-300 p-3.5 rounded-2xl space-y-1.5 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-extrabold text-emerald-950 uppercase tracking-wider flex items-center gap-1">
+                      🏷️ Storage Label Preview ({boxLabel}):
+                    </span>
+                    <span className="font-mono font-extrabold bg-white border border-emerald-400 px-2.5 py-0.5 rounded-lg text-emerald-950 text-xs shadow-2xs">
+                      {sampleTag}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-emerald-900 leading-snug">
+                    Will register <strong className="text-emerald-950 font-black">{boxLabel}</strong> containing <strong className="text-emerald-950 font-black">{bulkBinForm.bulkTotal} items</strong> of <strong className="text-emerald-950">{bulkBinForm.name || bulkBinForm.category}</strong> ({bulkBinForm.tartanOrColour || 'Standard'}). Sticking this label to {boxLabel} lets staff scan to issue items from this box pool.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowBulkBinModal(false)}
+                    className="px-5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  
+                  <button
+                    type="submit"
+                    className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Package className="w-4 h-4 text-white" /> Generate {boxLabel} Label ({bulkBinForm.bulkTotal} Items)
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* PRINTABLE BULK STORAGE BOX SIDE LABEL MODAL */}
+      {selectedBulkBinForPrint && (() => {
+        const bin = selectedBulkBinForPrint;
+        const binMatrix = generateQrMatrix(bin.id);
+        const binViewBox = getQrViewBoxSize(binMatrix, 4);
+        const boxDisplay = bin.boxNumber || 'Box 1';
+
+        return (
+          <div className="print-modal-overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+            <div className="print-modal-content bg-white border border-slate-200 rounded-3xl max-w-xl w-full flex flex-col shadow-2xl overflow-hidden my-auto">
+              
+              {/* MODAL HEADER */}
+              <div className="no-print bg-white px-6 py-4 border-b border-slate-200 flex items-start justify-between shadow-sm">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-3 py-1 bg-emerald-100 text-emerald-900 font-mono font-extrabold text-xs rounded-lg border border-emerald-300">
+                      {bin.id}
+                    </span>
+                    <span className="px-2.5 py-0.5 text-xs font-extrabold bg-amber-100 text-amber-900 border border-amber-300 rounded-full flex items-center gap-1">
+                      📦 {boxDisplay} ({bin.bulkTotal} Items)
+                    </span>
+                  </div>
+                  <h3 className="text-base sm:text-lg font-extrabold text-slate-900 mt-1">
+                    Print Side Label for {boxDisplay}: {bin.name}
+                  </h3>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Printer className="w-4 h-4" /> Send {boxDisplay} Label to Printer
+                  </button>
+
+                  <button 
+                    onClick={() => setSelectedBulkBinForPrint(null)}
+                    className="p-2 bg-slate-100 hover:bg-rose-100 text-slate-600 hover:text-rose-700 rounded-xl transition font-bold text-xs flex items-center gap-1 shadow-sm cursor-pointer"
+                    title="Close Modal"
+                  >
+                    <X className="w-5 h-5 text-rose-600" />
+                    <span className="hidden sm:inline">Close</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* PRINTABLE BOX STICKER LABEL CARD */}
+              <div className="p-6 bg-slate-100 overflow-y-auto flex items-center justify-center">
+                <div className="bg-white border-4 border-slate-900 rounded-3xl p-6 shadow-xl max-w-md w-full text-center space-y-4 print:border-4 print:border-black print:shadow-none print:m-0 print:max-w-none print:w-full">
+                  
+                  {/* HEADER */}
+                  <div className="border-b-2 border-slate-900 pb-3 flex items-center justify-between">
+                    <div className="text-left">
+                      <span className="text-[10px] font-extrabold tracking-widest text-amber-800 uppercase block">Highland Kilt Hire</span>
+                      <h4 className="text-sm font-black text-slate-950 uppercase tracking-tight">Bulk Accessory Storage Box</h4>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="px-3 py-1 bg-amber-400 text-slate-950 text-xs font-black rounded-lg border-2 border-slate-950 uppercase">
+                        {boxDisplay}
+                      </span>
+                      <span className="px-2.5 py-1 bg-slate-950 text-white text-[11px] font-mono font-black rounded-lg">
+                        {bin.id}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* ITEM TITLE & POOL BADGE */}
+                  <div>
+                    <h3 className="text-lg sm:text-xl font-black text-slate-950 uppercase tracking-tight leading-snug">
+                      {bin.name}
+                    </h3>
+                    <div className="inline-flex items-center gap-2 mt-2 px-4 py-1.5 bg-emerald-100 border-2 border-emerald-600 text-emerald-950 rounded-full font-black text-xs">
+                      <span>📦 CONTAINS:</span>
+                      <span className="text-sm font-black text-emerald-900">{bin.bulkTotal} ITEMS IN THIS BOX</span>
+                    </div>
+                  </div>
+
+                  {/* HIGH-RES QR CODE */}
+                  <div className="p-3 bg-white border-2 border-slate-300 rounded-2xl inline-block mx-auto shadow-inner">
+                    <svg viewBox={`0 0 ${binViewBox} ${binViewBox}`} className="w-36 h-36 mx-auto" style={{ shapeRendering: 'crispEdges' }}>
+                      <rect width={binViewBox} height={binViewBox} fill="#ffffff" />
+                      <path d={renderQrSvgPath(binMatrix, 4)} fill="#000000" />
+                    </svg>
+                    <span className="font-mono font-black text-xs text-slate-950 tracking-wider block mt-1">
+                      {bin.id}
+                    </span>
+                  </div>
+
+                  {/* SPECIFICATION GRID */}
+                  <div className="grid grid-cols-2 gap-2 text-left bg-slate-50 border border-slate-200 rounded-2xl p-3 text-[11px]">
+                    <div>
+                      <span className="text-slate-500 font-bold block text-[10px] uppercase">Box Number</span>
+                      <span className="font-black text-amber-900">{boxDisplay}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-bold block text-[10px] uppercase">Category</span>
+                      <span className="font-extrabold text-slate-900">{bin.category} ({bin.sizeGroup})</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-bold block text-[10px] uppercase">Colour / Finish</span>
+                      <span className="font-extrabold text-slate-900">{bin.tartanOrColour || 'Standard'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-bold block text-[10px] uppercase">Hire Rate & Dep</span>
+                      <span className="font-mono font-extrabold text-slate-900">£{bin.hireRate.toFixed(2)} / £{bin.depositAmount.toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  {/* FOOTER INSTRUCTION */}
+                  <div className="border-t border-dashed border-slate-300 pt-3">
+                    <p className="text-[10px] font-bold text-slate-600 leading-snug">
+                      🏷️ Stick this label to the outside of {boxDisplay}. Scan with floor terminal during fittings/returns to issue items from this box.
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         );
