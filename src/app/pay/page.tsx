@@ -13,15 +13,27 @@ import {
   ArrowRight,
   Clock
 } from 'lucide-react';
+import { upsertPurchaseOrder } from '@/lib/firestore';
 
 function PaymentContent() {
   const searchParams = useSearchParams();
   const poId = searchParams.get('po') || 'PO-SAMPLE-001';
-  const amountParam = searchParams.get('amount') ? parseFloat(searchParams.get('amount')!) : 160.00;
+  const rawHire = searchParams.get('hire') ? parseFloat(searchParams.get('hire')!) : NaN;
+  const rawDeposit = searchParams.get('deposit') ? parseFloat(searchParams.get('deposit')!) : NaN;
+  const rawAmount = searchParams.get('amount') ? parseFloat(searchParams.get('amount')!) : NaN;
   const customerName = searchParams.get('name') || 'Valued Customer';
-  const paymentType = searchParams.get('type') || 'FULL'; // 'DEPOSIT' | 'BALANCE' | 'FULL'
+  const typeParam = searchParams.get('type')?.toUpperCase();
 
-  const [amount, setAmount] = useState<number>(amountParam);
+  // Deduce accurate hire fee and deposit from query params without hardcoded assumptions
+  const deposit = !isNaN(rawDeposit) ? rawDeposit : (!isNaN(rawAmount) ? Math.min(rawAmount, 50.00) : 18.00);
+  const hireFee = !isNaN(rawHire) ? rawHire : (!isNaN(rawAmount) ? Math.max(0, rawAmount - deposit) : 0.00);
+  const totalOrderValue = hireFee + deposit;
+
+  // Selected payment mode (if hireFee is 0, only deposit exists)
+  const isZeroHire = hireFee === 0;
+  const [selectedMode, setSelectedMode] = useState<'DEPOSIT' | 'FULL'>(isZeroHire ? 'DEPOSIT' : typeParam === 'FULL' ? 'FULL' : 'DEPOSIT');
+  const amountToPay = (selectedMode === 'DEPOSIT' || isZeroHire) ? deposit : totalOrderValue;
+
   const [sdkReady, setSdkReady] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [paymentSuccess, setPaymentSuccess] = useState<boolean>(false);
@@ -35,12 +47,6 @@ function PaymentContent() {
   const [errorMessage, setErrorMessage] = useState<string>('');
 
   const clientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID || 'AZFesY0CQIX0Bj88JPxObaigD2vsVumDk_isHuKOfXGA2-ICOTdUP7CzuwsqLZ-Bn3D4oG8rIMtriPge';
-
-  useEffect(() => {
-    if (amountParam && !isNaN(amountParam)) {
-      setAmount(amountParam);
-    }
-  }, [amountParam]);
 
   const renderPayPalButtons = () => {
     if (typeof window === 'undefined' || !(window as any).paypal) return;
@@ -66,8 +72,8 @@ function PaymentContent() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 poId: poId,
-                amount: amount,
-                description: `Highland Kilt Hire - PO #${poId} (${paymentType})`,
+                amount: amountToPay,
+                description: `Highland Kilt Hire - PO #${poId} (${selectedMode === 'DEPOSIT' ? 'Security Deposit' : 'Full Hire & Deposit'})`,
                 customerName: customerName
               })
             });
@@ -100,113 +106,124 @@ function PaymentContent() {
               throw new Error(captureData.error || 'Failed to capture PayPal payment.');
             }
 
+            // Sync payment record into Firestore
+            if (poId && poId !== 'PO-SAMPLE-001') {
+              try {
+                const isPaidFull = selectedMode === 'FULL' || amountToPay >= totalOrderValue;
+                const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16);
+                await upsertPurchaseOrder({
+                  id: poId,
+                  paymentStatus: isPaidFull ? 'FULL_BALANCE_PAID' : 'PARTIAL_DEPOSIT',
+                  depositPaymentMethod: 'PAYPAL_ONLINE',
+                  depositPaidAt: nowStr,
+                  balancePaidAt: isPaidFull ? nowStr : undefined,
+                  orderStatus: 'DEPOSIT_PAID_CONFIRMED',
+                  paypalTransactionId: data.orderId,
+                  paypalCaptureId: captureData.captureId,
+                  paypalPayerEmail: captureData.payerEmail
+                } as any);
+              } catch (dbErr) {
+                console.warn('Firestore direct sync error from pay client:', dbErr);
+              }
+            }
+
             setPaymentSuccess(true);
             setPaymentDetails({
-              orderId: captureData.orderId,
+              orderId: data.orderId,
               captureId: captureData.captureId,
-              payerName: captureData.payerName,
+              payerName: captureData.payerName || customerName,
               payerEmail: captureData.payerEmail,
-              amountPaid: captureData.amountPaid || amount
+              amountPaid: amountToPay
             });
-            setIsProcessing(false);
           } catch (err: any) {
+            setErrorMessage(`Capture failed: ${err.message}`);
+          } finally {
             setIsProcessing(false);
-            setErrorMessage(err.message || 'Error capturing payment.');
           }
         },
         onError: (err: any) => {
+          console.error('PayPal button error:', err);
+          setErrorMessage('Payment failed or was cancelled. Please try again.');
           setIsProcessing(false);
-          setErrorMessage('Payment was declined or cancelled. Please try again.');
-          console.error('PayPal Button Error:', err);
         }
       }).render('#paypal-button-container');
-    } catch (err) {
-      console.error('PayPal button render error:', err);
+    } catch (e: any) {
+      console.error('PayPal button rendering error:', e);
+      setErrorMessage(`Failed to render PayPal: ${e.message}`);
     }
   };
 
   useEffect(() => {
-    if (sdkReady && !paymentSuccess) {
+    if (sdkReady) {
       renderPayPalButtons();
     }
-  }, [sdkReady, amount, paymentSuccess]);
+  }, [sdkReady, selectedMode]);
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col justify-between font-sans">
       <Script
-        src={`https://www.paypal.com/sdk/js?client-id=${clientId}&currency=GBP&components=buttons`}
+        src={`https://www.paypal.com/sdk/js?client-id=${clientId}&currency=GBP&components=buttons&enable-funding=card,paylater`}
+        strategy="afterInteractive"
         onLoad={() => setSdkReady(true)}
+        onError={() => setErrorMessage('Failed to load PayPal Secure Checkout SDK.')}
       />
 
-      {/* TOP HEADER */}
-      <header className="bg-slate-950/80 border-b border-slate-800 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-4xl mx-auto px-4 py-3.5 flex items-center justify-between">
+      {/* HEADER */}
+      <header className="bg-slate-950/80 backdrop-blur-md border-b border-slate-800 py-4 px-6 sticky top-0 z-50">
+        <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-500 flex items-center justify-center font-black text-slate-950 text-base shadow-sm">
-              🏴󠁧󠁢󠁳󠁣󠁴󠁿
-            </div>
+            <span className="text-2xl">🏴󠁧󠁢󠁳󠁣󠁴󠁿</span>
             <div>
-              <h1 className="text-sm font-black text-white uppercase tracking-wider">Highland Kiltmakers</h1>
-              <p className="text-[10px] text-slate-400">Secure Online Checkout &amp; Counter Settlement</p>
+              <h1 className="text-base font-black text-amber-400 tracking-wider uppercase">Highland Kiltmakers</h1>
+              <p className="text-[10px] text-slate-400">Secure Online Payment Terminal</p>
             </div>
           </div>
-
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-950/80 border border-emerald-700/60 rounded-full text-emerald-300 text-xs font-bold shadow-2xs">
-            <Lock className="w-3.5 h-3.5 text-emerald-400" /> 256-Bit SSL Encrypted
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-full text-emerald-400 text-xs font-bold">
+            <Lock className="w-3.5 h-3.5" /> 256-Bit SSL Encrypted
           </div>
         </div>
       </header>
 
-      {/* MAIN CHECKOUT CONTAINER */}
-      <main className="max-w-4xl mx-auto px-4 py-8 w-full flex-1 flex items-center justify-center">
-        {paymentSuccess && paymentDetails ? (
-          /* SUCCESS SCREEN */
-          <div className="bg-white text-slate-900 rounded-3xl p-8 sm:p-10 shadow-2xl border border-slate-200 max-w-lg w-full text-center space-y-6 animate-in fade-in zoom-in duration-300">
-            <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-3xl flex items-center justify-center mx-auto shadow-inner">
+      {/* MAIN CONTAINER */}
+      <main className="max-w-4xl mx-auto px-4 py-8 flex-1 flex flex-col justify-center">
+        {paymentSuccess ? (
+          /* GREEN RECEIPT SCREEN */
+          <div className="bg-slate-800/90 border border-emerald-500/40 rounded-3xl p-8 sm:p-12 text-center space-y-6 shadow-2xl backdrop-blur-md max-w-lg mx-auto">
+            <div className="w-16 h-16 bg-emerald-500/20 border border-emerald-500 rounded-full flex items-center justify-center mx-auto text-emerald-400">
               <CheckCircle2 className="w-10 h-10" />
             </div>
 
             <div className="space-y-2">
-              <span className="px-3 py-1 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-full text-xs font-extrabold uppercase">
-                Payment Settled via PayPal
+              <span className="px-3 py-1 bg-emerald-500/20 text-emerald-300 rounded-full text-xs font-black uppercase tracking-wider">
+                Payment Authorized &amp; Confirmed
               </span>
-              <h2 className="text-2xl font-black text-slate-900">Thank You, {customerName}!</h2>
-              <p className="text-xs text-slate-500">
-                Your payment for Order <strong>#{poId}</strong> has been successfully processed and confirmed.
+              <h2 className="text-2xl font-black text-white">Thank You, {paymentDetails?.payerName}!</h2>
+              <p className="text-xs text-slate-300">
+                Your payment for order <strong className="text-amber-400 font-mono font-bold">{poId}</strong> has been successfully processed via PayPal.
               </p>
             </div>
 
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-left space-y-2 text-xs">
-              <div className="flex justify-between">
-                <span className="text-slate-500 font-semibold">Amount Settled:</span>
-                <span className="font-extrabold text-emerald-700 text-sm">£{paymentDetails.amountPaid?.toFixed(2)}</span>
+            <div className="p-4 bg-slate-900/80 border border-slate-700 rounded-2xl text-left space-y-2 text-xs">
+              <div className="flex justify-between text-slate-400">
+                <span>Order Reference:</span>
+                <span className="font-mono text-white font-bold">{poId}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500 font-semibold">Order Reference:</span>
-                <span className="font-mono font-extrabold text-slate-900">{poId}</span>
+              <div className="flex justify-between text-slate-400">
+                <span>Payment Allocation:</span>
+                <span className="font-bold text-amber-400 uppercase">
+                  {selectedMode === 'DEPOSIT' ? 'Security Deposit (Confirmed)' : 'Full Hire & Deposit'}
+                </span>
               </div>
-              {paymentDetails.captureId && (
-                <div className="flex justify-between">
-                  <span className="text-slate-500 font-semibold">PayPal Capture ID:</span>
-                  <span className="font-mono text-[10px] text-purple-700">{paymentDetails.captureId}</span>
+              <div className="flex justify-between text-slate-400">
+                <span>Amount Paid:</span>
+                <span className="font-black text-emerald-400 text-sm">£{amountToPay.toFixed(2)} GBP</span>
+              </div>
+              {paymentDetails?.captureId && (
+                <div className="flex justify-between text-slate-400 border-t border-slate-800 pt-2 text-[11px]">
+                  <span>PayPal Capture ID:</span>
+                  <span className="font-mono text-slate-300">{paymentDetails.captureId}</span>
                 </div>
               )}
-              {paymentDetails.payerEmail && (
-                <div className="flex justify-between">
-                  <span className="text-slate-500 font-semibold">Payer Account:</span>
-                  <span className="text-slate-900 font-medium">{paymentDetails.payerEmail}</span>
-                </div>
-              )}
-            </div>
-
-            <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-left text-xs text-amber-950 flex items-start gap-2.5">
-              <Clock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-extrabold">Next Step: Outfit Preparation</p>
-                <p className="text-[11px] text-amber-900 mt-0.5">
-                  Our shop staff will now custom pick and steam your rigout. You will receive an automated notification as soon as your outfit is bagged and ready for collection!
-                </p>
-              </div>
             </div>
 
             <p className="text-[11px] text-slate-400">
@@ -229,31 +246,84 @@ function PaymentContent() {
                 </span>
               </div>
 
-              <div className="space-y-3 text-xs">
+              {/* PAYMENT OPTION SELECTOR PILLS (ONLY SHOWN IF HIRE FEE > 0) */}
+              {!isZeroHire ? (
+                <div className="bg-slate-900/90 p-2.5 rounded-2xl border border-slate-700 space-y-2">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block px-1">Select Payment Amount:</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMode('DEPOSIT')}
+                      className={`p-3 rounded-xl text-left transition cursor-pointer border ${
+                        selectedMode === 'DEPOSIT' 
+                          ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md font-bold' 
+                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                      }`}
+                    >
+                      <span className="text-[10px] block opacity-80 uppercase font-extrabold">Option 1</span>
+                      <strong className="text-sm block">🔒 £{deposit.toFixed(2)}</strong>
+                      <span className="text-[10px] opacity-80 block">Deposit to Confirm</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMode('FULL')}
+                      className={`p-3 rounded-xl text-left transition cursor-pointer border ${
+                        selectedMode === 'FULL' 
+                          ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md font-bold' 
+                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                      }`}
+                    >
+                      <span className="text-[10px] block opacity-80 uppercase font-extrabold">Option 2</span>
+                      <strong className="text-sm block">💳 £{totalOrderValue.toFixed(2)}</strong>
+                      <span className="text-[10px] opacity-80 block">Pay Full in Advance</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-slate-900/90 p-3 rounded-2xl border border-slate-700 text-xs text-slate-300 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                    <div>
+                      <strong className="text-white block">Refundable Security Deposit Only</strong>
+                      <span className="text-[11px] text-slate-400">Garments in this booking have £0.00 hire fee</span>
+                    </div>
+                  </div>
+                  <span className="text-sm font-black text-amber-400">£{deposit.toFixed(2)}</span>
+                </div>
+              )}
+
+              <div className="space-y-2.5 text-xs">
                 <div className="flex justify-between text-slate-300">
                   <span>Customer / Wearer:</span>
                   <strong className="text-white">{customerName}</strong>
                 </div>
                 <div className="flex justify-between text-slate-300">
-                  <span>Payment Allocation:</span>
-                  <strong className="text-amber-400 uppercase font-bold">{paymentType} SETTLEMENT</strong>
+                  <span>Garment Hire Fee:</span>
+                  <span className="font-medium text-slate-200">£{hireFee.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between text-slate-300">
-                  <span>Hire Package Rate:</span>
-                  <span className="font-medium text-slate-200">£{(amount > 50 ? amount - 50 : amount).toFixed(2)}</span>
+                <div className="flex justify-between text-emerald-400">
+                  <span>Security Deposit (Capped &amp; Refundable):</span>
+                  <span className="font-extrabold">£{deposit.toFixed(2)}</span>
                 </div>
-                {amount > 50 && (
-                  <div className="flex justify-between text-emerald-400">
-                    <span>Security Deposit (Refundable):</span>
-                    <span className="font-extrabold">£50.00</span>
+                <div className="flex justify-between text-slate-400 border-t border-slate-700 pt-2">
+                  <span>Total Order Value:</span>
+                  <span className="font-bold text-slate-200">£{totalOrderValue.toFixed(2)}</span>
+                </div>
+                {selectedMode === 'DEPOSIT' && (
+                  <div className="flex justify-between text-amber-300 text-[11px] bg-amber-500/10 p-2 rounded-lg border border-amber-500/20">
+                    <span>Remaining Balance Due at Collection:</span>
+                    <span className="font-extrabold">£{hireFee.toFixed(2)}</span>
                   </div>
                 )}
               </div>
 
               <div className="p-4 bg-slate-900/90 border border-slate-700 rounded-2xl flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase block">Total Due Now</span>
-                  <span className="text-2xl font-black text-amber-400">£{amount.toFixed(2)}</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">
+                    {selectedMode === 'DEPOSIT' ? 'Deposit Due Now to Confirm' : 'Total Due Now (Paid in Full)'}
+                  </span>
+                  <span className="text-2xl font-black text-amber-400">£{amountToPay.toFixed(2)}</span>
                 </div>
                 <span className="px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-full text-[10px] font-extrabold">
                   GBP (£)
@@ -263,11 +333,11 @@ function PaymentContent() {
               <div className="space-y-2 text-[11px] text-slate-400">
                 <p className="flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <strong>Security Deposit Guarantee:</strong> Your £50 security deposit will be automatically refunded upon the safe return of garments.
+                  <strong>Security Deposit Guarantee:</strong> Your £{deposit.toFixed(2)} deposit will be automatically refunded upon the safe return of garments.
                 </p>
                 <p className="flex items-center gap-1.5">
                   <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-                  Full Rigout cap discounts have been applied to this booking.
+                  Full Rigout &amp; Deposit cap discounts have been applied.
                 </p>
               </div>
             </div>

@@ -141,6 +141,7 @@ export interface KiltItem {
   hireRate: number; // Single item hire rate
   depositAmount: number; // Deposit required
   purchaseCost?: number; // Initial wholesale purchase cost for ROI tracking
+  currentAssetValue?: number; // Current market/asset valuation of the garment
   status: ItemStatus;
   currentPoId?: string; // Linked PO when on hire
   registeredAt: string;
@@ -220,8 +221,8 @@ export interface POLineItem {
   depositAmount: number;
   returned: boolean;
   returnedAt?: string;
-  returnCondition?: 'GOOD_CLEAN' | 'NEEDS_CLEANING' | 'NEEDS_REPAIR' | 'MISSING';
-  depositAction?: 'REFUNDED' | 'HELD_FOR_REPAIR' | 'HELD_FOR_MISSING';
+  returnCondition?: 'GOOD_CLEAN' | 'NEEDS_CLEANING' | 'HEAVY_SOILING_CLEANING' | 'NEEDS_REPAIR' | 'MISSING';
+  depositAction?: 'REFUNDED' | 'HELD_FOR_REPAIR' | 'HELD_FOR_MISSING' | 'HELD_FOR_CLEANING';
   notes?: string;
 }
 
@@ -270,14 +271,21 @@ export interface PurchaseOrder {
   paypalRefundId?: string;
   paypalRefundAmount?: number;
   paypalRefundDate?: string;
-  paypalPayerEmail?: string;
-  paymentStatus: 'UNPAID' | 'PARTIAL_DEPOSIT' | 'PAID_WITH_DEPOSIT' | 'FULL_BALANCE_PAID' | 'REFUNDED' | 'FULLY_REFUNDED' | 'DEPOSIT_PARTIALLY_REFUNDED' | 'CANCELLED';
+  paymentStatus: 'UNPAID' | 'PARTIAL_DEPOSIT' | 'PAID_WITH_DEPOSIT' | 'FULL_BALANCE_PAID' | 'REFUNDED' | 'FULLY_REFUNDED' | 'DEPOSIT_PARTIALLY_REFUNDED' | 'CANCELLED' | 'DISPUTED';
   orderStatus: POOrderStatus;
   measurements?: CustomerMeasurements;
   depositPaymentMethod?: 'PAYPAL_ONLINE' | 'CARD_IN_STORE' | 'CASH_IN_STORE' | 'IN_STORE_CASH' | 'IN_STORE_CARD' | 'PAPER_DIARY_LEGACY';
   depositPaidAt?: string;
   cancellationRecord?: CancellationRecord;
   balancePaidAt?: string;
+  disputeStatus?: 'DISPUTE_OPENED' | 'DISPUTE_RESOLVED' | 'CHARGEBACK_REVERSED';
+  disputeDetails?: {
+    disputeId: string;
+    reason: string;
+    amountDisputed: number;
+    openedAt: string;
+    status: string;
+  };
   assembledAt?: string;
   assembledByStaff?: string;
   readyNotificationSentAt?: string;
@@ -295,7 +303,7 @@ export interface AuditLog {
   relatedQrCode?: string;
 }
 
-export type StaffRole = 'Master Admin' | 'Admin' | 'Shop Assistant' | 'Senior Hire Specialist' | 'Inventory & Workshop Staff';
+export type StaffRole = 'Master Admin' | 'Admin' | 'Shop Assistant' | 'Senior Hire Specialist' | 'Inventory & Workshop Staff' | 'Accountant & Auditor';
 
 export interface StaffUser {
   id: string;

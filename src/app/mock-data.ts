@@ -36,46 +36,7 @@ export const INITIAL_POS: PurchaseOrder[] = [];
 
 export const INITIAL_LOGS: AuditLog[] = [];
 
-export const INITIAL_ALTERATIONS: AlterationTask[] = [
-  {
-    id: 'ALT-2026-001',
-    taskType: 'PRE_HIRE_FITTING',
-    poId: 'PO-2026-1042',
-    wearerName: 'Gordon MacLeod (Groom)',
-    customerPhone: '07700 900123',
-    itemId: 'KILT-1088',
-    itemName: 'Royal Stewart Heavyweight 8-Yard Kilt',
-    category: 'Kilts',
-    sizeGroup: 'Adult',
-    originalGarmentSize: 'Waist 36" / Length 24"',
-    targetMeasurement: 'Take in waist 2" (36" ➔ 34")',
-    adjustmentType: 'WAIST_TAKE_IN',
-    instructions: 'Customer measured 34" waist. Move inner buckle strap inwards 2 inches. Double stitch thread.',
-    stage: 'QUEUED',
-    destination: 'BAG_FOR_CUSTOMER',
-    collectionDate: '2026-08-20',
-    eventDate: '2026-08-22',
-    assignedTailor: 'Mary (Seamstress)',
-    createdAt: '2026-08-16 09:30'
-  },
-  {
-    id: 'ALT-2026-002',
-    taskType: 'POST_HIRE_RESTOCK_RESET',
-    itemId: 'KILT-1092',
-    itemName: 'Black Watch 8-Yard Traditional Kilt',
-    category: 'Kilts',
-    sizeGroup: 'Adult',
-    originalGarmentSize: 'Waist 38" (Currently altered to 35")',
-    targetMeasurement: 'Reset waist back to standard 38"',
-    adjustmentType: 'RESTOCK_RESET',
-    instructions: 'Returned from Campbell hire. Shift buckle strap back out to standard 38" position for store shelf restock.',
-    stage: 'IN_PROGRESS',
-    destination: 'RESTOCK_TO_SHELVES',
-    assignedTailor: 'John (Tailor)',
-    createdAt: '2026-08-15 14:00',
-    startedAt: '2026-08-16 08:30'
-  }
-];
+export const INITIAL_ALTERATIONS: AlterationTask[] = [];
 
 export const INITIAL_DEPOSIT_LEDGER_ENTRIES: DepositLedgerEntry[] = [
   {

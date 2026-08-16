@@ -138,6 +138,7 @@ import {
   Baby,
   User,
   Trash2,
+  Save,
   AlertCircle,
   Archive,
   Eye,
@@ -149,6 +150,8 @@ import {
   BarChart3,
   TrendingUp,
   Download,
+  FileSpreadsheet,
+  Calculator,
   Smartphone,
   Share2,
   PlusSquare,
@@ -402,7 +405,7 @@ export default function KiltHireApp() {
   const [showRegPassword, setShowRegPassword] = useState(false);
 
   // Tab State for Admin: 'scanner' | 'batches' | 'inventory' | 'pos' | 'laundry' | 'repairs' | 'analytics' | 'pricing' | 'admin' | 'start_fitting' | 'deposit_ledger'
-  const [activeTab, setActiveTab] = useState<'scanner' | 'batches' | 'inventory' | 'pos' | 'laundry' | 'repairs' | 'analytics' | 'pricing' | 'admin' | 'start_fitting' | 'deposit_ledger' | 'email_settings'>('scanner');
+  const [activeTab, setActiveTab] = useState<'scanner' | 'batches' | 'inventory' | 'pos' | 'laundry' | 'repairs' | 'analytics' | 'pricing' | 'admin' | 'start_fitting' | 'deposit_ledger' | 'email_settings' | 'accountant'>('scanner');
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Scanner & Selected QR State
@@ -640,6 +643,25 @@ export default function KiltHireApp() {
   const [showReprintPinModal, setShowReprintPinModal] = useState<boolean>(false);
   const [reprintPrintMode, setReprintPrintMode] = useState<boolean>(false);
   const [analyticsSearchQuery, setAnalyticsSearchQuery] = useState<string>('');
+  const [analyticsRoiPage, setAnalyticsRoiPage] = useState<number>(1);
+  const [analyticsRoiRowsPerPage, setAnalyticsRoiRowsPerPage] = useState<number | 'ALL'>(15);
+  const [analyticsRoiSortField, setAnalyticsRoiSortField] = useState<'ROI' | 'REVENUE' | 'HIRES' | 'PROFIT' | 'COST' | 'ID' | 'NAME'>('ROI');
+  const [analyticsRoiSortDir, setAnalyticsRoiSortDir] = useState<'ASC' | 'DESC'>('DESC');
+  const [analyticsRoiCategoryFilter, setAnalyticsRoiCategoryFilter] = useState<string>('ALL');
+  const [analyticsRoiDemographicFilter, setAnalyticsRoiDemographicFilter] = useState<'ALL' | 'Adult' | 'Kid'>('ALL');
+  
+  // Master Admin Stock Valuation & Purchase Cost Quick Edit State
+  // Accountant & Tax Portal State
+  const [accountantTaxPeriod, setAccountantTaxPeriod] = useState<string>('ALL_TIME');
+  const [accountantSubTab, setAccountantSubTab] = useState<'pnl' | 'deposits' | 'stock_valuation' | 'transactions'>('pnl');
+  const [accountantCustomFromDate, setAccountantCustomFromDate] = useState<string>('');
+  const [accountantCustomToDate, setAccountantCustomToDate] = useState<string>('');
+  const [accountantSearchQuery, setAccountantSearchQuery] = useState<string>('');
+
+  const [editingItemValuation, setEditingItemValuation] = useState<KiltItem | null>(null);
+  const [valuationCostInput, setValuationCostInput] = useState<string>('');
+  const [valuationAssetValueInput, setValuationAssetValueInput] = useState<string>('');
+  const [isSavingValuation, setIsSavingValuation] = useState<boolean>(false);
 
   // Edit & Delete Batch State
   const [editingBatch, setEditingBatch] = useState<QRBatch | null>(null);
@@ -691,6 +713,7 @@ export default function KiltHireApp() {
   const [newCalNoteText, setNewCalNoteText] = useState('');
   const [newCalNoteType, setNewCalNoteType] = useState<'NOTE' | 'EVENT' | 'CLOSURE'>('NOTE');
   const [showCancelledInCalendar, setShowCancelledInCalendar] = useState<boolean>(false);
+  const [showCompletedInCalendar, setShowCompletedInCalendar] = useState<boolean>(false);
   const [availableStockPage, setAvailableStockPage] = useState<number>(1);
   const [assistantRowsPerPage, setAssistantRowsPerPage] = useState<number>(10);
   const [inventoryTablePage, setInventoryTablePage] = useState<number>(1);
@@ -2259,6 +2282,299 @@ export default function KiltHireApp() {
     }
   };
 
+    const handleOpenValuationModal = (item: KiltItem) => {
+    const cost = item.purchaseCost != null ? item.purchaseCost : (item.sizeGroup === 'Kid' ? 120 : 250);
+    const assetVal = item.currentAssetValue != null ? item.currentAssetValue : cost;
+    setValuationCostInput(cost.toString());
+    setValuationAssetValueInput(assetVal.toString());
+    setEditingItemValuation(item);
+  };
+
+  const handlePrintTaxReport = () => {
+    let grossTurnover = 0;
+    let totalDepositsHeldActive = 0;
+    let totalDepositsRefunded = 0;
+    let totalDepositsForfeited = 0;
+    let outsourcedCosts = 0;
+
+    pos.forEach(po => {
+      grossTurnover += po.totalHireFee;
+      let poRefunded = 0;
+      let poRetained = 0;
+
+      po.items.forEach(li => {
+        if (li.depositAction === 'REFUNDED') poRefunded += li.depositAmount;
+        else if (li.depositAction === 'HELD_FOR_REPAIR' || li.depositAction === 'HELD_FOR_MISSING') poRetained += li.depositAmount;
+        const itemObj = items.find(i => i.id === li.qrCodeId);
+        if (itemObj?.isOutsourcedDefault && itemObj?.outsourcedWholesaleCost) {
+          outsourcedCosts += itemObj.outsourcedWholesaleCost;
+        }
+      });
+
+      totalDepositsRefunded += poRefunded;
+      totalDepositsForfeited += poRetained;
+
+      if (po.orderStatus === 'OUT_ON_HIRE' || po.orderStatus === 'READY_FOR_COLLECTION' || po.orderStatus === 'ASSEMBLY_DUE') {
+        totalDepositsHeldActive += (po.totalDepositHeld - poRefunded - poRetained);
+      }
+    });
+
+    const totalRevenue = grossTurnover + totalDepositsForfeited;
+    const grossProfit = totalRevenue - outsourcedCosts;
+
+    const dryCleaningCost = depositLedgerEntries.filter(e => e.entryType === 'EXPENSE_DRY_CLEANING').reduce((s, e) => s + (e.amount || 0), 0);
+    const repairsCost = depositLedgerEntries.filter(e => e.entryType === 'EXPENSE_TAILOR_REPAIR').reduce((s, e) => s + (e.amount || 0), 0);
+    const replacementCost = depositLedgerEntries.filter(e => e.entryType === 'EXPENSE_REPLACEMENT').reduce((s, e) => s + (e.amount || 0), 0);
+    const totalOperatingExpenses = dryCleaningCost + repairsCost + replacementCost;
+    const netTaxableProfit = grossProfit - totalOperatingExpenses;
+
+    const fleetAssetValuation = items.reduce((sum, item) => sum + (item.currentAssetValue != null ? item.currentAssetValue : (item.purchaseCost != null ? item.purchaseCost : (item.sizeGroup === 'Kid' ? 120 : 250))), 0);
+    const fleetInitialOutlay = items.reduce((sum, item) => sum + (item.purchaseCost != null ? item.purchaseCost : (item.sizeGroup === 'Kid' ? 120 : 250)), 0);
+
+    const categoryGroups: Record<string, { count: number; totalCost: number; totalAssetVal: number }> = {};
+    items.forEach(item => {
+      const cat = item.category || 'Miscellaneous';
+      if (!categoryGroups[cat]) categoryGroups[cat] = { count: 0, totalCost: 0, totalAssetVal: 0 };
+      const cost = item.purchaseCost != null ? item.purchaseCost : (item.sizeGroup === 'Kid' ? 120 : 250);
+      const assetVal = item.currentAssetValue != null ? item.currentAssetValue : cost;
+      categoryGroups[cat].count += 1;
+      categoryGroups[cat].totalCost += cost;
+      categoryGroups[cat].totalAssetVal += assetVal;
+    });
+
+    const printHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Highland Kilt Hire - Statutory Tax & P&L Statement</title>
+  <style>
+    @page { size: A4 portrait; margin: 12mm 15mm; }
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Helvetica Neue', Arial, sans-serif; color: #0f172a; }
+    body { padding: 15px; background: #fff; line-height: 1.4; font-size: 11px; }
+    .header { border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: flex-end; }
+    .title { font-size: 18px; font-weight: 900; text-transform: uppercase; color: #0f172a; letter-spacing: -0.5px; }
+    .subtitle { font-size: 11px; font-weight: 700; color: #b45309; }
+    .meta { text-align: right; font-size: 10px; color: #475569; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 15px; }
+    .kpi-box { border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; background: #f8fafc; }
+    .kpi-label { font-size: 9px; font-weight: 800; text-transform: uppercase; color: #64748b; margin-bottom: 3px; }
+    .kpi-val { font-size: 15px; font-weight: 900; color: #0f172a; font-family: monospace; }
+    .section-title { font-size: 12px; font-weight: 800; text-transform: uppercase; border-bottom: 1.5px solid #cbd5e1; padding-bottom: 4px; margin: 15px 0 8px; color: #0f172a; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10.5px; }
+    th { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; font-size: 9.5px; text-transform: uppercase; font-weight: 800; }
+    td { border: 1px solid #e2e8f0; padding: 5.5px 8px; }
+    .text-right { text-align: right; }
+    .text-center { text-align: center; }
+    .font-mono { font-family: monospace; }
+    .font-bold { font-weight: bold; }
+    .bg-highlight { background: #fef3c7; font-weight: 900; }
+    .bg-total { background: #f8fafc; font-weight: 800; }
+    .signatures { margin-top: 25px; display: grid; grid-template-columns: 1fr 1fr; gap: 30px; border-top: 1px dashed #cbd5e1; padding-top: 15px; font-size: 10px; }
+    .sig-line { border-bottom: 1px solid #0f172a; margin-top: 25px; margin-bottom: 5px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <div class="title">Highland Kilt &amp; Clothing Hire</div>
+      <div class="subtitle">Statutory Financial Accounting &amp; Year-End Tax Ledger</div>
+      <div style="font-size: 9.5px; color: #64748b; margin-top: 2px;">
+        12 High Street, Edinburgh, EH1 1SG &bull; sales@scottishhighlandkilthire.co.uk &bull; 0141 552 1234
+      </div>
+    </div>
+    <div class="meta">
+      <div><strong>Reporting Period:</strong> ${accountantTaxPeriod.replace(/_/g, ' ')}</div>
+      <div><strong>Generated:</strong> ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+      <div><strong>Accounting Basis:</strong> UK GAAP (Small Entity)</div>
+    </div>
+  </div>
+
+  <div class="kpi-grid">
+    <div class="kpi-box">
+      <div class="kpi-label">Gross Trading Turnover</div>
+      <div class="kpi-val">£${grossTurnover.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+    </div>
+    <div class="kpi-box">
+      <div class="kpi-label">Current Deposit Liability</div>
+      <div class="kpi-val" style="color: #1d4ed8;">£${totalDepositsHeldActive.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+    </div>
+    <div class="kpi-box">
+      <div class="kpi-label">Closing Stock Assets</div>
+      <div class="kpi-val" style="color: #7e22ce;">£${fleetAssetValuation.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+    </div>
+    <div class="kpi-box" style="background: #fef3c7; border-color: #f59e0b;">
+      <div class="kpi-label" style="color: #92400e;">Net Taxable Trading Profit</div>
+      <div class="kpi-val" style="color: #15803d;">£${netTaxableProfit.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+    </div>
+  </div>
+
+  <div class="section-title">1. Statutory Profit &amp; Loss (P&amp;L) Trading Statement</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Account Category</th>
+        <th class="text-center">Tax Treatment</th>
+        <th class="text-right">Debit (£)</th>
+        <th class="text-right">Credit (£)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="font-bold">Garment &amp; Rigout Hire Rental Turnover</td>
+        <td class="text-center">Taxable Revenue</td>
+        <td class="text-right font-mono">-</td>
+        <td class="text-right font-mono font-bold">£${grossTurnover.toFixed(2)}</td>
+      </tr>
+      <tr>
+        <td class="font-bold">Forfeited / Retained Client Deposits (Loss / Damage)</td>
+        <td class="text-center">Taxable Misc Income</td>
+        <td class="text-right font-mono">-</td>
+        <td class="text-right font-mono font-bold">£${totalDepositsForfeited.toFixed(2)}</td>
+      </tr>
+      <tr class="bg-total">
+        <td>Total Trading Revenue</td>
+        <td></td>
+        <td></td>
+        <td class="text-right font-mono font-bold">£${totalRevenue.toFixed(2)}</td>
+      </tr>
+      <tr>
+        <td class="font-bold">Cost of Sales: External Sub-Hire Wholesale Outlays</td>
+        <td class="text-center">Cost of Sales</td>
+        <td class="text-right font-mono" style="color:#b91c1c;">£${outsourcedCosts.toFixed(2)}</td>
+        <td class="text-right font-mono">-</td>
+      </tr>
+      <tr class="bg-total">
+        <td>Gross Trading Profit</td>
+        <td></td>
+        <td></td>
+        <td class="text-right font-mono font-bold">£${grossProfit.toFixed(2)}</td>
+      </tr>
+      <tr>
+        <td>Allowable Operating Expense: Dry Cleaning &amp; Laundry Services</td>
+        <td class="text-center">Allowable Expense</td>
+        <td class="text-right font-mono" style="color:#b91c1c;">£${dryCleaningCost.toFixed(2)}</td>
+        <td class="text-right font-mono">-</td>
+      </tr>
+      <tr>
+        <td>Allowable Operating Expense: Seamstress Repairs &amp; Tailoring</td>
+        <td class="text-center">Allowable Expense</td>
+        <td class="text-right font-mono" style="color:#b91c1c;">£${repairsCost.toFixed(2)}</td>
+        <td class="text-right font-mono">-</td>
+      </tr>
+      <tr>
+        <td>Allowable Operating Expense: Accessory &amp; Garment Replacements</td>
+        <td class="text-center">Allowable Expense</td>
+        <td class="text-right font-mono" style="color:#b91c1c;">£${replacementCost.toFixed(2)}</td>
+        <td class="text-right font-mono">-</td>
+      </tr>
+      <tr class="bg-highlight">
+        <td style="font-size: 11px;">NET TAXABLE TRADING PROFIT (HMRC Tax Assessment Base)</td>
+        <td class="text-center" style="font-size: 9px;">HMRC Tax Base</td>
+        <td></td>
+        <td class="text-right font-mono" style="font-size: 12px; color: #15803d;">£${netTaxableProfit.toFixed(2)}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="section-title">2. Balance Sheet Inventory Stock Valuation Schedule</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Garment Category</th>
+        <th class="text-center">Unit Count</th>
+        <th class="text-right">Acquisition Outlay (£)</th>
+        <th class="text-right">Current Stock Asset Value (£)</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${Object.entries(categoryGroups).map(([cat, stats]) => `
+        <tr>
+          <td>${cat}</td>
+          <td class="text-center font-mono">${stats.count} Units</td>
+          <td class="text-right font-mono">£${stats.totalCost.toFixed(2)}</td>
+          <td class="text-right font-mono font-bold">£${stats.totalAssetVal.toFixed(2)}</td>
+        </tr>
+      `).join('')}
+      <tr class="bg-total">
+        <td>Total Closing Fleet Asset Valuation</td>
+        <td class="text-center font-mono">${items.length} Total Units</td>
+        <td class="text-right font-mono">£${fleetInitialOutlay.toFixed(2)}</td>
+        <td class="text-right font-mono font-bold">£${fleetAssetValuation.toFixed(2)}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="signatures">
+    <div>
+      <div><strong>Director / Master Admin Declaration:</strong></div>
+      <div>I confirm that the above statutory transactions, turnover records, and inventory asset schedules represent a true and fair view of trading operations.</div>
+      <div class="sig-line"></div>
+      <div>Signature: <strong>Allan (Director)</strong> &bull; Date: ${new Date().toLocaleDateString('en-GB')}</div>
+    </div>
+    <div>
+      <div><strong>Accountant / Independent Auditor Review:</strong></div>
+      <div>Certified accounting records reviewed and reconciled for year-end statutory compliance and HMRC tax filing.</div>
+      <div class="sig-line"></div>
+      <div>Auditor Signature: _______________________ &bull; Date: ____________</div>
+    </div>
+  </div>
+
+  <script>
+    window.onload = function() {
+      window.print();
+    };
+  </script>
+</body>
+</html>`;
+
+    const printWin = window.open('', '_blank', 'width=900,height=700');
+    if (printWin) {
+      printWin.document.open();
+      printWin.document.write(printHtml);
+      printWin.document.close();
+    } else {
+      showToast('Pop-up blocked. Please allow pop-ups for this site to print the tax report.', 'warning');
+    }
+  };
+
+  const handleSaveItemValuation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingItemValuation) return;
+    setIsSavingValuation(true);
+    try {
+      const cost = parseFloat(valuationCostInput) || 0;
+      const assetVal = parseFloat(valuationAssetValueInput) || 0;
+
+      const updatedItem: KiltItem = {
+        ...editingItemValuation,
+        purchaseCost: cost,
+        currentAssetValue: assetVal
+      };
+
+      await upsertItem(updatedItem);
+      setItems(prev => prev.map(it => it.id === updatedItem.id ? updatedItem : it));
+      addAuditLog(
+        'UPDATED_ITEM_VALUATION',
+        `Master Admin updated stock valuation for ${updatedItem.id} (${updatedItem.name}): Purchase Cost £${cost}, Current Asset Value £${assetVal}`,
+        updatedItem.id
+      );
+      showToast(`💰 Stock valuation & purchase cost updated for ${updatedItem.id}!`, 'success');
+      setEditingItemValuation(null);
+    } catch (err: any) {
+      showToast(`Failed to update item valuation: ${err.message}`, 'warning');
+    } finally {
+      setIsSavingValuation(false);
+    }
+  };
+
+  const handleOpenCancelModal = (po: PurchaseOrder) => {
+    const isPaidDeposit = po.paymentStatus !== 'UNPAID' && po.totalDepositHeld > 0;
+    setCancelRefundOption(isPaidDeposit ? 'FULL_REFUND_ISSUED' : 'NO_DEPOSIT_WAS_PAID');
+    setCancelPinInput('');
+    setCancelReasonInput('');
+    setShowCancelPoModal(po);
+  };
+
   const handleMarkHandedOut = async (po: PurchaseOrder) => {
     try {
       const updatedPo: PurchaseOrder = {
@@ -3150,7 +3466,7 @@ export default function KiltHireApp() {
     // Ensure we're in Shop Assistant mode where the process_return UI lives
     setInterfaceMode('shop_assistant');
 
-    const initialChecklist: Record<string, { condition: 'UNSELECTED' | 'GOOD_CLEAN' | 'NEEDS_CLEANING' | 'NEEDS_REPAIR' | 'MISSING'; scanned: boolean; notes: string }> = {};
+    const initialChecklist: Record<string, { condition: 'UNSELECTED' | 'GOOD_CLEAN' | 'NEEDS_CLEANING' | 'HEAVY_SOILING_CLEANING' | 'NEEDS_REPAIR' | 'MISSING'; scanned: boolean; notes: string }> = {};
 
     po.items.forEach(li => {
       if (li.returned) {
@@ -4661,6 +4977,7 @@ export default function KiltHireApp() {
 
   const scItem = items.find(i => i.id === scannedCode);
   const isMasterAdmin = currentUser?.role === 'Master Admin';
+  const isAccountant = currentUser?.role === 'Accountant & Auditor';
 
   const availableItems = items.filter(i => (i.status === 'AVAILABLE' || (i.isBulkPool && (i.bulkQuantity ?? 0) > 0)) && !i.isOutsourcedDefault && !i.id.startsWith('EXT-'));
   const onHireItems = items.filter(i => i.status === 'ON_HIRE' && !i.isOutsourcedDefault && !i.id.startsWith('EXT-'));
@@ -4711,7 +5028,8 @@ export default function KiltHireApp() {
     { id: 'repairs', label: 'Tailors & Repairs Workshop', icon: Scissors, badge: `${alterationTasks.filter(t=>t.stage!=='COMPLETED').length + items.filter(i=>i.status==='IN_REPAIR').length} Tasks`, restricted: false },
     { id: 'deposit_ledger', label: 'Retained Deposits & Expenses', icon: Wallet, badge: `${depositLedgerEntries.length} Records`, restricted: !isMasterAdmin },
     { id: 'email_settings', label: 'Email Templates & Branding', icon: Mail, badge: 'Brevo', restricted: !isMasterAdmin },
-    { id: 'admin', label: 'Staff Accounts & PINs', icon: ShieldCheck, badge: invites.filter(i=>i.status==='PENDING').length ? `${invites.filter(i=>i.status==='PENDING').length} Invites` : 'Security', restricted: false },
+    { id: 'admin', label: 'Staff Accounts & PINs', icon: ShieldCheck, badge: invites.filter(i=>i.status==='PENDING').length ? `${invites.filter(i=>i.status==='PENDING').length} Invites` : 'Security', restricted: isAccountant },
+    { id: 'accountant', label: 'Accountant & Tax Portal', icon: FileSpreadsheet, badge: 'HMRC & P&L', restricted: !(isMasterAdmin || isAccountant) },
   ];
 
   // ─── HYDRATION SAFEGUARD: LOADING SKELETON BEFORE CLIENT MOUNT ────────────────
@@ -6231,6 +6549,10 @@ export default function KiltHireApp() {
                   </div>
                 </div>
               )}
+
+              
+
+              
 
               {/* FULL PAGE: DEDICATED CUSTOMER FITTING & MEASUREMENT STATION */}
               {(assistantTab === 'start_fitting' || activeTab === 'start_fitting') && (
@@ -8725,10 +9047,7 @@ export default function KiltHireApp() {
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        setShowCancelPoModal(po);
-                                        setCancelPinInput('');
-                                        setCancelReasonInput('');
-                                        setCancelRefundOption(po.totalDepositHeld > 0 ? 'FULL_REFUND_ISSUED' : 'NO_DEPOSIT_WAS_PAID');
+                                        handleOpenCancelModal(po);
                                       }}
                                       className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-xl font-extrabold text-xs shadow-2xs transition flex items-center gap-1 cursor-pointer"
                                     >
@@ -8758,10 +9077,7 @@ export default function KiltHireApp() {
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        setShowCancelPoModal(po);
-                                        setCancelPinInput('');
-                                        setCancelReasonInput('');
-                                        setCancelRefundOption(po.totalDepositHeld > 0 ? 'FULL_REFUND_ISSUED' : 'NO_DEPOSIT_WAS_PAID');
+                                        handleOpenCancelModal(po);
                                       }}
                                       className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-xl font-extrabold text-xs shadow-2xs transition flex items-center gap-1 cursor-pointer"
                                     >
@@ -9179,18 +9495,32 @@ export default function KiltHireApp() {
                                     const customerHires = completedPos.filter(p => p.customerEmail.toLowerCase() === po.customerEmail.toLowerCase());
                                     const isRepeatCustomer = customerHires.length > 1;
                                     const isExpanded = expandedHistoricPoId === po.id;
+                                    const isAnyExpanded = expandedHistoricPoId !== null;
+                                    const isCancelled = po.orderStatus === 'CANCELLED' || Boolean(po.cancellationRecord);
 
                                     return (
                                       <React.Fragment key={po.id}>
-                                        <tr className={`hover:bg-purple-50/50 transition ${isExpanded ? 'bg-purple-50/70 font-semibold' : 'bg-white'}`}>
+                                        <tr className={`transition-all duration-300 ${
+                                          isExpanded 
+                                            ? 'bg-purple-100 font-bold ring-2 ring-purple-600 shadow-xl relative z-20 scale-[1.002]' 
+                                            : isAnyExpanded 
+                                            ? 'opacity-30 blur-[0.4px] hover:opacity-100 hover:blur-none bg-white' 
+                                            : 'hover:bg-purple-50/50 bg-white'
+                                        }`}>
                                           <td className="py-3 px-4 align-middle">
                                             <div className="flex items-center gap-2">
                                               <span className="font-mono font-extrabold text-purple-900 bg-purple-100 px-2 py-0.5 rounded border border-purple-300">
                                                 {po.id}
                                               </span>
-                                              <span className="px-2 py-0.5 text-[9px] font-extrabold bg-emerald-100 text-emerald-900 rounded border border-emerald-300">
-                                                ✓ RETURNED
-                                              </span>
+                                              {isCancelled ? (
+                                                <span className="px-2 py-0.5 text-[9px] font-extrabold bg-rose-100 text-rose-900 rounded border border-rose-300">
+                                                  ❌ CANCELLED
+                                                </span>
+                                              ) : (
+                                                <span className="px-2 py-0.5 text-[9px] font-extrabold bg-emerald-100 text-emerald-900 rounded border border-emerald-300">
+                                                  ✓ RETURNED
+                                                </span>
+                                              )}
                                             </div>
                                           </td>
 
@@ -9231,9 +9561,9 @@ export default function KiltHireApp() {
                                             <button
                                               type="button"
                                               onClick={() => setExpandedHistoricPoId(isExpanded ? null : po.id)}
-                                              className={`px-3 py-1 rounded-xl text-xs font-extrabold transition shadow-sm border flex items-center gap-1 mx-auto ${
+                                              className={`px-3 py-1 rounded-xl text-xs font-extrabold transition shadow-sm border flex items-center gap-1 mx-auto cursor-pointer ${
                                                 isExpanded 
-                                                  ? 'bg-purple-600 text-white border-purple-700' 
+                                                  ? 'bg-purple-600 text-white border-purple-700 shadow-md ring-2 ring-purple-400/50' 
                                                   : 'bg-white text-purple-900 border-purple-300 hover:bg-purple-100'
                                               }`}
                                             >
@@ -9242,42 +9572,81 @@ export default function KiltHireApp() {
                                           </td>
                                         </tr>
 
-                                        {/* EXPANDABLE ROW DRAWER */}
+                                        {/* EXPANDABLE ROW DRAWER WITH SPOTLIGHT FOCUS */}
                                         {isExpanded && (
-                                          <tr className="bg-purple-50/90 border-b border-purple-200">
-                                            <td colSpan={6} className="p-4">
-                                              <div className="bg-white border border-purple-200 rounded-2xl p-4 space-y-3 shadow-inner">
-                                                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                                                  <span className="font-extrabold text-xs text-purple-900 uppercase tracking-wider">
-                                                    Garment Line Items & Return Condition Ledger (PO {po.id}):
-                                                  </span>
-                                                  <span className="text-xs text-slate-500 font-mono">
-                                                    PayPal Ref: <strong>{po.paypalTransactionId}</strong>
-                                                  </span>
+                                          <tr className="bg-gradient-to-b from-purple-100/95 to-white border-b-2 border-purple-500 shadow-2xl relative z-20 animate-in fade-in zoom-in-95 duration-200">
+                                            <td colSpan={6} className="p-4 sm:p-6">
+                                              <div className="bg-white border-2 border-purple-400 rounded-3xl p-5 space-y-4 shadow-xl ring-4 ring-purple-100">
+                                                <div className="flex flex-wrap items-center justify-between border-b border-purple-100 pb-3 gap-2">
+                                                  <div className="flex items-center gap-2">
+                                                    <span className="font-extrabold text-sm text-purple-950 flex items-center gap-1.5">
+                                                      📜 Order Ledger & Garments Overview ({po.id})
+                                                    </span>
+                                                    {isCancelled ? (
+                                                      <span className="px-2.5 py-0.5 text-xs font-black bg-rose-100 text-rose-900 rounded-full border border-rose-300">
+                                                        ❌ Cancelled Order
+                                                      </span>
+                                                    ) : (
+                                                      <span className="px-2.5 py-0.5 text-xs font-black bg-emerald-100 text-emerald-900 rounded-full border border-emerald-300">
+                                                        ✓ Returned & Completed
+                                                      </span>
+                                                    )}
+                                                  </div>
+
+                                                  <div className="flex items-center gap-2">
+                                                    <span className="text-xs text-slate-500 font-mono">
+                                                      PayPal Ref: <strong className="text-slate-800">{po.paypalTransactionId || 'N/A'}</strong>
+                                                    </span>
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => setExpandedHistoricPoId(null)}
+                                                      className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-extrabold text-xs transition flex items-center gap-1 cursor-pointer"
+                                                    >
+                                                      ✕ Close Preview
+                                                    </button>
+                                                  </div>
                                                 </div>
 
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                                {/* CANCELLATION RECORD IF APPLICABLE */}
+                                                {isCancelled && po.cancellationRecord && (
+                                                  <div className="bg-rose-50 border border-rose-200 p-3 rounded-2xl text-xs text-rose-950 space-y-1">
+                                                    <p className="font-extrabold text-rose-900 flex items-center gap-1.5">
+                                                      <XCircle className="w-4 h-4 text-rose-600" /> Cancelled Record: Refund {po.cancellationRecord.depositRefundStatus} (£{po.cancellationRecord.refundAmount})
+                                                    </p>
+                                                    <p className="text-rose-800 text-[11px]">
+                                                      <strong>Reason:</strong> "{po.cancellationRecord.reason}" • Authorized by <strong>{po.cancellationRecord.cancelledByStaff}</strong> on {po.cancellationRecord.cancelledAt}
+                                                    </p>
+                                                  </div>
+                                                )}
+
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 text-xs">
                                                   {po.items.map((li) => (
-                                                    <div key={li.qrCodeId} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                                                    <div key={li.qrCodeId} className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between shadow-2xs hover:border-purple-300 transition">
                                                       <div>
                                                         <div className="flex items-center gap-1.5">
-                                                          <span className="font-mono font-extrabold text-slate-900">{li.qrCodeId}</span>
-                                                          <span className="font-semibold text-slate-800">{li.itemName}</span>
+                                                          <span className="font-mono font-extrabold text-purple-900 bg-purple-100 px-1.5 py-0.5 rounded border border-purple-200 text-[11px]">{li.qrCodeId}</span>
+                                                          <span className="font-bold text-slate-900">{li.itemName}</span>
                                                         </div>
-                                                        <span className="text-[10px] text-slate-500 block">
-                                                          {li.sizeGroup} ({li.size}) • Hire Rate £{li.hireRate}
+                                                        <span className="text-[11px] text-slate-500 block mt-0.5">
+                                                          {li.sizeGroup} ({li.size}) • Hire Rate £{li.hireRate} • Deposit £{li.depositAmount}
                                                         </span>
                                                       </div>
-                                                      <span className="px-2 py-0.5 text-[10px] font-extrabold bg-emerald-100 text-emerald-900 rounded border border-emerald-300">
-                                                        ✓ Returned Clean
+                                                      <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded-full border ${
+                                                        li.returned 
+                                                          ? 'bg-emerald-100 text-emerald-900 border-emerald-300' 
+                                                          : isCancelled 
+                                                          ? 'bg-slate-100 text-slate-600 border-slate-300' 
+                                                          : 'bg-blue-100 text-blue-900 border-blue-300'
+                                                      }`}>
+                                                        {li.returned ? '✓ Returned' : isCancelled ? 'Restored Stock' : 'Out on Hire'}
                                                       </span>
                                                     </div>
                                                   ))}
                                                 </div>
 
                                                 {po.notes && (
-                                                  <div className="text-xs bg-amber-50/90 p-2.5 rounded-xl border border-amber-200 text-amber-950">
-                                                    <strong>Staff Return Inspection Notes:</strong> {po.notes}
+                                                  <div className="text-xs bg-amber-50/90 p-3 rounded-2xl border border-amber-200 text-amber-950 font-medium">
+                                                    <strong>Staff Inspection / Diary Notes:</strong> {po.notes}
                                                   </div>
                                                 )}
                                               </div>
@@ -9505,19 +9874,30 @@ export default function KiltHireApp() {
                                 const isSelected = cell.dateStr === calSelectedDate;
                                 const isToday = cell.dateStr === new Date().toISOString().slice(0, 10);
 
-                                // Find POs matching this date (excluding CANCELLED orders)
-                                const outCount = pos.filter(p => p.hireStartDate === cell.dateStr && p.orderStatus !== 'CANCELLED').length;
-                                const inCount = pos.filter(p => p.hireEndDate === cell.dateStr && p.orderStatus !== 'CANCELLED').length;
+                                // Find active upcoming POs matching this date (excluding CANCELLED and COMPLETED orders)
+                                const isPoCancelled = (p: PurchaseOrder) => Boolean(
+                                  p.orderStatus === 'CANCELLED' || 
+                                  (typeof p.orderStatus === 'string' && p.orderStatus.toUpperCase() === 'CANCELLED') || 
+                                  p.paymentStatus === 'CANCELLED' || 
+                                  p.cancellationRecord != null
+                                );
+                                const isPoCompleted = (p: PurchaseOrder) => Boolean(
+                                  p.orderStatus === 'RETURNED_COMPLETED' || 
+                                  (p.items && p.items.length > 0 && p.items.every(i => i.returned))
+                                );
+
+                                const outCount = pos.filter(p => p.hireStartDate === cell.dateStr && !isPoCancelled(p) && !isPoCompleted(p)).length;
+                                const inCount = pos.filter(p => p.hireEndDate === cell.dateStr && p.orderStatus === 'OUT_ON_HIRE' && !isPoCancelled(p) && !isPoCompleted(p)).length;
                                 const noteCount = calendarNotes.filter(n => n.date === cell.dateStr).length;
 
                                 const selT = new Date(cell.dateStr).getTime();
                                 const pickPackCount = pos.filter(p => {
                                   const t = new Date(p.hireStartDate).getTime();
                                   return t >= selT && t <= selT + 2 * 86400000 && 
+                                         !isPoCancelled(p) &&
+                                         !isPoCompleted(p) &&
                                          p.orderStatus !== 'READY_FOR_COLLECTION' && 
-                                         p.orderStatus !== 'OUT_ON_HIRE' && 
-                                         p.orderStatus !== 'RETURNED_COMPLETED' && 
-                                         p.orderStatus !== 'CANCELLED';
+                                         p.orderStatus !== 'OUT_ON_HIRE';
                                 }).length;
 
                                 return (
@@ -9674,18 +10054,30 @@ export default function KiltHireApp() {
                     const selTime = new Date(calSelectedDate).getTime();
                     const twoDaysLaterTime = selTime + 2 * 86400000;
 
-                    const outgoingToday = pos.filter(p => p.hireStartDate === calSelectedDate && p.orderStatus !== 'CANCELLED');
-                    const returnsToday = pos.filter(p => p.hireEndDate === calSelectedDate && p.orderStatus !== 'CANCELLED');
+                    const isPoCancelled = (p: PurchaseOrder) => Boolean(
+                      p.orderStatus === 'CANCELLED' || 
+                      (typeof p.orderStatus === 'string' && p.orderStatus.toUpperCase() === 'CANCELLED') || 
+                      p.paymentStatus === 'CANCELLED' || 
+                      p.cancellationRecord != null
+                    );
+                    const isPoCompleted = (p: PurchaseOrder) => Boolean(
+                      p.orderStatus === 'RETURNED_COMPLETED' || 
+                      (p.items && p.items.length > 0 && p.items.every(i => i.returned))
+                    );
+
+                    const outgoingToday = pos.filter(p => p.hireStartDate === calSelectedDate && !isPoCancelled(p) && !isPoCompleted(p));
+                    const returnsToday = pos.filter(p => p.hireEndDate === calSelectedDate && p.orderStatus === 'OUT_ON_HIRE' && !isPoCancelled(p) && !isPoCompleted(p));
                     const pickPackQueue = pos.filter(p => {
                       const t = new Date(p.hireStartDate).getTime();
                       return t >= selTime && t <= twoDaysLaterTime && 
+                             !isPoCancelled(p) &&
+                             !isPoCompleted(p) &&
                              p.orderStatus !== 'READY_FOR_COLLECTION' && 
-                             p.orderStatus !== 'OUT_ON_HIRE' && 
-                             p.orderStatus !== 'RETURNED_COMPLETED' && 
-                             p.orderStatus !== 'CANCELLED';
+                             p.orderStatus !== 'OUT_ON_HIRE';
                     });
 
-                    const cancelledToday = pos.filter(p => (p.hireStartDate === calSelectedDate || p.hireEndDate === calSelectedDate) && p.orderStatus === 'CANCELLED');
+                    const cancelledToday = pos.filter(p => (p.hireStartDate === calSelectedDate || p.hireEndDate === calSelectedDate) && isPoCancelled(p));
+                    const completedToday = pos.filter(p => (p.hireStartDate === calSelectedDate || p.hireEndDate === calSelectedDate) && isPoCompleted(p) && !isPoCancelled(p));
 
                     const activeSectionsCount = (outgoingToday.length > 0 ? 1 : 0) + (returnsToday.length > 0 ? 1 : 0) + (pickPackQueue.length > 0 ? 1 : 0);
 
@@ -9727,6 +10119,20 @@ export default function KiltHireApp() {
                               >
                                 <XCircle className="w-3.5 h-3.5" />
                                 {showCancelledInCalendar ? 'Hide Cancelled Orders' : `See Cancellations (${cancelledToday.length})`}
+                              </button>
+                            )}
+
+                            {completedToday.length > 0 && (
+                              <button
+                                onClick={() => setShowCompletedInCalendar(prev => !prev)}
+                                className={`px-3.5 py-1.5 text-xs font-extrabold rounded-xl border transition flex items-center gap-1.5 cursor-pointer shadow-2xs ${
+                                  showCompletedInCalendar 
+                                    ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs' 
+                                    : 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                                }`}
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                {showCompletedInCalendar ? 'Hide Finished Orders' : `See Finished / Returned (${completedToday.length})`}
                               </button>
                             )}
                           </div>
@@ -9771,6 +10177,42 @@ export default function KiltHireApp() {
 
                                   <div className="text-[10px] font-bold text-slate-500 bg-slate-50 p-2 rounded-lg border">
                                     Restored Stock Items ({po.items.length}): {po.items.map(i => i.itemName).join(', ')}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                                                  </div>
+                        )}
+
+                        {/* SEE FINISHED / RETURNED ORDERS DRAWER SECTION */}
+                        {showCompletedInCalendar && completedToday.length > 0 && (
+                          <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-4 space-y-3">
+                            <div className="flex items-center justify-between border-b border-emerald-200 pb-2">
+                              <h5 className="font-extrabold text-emerald-950 text-xs flex items-center gap-1.5 uppercase tracking-wider">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Finished &amp; Returned Orders on {calSelectedDate} ({completedToday.length})
+                              </h5>
+                              <span className="text-[10px] font-extrabold text-emerald-800 bg-white px-2 py-0.5 rounded border border-emerald-300">
+                                Historic Archive
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {completedToday.map(po => (
+                                <div key={po.id} className="bg-white border border-emerald-200 p-3.5 rounded-xl space-y-2 shadow-2xs">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-mono font-extrabold text-xs text-emerald-900 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">{po.id}</span>
+                                    <span className="text-[10px] font-extrabold bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-full border border-emerald-300">
+                                      ✓ Returned &amp; Completed
+                                    </span>
+                                  </div>
+
+                                  <div>
+                                    <strong className="text-slate-900 text-xs block">{po.customerName}</strong>
+                                    <span className="text-[11px] text-slate-500 block">{po.customerEmail} • {po.customerPhone}</span>
+                                  </div>
+
+                                  <div className="text-[10px] font-bold text-slate-500 bg-slate-50 p-2 rounded-lg border">
+                                    Garments ({po.items.length}): {po.items.map(i => i.itemName).join(', ')}
                                   </div>
                                 </div>
                               ))}
@@ -9934,10 +10376,7 @@ export default function KiltHireApp() {
 
                                                 <button
                                                   onClick={() => {
-                                                    setShowCancelPoModal(po);
-                                                    setCancelPinInput('');
-                                                    setCancelReasonInput('');
-                                                    setCancelRefundOption(po.totalDepositHeld > 0 ? 'FULL_REFUND_ISSUED' : 'NO_DEPOSIT_WAS_PAID');
+                                                    handleOpenCancelModal(po);
                                                   }}
                                                   className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-xl font-extrabold text-xs transition flex items-center gap-1 shrink-0 cursor-pointer"
                                                 >
@@ -9963,10 +10402,7 @@ export default function KiltHireApp() {
 
                                               <button
                                                 onClick={() => {
-                                                  setShowCancelPoModal(po);
-                                                  setCancelPinInput('');
-                                                  setCancelReasonInput('');
-                                                  setCancelRefundOption(po.totalDepositHeld > 0 ? 'FULL_REFUND_ISSUED' : 'NO_DEPOSIT_WAS_PAID');
+                                                  handleOpenCancelModal(po);
                                                 }}
                                                 className="px-3 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-xl font-extrabold text-xs transition flex items-center gap-1 shrink-0 cursor-pointer"
                                               >
@@ -11939,7 +12375,7 @@ export default function KiltHireApp() {
 
                                 <button
                                   type="button"
-                                  onClick={() => window.print()}
+                                  onClick={handlePrintTaxReport}
                                   className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5"
                                 >
                                   <Printer className="w-4 h-4" /> Send Sheet to Printer
@@ -13511,10 +13947,7 @@ export default function KiltHireApp() {
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        setShowCancelPoModal(po);
-                                        setCancelPinInput('');
-                                        setCancelReasonInput('');
-                                        setCancelRefundOption(po.totalDepositHeld > 0 ? 'FULL_REFUND_ISSUED' : 'NO_DEPOSIT_WAS_PAID');
+                                        handleOpenCancelModal(po);
                                       }}
                                       className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-xl font-extrabold text-xs shadow-2xs transition flex items-center gap-1 cursor-pointer"
                                     >
@@ -13546,10 +13979,7 @@ export default function KiltHireApp() {
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        setShowCancelPoModal(po);
-                                        setCancelPinInput('');
-                                        setCancelReasonInput('');
-                                        setCancelRefundOption(po.totalDepositHeld > 0 ? 'FULL_REFUND_ISSUED' : 'NO_DEPOSIT_WAS_PAID');
+                                        handleOpenCancelModal(po);
                                       }}
                                       className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-xl font-extrabold text-xs shadow-2xs transition flex items-center gap-1 cursor-pointer"
                                     >
@@ -14332,42 +14762,54 @@ export default function KiltHireApp() {
                           });
                         });
 
-                        const fleetCost = items.reduce((sum, item) => sum + (item.purchaseCost || (item.sizeGroup === 'Kid' ? 120 : 250)), 0);
+                        const fleetCost = items.reduce((sum, item) => sum + (item.purchaseCost != null ? item.purchaseCost : (item.sizeGroup === 'Kid' ? 120 : 250)), 0);
+                        const fleetAssetValuation = items.reduce((sum, item) => sum + (item.currentAssetValue != null ? item.currentAssetValue : (item.purchaseCost != null ? item.purchaseCost : (item.sizeGroup === 'Kid' ? 120 : 250))), 0);
                         const fleetNetProfit = grossRevenue + totalDepositsRetained - fleetCost;
                         const fleetRoiPct = fleetCost > 0 ? Math.round(((grossRevenue + totalDepositsRetained) / fleetCost) * 100) : 0;
+                        const businessNetWorth = grossRevenue + totalDepositsRetained + fleetAssetValuation;
 
                         return (
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                            <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm space-y-1">
+                          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3.5">
+                            <div className="bg-white border border-slate-200 p-4.5 rounded-2xl shadow-sm space-y-1">
                               <span className="text-xs text-slate-500 font-bold block flex items-center gap-1">
                                 <PoundIcon className="w-4 h-4 text-amber-600" /> Gross Hire Revenue
                               </span>
-                              <span className="text-2xl font-extrabold text-slate-900">£{grossRevenue.toLocaleString()}</span>
-                              <span className="text-[10px] text-slate-400 block">From {pos.length} Customer POs</span>
+                              <span className="text-xl font-extrabold text-slate-900">£{grossRevenue.toLocaleString()}</span>
+                              <span className="text-[10px] text-slate-400 block">{pos.length} Customer POs</span>
                             </div>
 
-                            <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm space-y-1">
-                              <span className="text-xs text-slate-500 font-bold block flex items-center gap-1">
-                                <ShieldCheck className="w-4 h-4 text-emerald-600" /> Deposits Refunded
+                            <div className="bg-white border border-slate-200 p-4.5 rounded-2xl shadow-sm space-y-1">
+                              <span className="text-xs text-emerald-800 font-bold block flex items-center gap-1">
+                                <ShieldCheck className="w-4 h-4 text-emerald-600" /> Stock Fleet Valuation
                               </span>
-                              <span className="text-2xl font-extrabold text-emerald-700">£{totalDepositsRefunded.toLocaleString()}</span>
-                              <span className="text-[10px] text-slate-400 block">Returned for clean items</span>
+                              <span className="text-xl font-extrabold text-emerald-700">£{fleetAssetValuation.toLocaleString()}</span>
+                              <span className="text-[10px] text-slate-400 block">{items.length} Registered Items</span>
                             </div>
 
-                            <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm space-y-1">
-                              <span className="text-xs text-slate-500 font-bold block flex items-center gap-1">
-                                <AlertTriangle className="w-4 h-4 text-rose-600" /> Deposits Retained
+                            <div className="bg-white border border-slate-200 p-4.5 rounded-2xl shadow-sm space-y-1">
+                              <span className="text-xs text-purple-800 font-bold block flex items-center gap-1">
+                                <TrendingUp className="w-4 h-4 text-purple-600" /> Business Capital Worth
                               </span>
-                              <span className="text-2xl font-extrabold text-rose-700">£{totalDepositsRetained.toLocaleString()}</span>
-                              <span className="text-[10px] text-slate-400 block">Damaged/missing gear</span>
+                              <span className="text-xl font-extrabold text-purple-950">£{businessNetWorth.toLocaleString()}</span>
+                              <span className="text-[10px] text-purple-600 font-semibold block">Income + Stock Asset Value</span>
                             </div>
 
-                            <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm space-y-1">
+                            <div className="bg-white border border-slate-200 p-4.5 rounded-2xl shadow-sm space-y-1">
                               <span className="text-xs text-slate-500 font-bold block flex items-center gap-1">
-                                <TrendingUp className="w-4 h-4 text-amber-600" /> Overall Fleet Portfolio ROI
+                                <AlertTriangle className="w-4 h-4 text-rose-600" /> Fleet Purchase Cost
                               </span>
-                              <span className="text-2xl font-extrabold text-amber-700">+{fleetRoiPct}%</span>
-                              <span className="text-[10px] text-slate-400 block">Fleet Cost: £{fleetCost.toLocaleString()}</span>
+                              <span className="text-xl font-extrabold text-rose-700">£{fleetCost.toLocaleString()}</span>
+                              <span className="text-[10px] text-slate-400 block">Total Expenditure</span>
+                            </div>
+
+                            <div className="bg-white border border-slate-200 p-4.5 rounded-2xl shadow-sm space-y-1">
+                              <span className="text-xs text-slate-500 font-bold block flex items-center gap-1">
+                                <TrendingUp className="w-4 h-4 text-amber-600" /> Net Profit &amp; Fleet ROI
+                              </span>
+                              <span className={`text-xl font-extrabold block ${fleetNetProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                                {fleetNetProfit >= 0 ? `+£${fleetNetProfit.toLocaleString()}` : `-£${Math.abs(fleetNetProfit).toLocaleString()}`}
+                              </span>
+                              <span className="text-[10px] text-amber-800 font-bold block">+{fleetRoiPct}% ROI Recovery</span>
                             </div>
                           </div>
                         );
@@ -14495,99 +14937,437 @@ export default function KiltHireApp() {
                         </div>
                       </div>
 
-                      {/* INDIVIDUAL GARMENT ROI & LIFETIME RENTAL PERFORMANCE TABLE */}
-                      <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm space-y-4 p-6">
-                        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
-                          <div>
-                            <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                              <PoundIcon className="w-5 h-5 text-amber-600" /> Individual Garment ROI & Financial Lifetime Ledger
-                            </h3>
-                            <p className="text-xs text-slate-500">
-                              Track purchase cost vs lifetime rental revenue earned for every registered garment in stock.
-                            </p>
-                          </div>
+                      {/* INDIVIDUAL GARMENT ROI & LIFETIME RENTAL PERFORMANCE TABLE WITH SORT & PAGINATION */}
+                      {(() => {
+                        // Precalculate analytics metrics for all registered items
+                        const itemRoiList = items.map(item => {
+                          let timesHired = 0;
+                          let lifetimeRev = 0;
 
-                          <div className="relative w-full sm:w-72">
-                            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                            <input 
-                              type="text"
-                              placeholder="Search tag ID, tartan, or garment..."
-                              value={analyticsSearchQuery}
-                              onChange={e => setAnalyticsSearchQuery(e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-900 outline-none focus:border-amber-500 shadow-sm"
-                            />
-                          </div>
-                        </div>
+                          pos.forEach(po => {
+                            po.items.forEach(li => {
+                              if (li.qrCodeId === item.id) {
+                                timesHired += 1;
+                                lifetimeRev += li.hireRate;
+                              }
+                            });
+                          });
 
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-left text-xs text-slate-700">
-                            <thead className="bg-slate-50 text-slate-900 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px]">
-                              <tr>
-                                <th className="py-3.5 px-4">QR Code ID</th>
-                                <th className="py-3.5 px-4">Garment Title</th>
-                                <th className="py-3.5 px-4">Category</th>
-                                <th className="py-3.5 px-4">Demographic</th>
-                                <th className="py-3.5 px-4 text-center">Times Hired</th>
-                                <th className="py-3.5 px-4">Est. Cost (£)</th>
-                                <th className="py-3.5 px-4">Revenue (£)</th>
-                                <th className="py-3.5 px-4">Net Return (£)</th>
-                                <th className="py-3.5 px-4 text-right">ROI Performance</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 font-semibold">
-                              {items
-                                .filter(item => !analyticsSearchQuery || item.id.toLowerCase().includes(analyticsSearchQuery.toLowerCase()) || item.name.toLowerCase().includes(analyticsSearchQuery.toLowerCase()) || item.tartanOrColour.toLowerCase().includes(analyticsSearchQuery.toLowerCase()))
-                                .map(item => {
-                                  // Calculate lifetime rentals for this item
-                                  let timesHired = 0;
-                                  let lifetimeRev = 0;
+                          const cost = item.purchaseCost != null ? item.purchaseCost : (item.sizeGroup === 'Kid' ? 120 : 250);
+                          const assetVal = item.currentAssetValue != null ? item.currentAssetValue : cost;
+                          const netProfit = lifetimeRev - cost;
+                          const roiPct = cost > 0 ? Math.round((lifetimeRev / cost) * 100) : 0;
 
-                                  pos.forEach(po => {
-                                    po.items.forEach(li => {
-                                      if (li.qrCodeId === item.id) {
-                                        timesHired += 1;
-                                        lifetimeRev += li.hireRate;
-                                      }
-                                    });
-                                  });
+                          return {
+                            ...item,
+                            timesHired,
+                            cost,
+                            assetVal,
+                            lifetimeRev,
+                            netProfit,
+                            roiPct
+                          };
+                        });
 
-                                  const cost = item.purchaseCost || (item.sizeGroup === 'Kid' ? 120 : 250);
-                                  const netProfit = lifetimeRev - cost;
-                                  const roiPct = Math.round((lifetimeRev / cost) * 100);
+                        // Filter items
+                        const filteredItems = itemRoiList.filter(item => {
+                          if (analyticsRoiCategoryFilter !== 'ALL' && item.category !== analyticsRoiCategoryFilter) {
+                            return false;
+                          }
+                          if (analyticsRoiDemographicFilter !== 'ALL' && item.sizeGroup !== analyticsRoiDemographicFilter) {
+                            return false;
+                          }
+                          if (analyticsSearchQuery.trim()) {
+                            const q = analyticsSearchQuery.toLowerCase();
+                            const matchId = item.id.toLowerCase().includes(q);
+                            const matchName = item.name.toLowerCase().includes(q);
+                            const matchTartan = (item.tartanOrColour || '').toLowerCase().includes(q);
+                            const matchCat = (item.category || '').toLowerCase().includes(q);
+                            if (!matchId && !matchName && !matchTartan && !matchCat) return false;
+                          }
+                          return true;
+                        });
 
-                                  return (
-                                    <tr key={item.id} className="hover:bg-slate-50 transition">
-                                      <td className="py-3 px-4 font-mono font-bold text-amber-800">{item.id}</td>
-                                      <td className="py-3 px-4 font-bold text-slate-900">{item.name}</td>
-                                      <td className="py-3 px-4">{item.category}</td>
-                                      <td className="py-3 px-4">
-                                        <span className={`px-2 py-0.5 text-[10px] font-bold rounded flex items-center gap-1 w-fit ${item.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900 border border-purple-300' : 'bg-blue-100 text-blue-900 border border-blue-300'}`}>
-                                          {item.sizeGroup === 'Kid' ? <Baby className="w-3 h-3" /> : <User className="w-3 h-3" />}
-                                          {item.sizeGroup}
-                                        </span>
-                                      </td>
-                                      <td className="py-3 px-4 text-center font-mono font-extrabold text-slate-900 bg-slate-50">{timesHired} Hires</td>
-                                      <td className="py-3 px-4 text-slate-500">£{cost}</td>
-                                      <td className="py-3 px-4 font-bold text-amber-800">£{lifetimeRev}</td>
-                                      <td className={`py-3 px-4 font-bold ${netProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                                        {netProfit >= 0 ? `+£${netProfit}` : `-£${Math.abs(netProfit)}`}
-                                      </td>
-                                      <td className="py-3 px-4 text-right">
-                                        <span className={`px-2.5 py-1 text-[11px] font-extrabold rounded-full border ${
-                                          roiPct >= 100 ? 'bg-emerald-100 text-emerald-900 border-emerald-300' :
-                                          roiPct >= 50 ? 'bg-blue-100 text-blue-900 border-blue-300' :
-                                          'bg-amber-100 text-amber-900 border-amber-300'
-                                        }`}>
-                                          {roiPct >= 100 ? `+${roiPct}% Profit ROI` : `${roiPct}% Recovery`}
-                                        </span>
+                        // Sort items
+                        const sortedItems = [...filteredItems].sort((a, b) => {
+                          let factor = analyticsRoiSortDir === 'ASC' ? 1 : -1;
+                          switch (analyticsRoiSortField) {
+                            case 'ROI':
+                              return (a.roiPct - b.roiPct) * factor;
+                            case 'REVENUE':
+                              return (a.lifetimeRev - b.lifetimeRev) * factor;
+                            case 'HIRES':
+                              return (a.timesHired - b.timesHired) * factor;
+                            case 'PROFIT':
+                              return (a.netProfit - b.netProfit) * factor;
+                            case 'COST':
+                              return (a.cost - b.cost) * factor;
+                            case 'VALUE' as any:
+                              return (a.assetVal - b.assetVal) * factor;
+                            case 'ID':
+                              return a.id.localeCompare(b.id) * factor;
+                            case 'NAME':
+                              return a.name.localeCompare(b.name) * factor;
+                            default:
+                              return (a.roiPct - b.roiPct) * factor;
+                          }
+                        });
+
+                        const totalItems = sortedItems.length;
+                        const pageSize = analyticsRoiRowsPerPage === 'ALL' ? totalItems : Number(analyticsRoiRowsPerPage);
+                        const totalPages = Math.max(1, Math.ceil(totalItems / (pageSize || 1)));
+                        const safePage = Math.min(analyticsRoiPage, totalPages);
+                        const startIndex = (safePage - 1) * (pageSize || 1);
+                        const endIndex = analyticsRoiRowsPerPage === 'ALL' ? totalItems : Math.min(startIndex + pageSize, totalItems);
+                        const paginatedItems = sortedItems.slice(startIndex, endIndex);
+
+                        const handleHeaderSort = (field: 'ROI' | 'REVENUE' | 'HIRES' | 'PROFIT' | 'COST' | 'ID' | 'NAME') => {
+                          if (analyticsRoiSortField === field) {
+                            setAnalyticsRoiSortDir(prev => prev === 'ASC' ? 'DESC' : 'ASC');
+                          } else {
+                            setAnalyticsRoiSortField(field);
+                            setAnalyticsRoiSortDir('DESC');
+                          }
+                          setAnalyticsRoiPage(1);
+                        };
+
+                        const sortIcon = (field: 'ROI' | 'REVENUE' | 'HIRES' | 'PROFIT' | 'COST' | 'ID' | 'NAME') => {
+                          if (analyticsRoiSortField !== field) {
+                            return <span className="text-slate-400 opacity-40 text-[10px] ml-1">⇅</span>;
+                          }
+                          return (
+                            <span className="text-amber-700 font-extrabold text-[11px] ml-1">
+                              {analyticsRoiSortDir === 'ASC' ? '▲' : '▼'}
+                            </span>
+                          );
+                        };
+
+                        const availableCategories = Array.from(new Set(items.map(i => i.category))).filter(Boolean);
+
+                        return (
+                          <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm space-y-4 p-6">
+                            {/* HEADER & SEARCH / FILTER CONTROLS */}
+                            <div className="space-y-4 border-b border-slate-100 pb-5">
+                              <div className="flex flex-wrap items-center justify-between gap-4">
+                                <div>
+                                  <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                                    <PoundIcon className="w-5 h-5 text-amber-600" /> Individual Garment ROI &amp; Lifetime Rental Ledger
+                                  </h3>
+                                  <p className="text-xs text-slate-500">
+                                    Track purchase cost, lifetime rental revenue, net profit, and ROI performance for all fleet garments.
+                                  </p>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  <span className="px-3 py-1 bg-amber-50 text-amber-900 border border-amber-200 rounded-xl text-xs font-bold">
+                                    Total Garments: <strong className="text-slate-900">{totalItems}</strong>
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* TOOLBAR CONTROLS */}
+                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 pt-1 text-xs">
+                                {/* SEARCH */}
+                                <div className="relative md:col-span-2">
+                                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                                  <input 
+                                    type="text"
+                                    placeholder="Search tag ID, tartan, name, category..."
+                                    value={analyticsSearchQuery}
+                                    onChange={e => {
+                                      setAnalyticsSearchQuery(e.target.value);
+                                      setAnalyticsRoiPage(1);
+                                    }}
+                                    className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-amber-500 shadow-sm"
+                                  />
+                                </div>
+
+                                {/* CATEGORY FILTER */}
+                                <div>
+                                  <select
+                                    value={analyticsRoiCategoryFilter}
+                                    onChange={e => {
+                                      setAnalyticsRoiCategoryFilter(e.target.value);
+                                      setAnalyticsRoiPage(1);
+                                    }}
+                                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold text-slate-900 outline-none focus:border-amber-500 shadow-sm"
+                                  >
+                                    <option value="ALL">All Categories ({items.length})</option>
+                                    {availableCategories.map(cat => (
+                                      <option key={cat} value={cat}>{cat}</option>
+                                    ))}
+                                  </select>
+                                </div>
+
+                                {/* DEMOGRAPHIC FILTER */}
+                                <div>
+                                  <select
+                                    value={analyticsRoiDemographicFilter}
+                                    onChange={e => {
+                                      setAnalyticsRoiDemographicFilter(e.target.value as any);
+                                      setAnalyticsRoiPage(1);
+                                    }}
+                                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold text-slate-900 outline-none focus:border-amber-500 shadow-sm"
+                                  >
+                                    <option value="ALL">All Demographics</option>
+                                    <option value="Adult">Adults Only</option>
+                                    <option value="Kid">Kids Only</option>
+                                  </select>
+                                </div>
+
+                                {/* SORT DROPDOWN */}
+                                <div>
+                                  <select
+                                    value={`${analyticsRoiSortField}_${analyticsRoiSortDir}`}
+                                    onChange={e => {
+                                      const [field, dir] = e.target.value.split('_') as [any, any];
+                                      setAnalyticsRoiSortField(field);
+                                      setAnalyticsRoiSortDir(dir);
+                                      setAnalyticsRoiPage(1);
+                                    }}
+                                    className="w-full bg-amber-50/70 border border-amber-300 rounded-xl px-3 py-2 font-bold text-amber-950 outline-none focus:border-amber-500 shadow-sm"
+                                  >
+                                    <option value="ROI_DESC">🏆 Highest ROI %</option>
+                                    <option value="ROI_ASC">📉 Lowest ROI %</option>
+                                    <option value="VALUE_DESC">💎 Highest Stock Asset Value</option>
+                                    <option value="VALUE_ASC">📉 Lowest Stock Asset Value</option>
+                                    <option value="REVENUE_DESC">💰 Highest Revenue</option>
+                                    <option value="HIRES_DESC">🔁 Most Times Hired</option>
+                                    <option value="PROFIT_DESC">📈 Highest Net Return</option>
+                                    <option value="COST_DESC">🏷️ Highest Purchase Cost</option>
+                                    <option value="NAME_ASC">👔 Garment Name (A–Z)</option>
+                                    <option value="ID_ASC">🔖 Tag ID (A–Z)</option>
+                                  </select>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* RESULTS SUMMARY BAR */}
+                            <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 font-bold px-1">
+                              <span>
+                                Showing <strong className="text-slate-900">{totalItems > 0 ? startIndex + 1 : 0} – {endIndex}</strong> of <strong className="text-slate-900">{totalItems}</strong> Garments
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <span>Rows per page:</span>
+                                <select
+                                  value={analyticsRoiRowsPerPage}
+                                  onChange={e => {
+                                    const val = e.target.value === 'ALL' ? 'ALL' : Number(e.target.value);
+                                    setAnalyticsRoiRowsPerPage(val);
+                                    setAnalyticsRoiPage(1);
+                                  }}
+                                  className="bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 font-bold text-slate-800 text-xs outline-none"
+                                >
+                                  <option value={10}>10</option>
+                                  <option value={15}>15</option>
+                                  <option value={25}>25</option>
+                                  <option value={50}>50</option>
+                                  <option value={100}>100</option>
+                                  <option value="ALL">All ({totalItems})</option>
+                                </select>
+                              </div>
+                            </div>
+
+                            {/* SORTABLE HIGH-DENSITY TABLE */}
+                            <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                              <table className="w-full text-left text-xs text-slate-700 border-collapse">
+                                <thead className="bg-slate-100 text-slate-900 font-extrabold border-b border-slate-200 uppercase tracking-wider text-[10px] select-none">
+                                  <tr>
+                                    <th 
+                                      onClick={() => handleHeaderSort('ID')}
+                                      className="py-3 px-4 cursor-pointer hover:bg-slate-200 transition"
+                                      title="Click to sort by QR ID"
+                                    >
+                                      QR Code ID {sortIcon('ID')}
+                                    </th>
+                                    <th 
+                                      onClick={() => handleHeaderSort('NAME')}
+                                      className="py-3 px-4 cursor-pointer hover:bg-slate-200 transition"
+                                      title="Click to sort by Garment Title"
+                                    >
+                                      Garment Title &amp; Tartan {sortIcon('NAME')}
+                                    </th>
+                                    <th className="py-3 px-4">Category</th>
+                                    <th className="py-3 px-4">Demographic</th>
+                                    <th 
+                                      onClick={() => handleHeaderSort('HIRES')}
+                                      className="py-3 px-4 text-center cursor-pointer hover:bg-slate-200 transition"
+                                      title="Click to sort by Times Hired"
+                                    >
+                                      Times Hired {sortIcon('HIRES')}
+                                    </th>
+                                    <th 
+                                      onClick={() => handleHeaderSort('COST')}
+                                      className="py-3 px-4 cursor-pointer hover:bg-slate-200 transition"
+                                      title="Click to sort by Est. Cost"
+                                    >
+                                      Est. Cost (£) {sortIcon('COST')}
+                                    </th>
+                                    <th 
+                                      onClick={() => handleHeaderSort('REVENUE')}
+                                      className="py-3 px-4 cursor-pointer hover:bg-slate-200 transition"
+                                      title="Click to sort by Revenue"
+                                    >
+                                      Revenue (£) {sortIcon('REVENUE')}
+                                    </th>
+                                    <th 
+                                      onClick={() => handleHeaderSort('PROFIT')}
+                                      className="py-3 px-4 cursor-pointer hover:bg-slate-200 transition"
+                                      title="Click to sort by Net Return"
+                                    >
+                                      Net Return (£) {sortIcon('PROFIT')}
+                                    </th>
+                                    <th 
+                                      onClick={() => handleHeaderSort('ROI')}
+                                      className="py-3 px-4 text-right cursor-pointer hover:bg-slate-200 transition"
+                                      title="Click to sort by ROI Performance"
+                                    >
+                                      ROI Performance {sortIcon('ROI')}
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 font-semibold bg-white">
+                                  {paginatedItems.length === 0 ? (
+                                    <tr>
+                                      <td colSpan={9} className="py-8 text-center text-slate-500 font-normal">
+                                        No garments match your search query or filter criteria.
                                       </td>
                                     </tr>
-                                  );
-                                })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
+                                  ) : (
+                                    paginatedItems.map(item => {
+                                      return (
+                                        <tr key={item.id} className="hover:bg-amber-50/40 transition">
+                                          <td className="py-3 px-3 font-mono font-bold text-amber-900">{item.id}</td>
+                                          <td className="py-3 px-3">
+                                            <strong className="text-slate-900 font-bold block">{item.name}</strong>
+                                            <span className="text-[11px] text-slate-500">{item.tartanOrColour || 'Standard'} • Size: {item.size || 'N/A'}</span>
+                                          </td>
+                                          <td className="py-3 px-3 font-medium text-slate-800">{item.category}</td>
+                                          <td className="py-3 px-3">
+                                            <span className={`px-2 py-0.5 text-[10px] font-bold rounded flex items-center gap-1 w-fit ${item.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900 border border-purple-300' : 'bg-blue-100 text-blue-900 border border-blue-300'}`}>
+                                              {item.sizeGroup === 'Kid' ? <Baby className="w-3 h-3" /> : <User className="w-3 h-3" />}
+                                              {item.sizeGroup}
+                                            </span>
+                                          </td>
+                                          <td className="py-3 px-2 text-center font-mono font-extrabold text-slate-900 bg-slate-50/60">
+                                            {item.timesHired} {item.timesHired === 1 ? 'Hire' : 'Hires'}
+                                          </td>
+                                          <td className="py-3 px-3 text-right text-slate-600 font-mono">£{item.cost.toFixed(2)}</td>
+                                          <td className="py-3 px-3 text-right font-mono font-bold text-emerald-800 bg-emerald-50/40">
+                                            £{item.assetVal.toFixed(2)}
+                                          </td>
+                                          <td className="py-3 px-3 text-right font-bold text-amber-800 font-mono">£{item.lifetimeRev.toFixed(2)}</td>
+                                          <td className={`py-3 px-3 text-right font-bold font-mono ${item.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                                            {item.netProfit >= 0 ? `+£${item.netProfit.toFixed(2)}` : `-£${Math.abs(item.netProfit).toFixed(2)}`}
+                                          </td>
+                                          <td className="py-3 px-3 text-center">
+                                            <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded-full border inline-block ${
+                                              item.roiPct >= 100 ? 'bg-emerald-100 text-emerald-900 border-emerald-300' :
+                                              item.roiPct >= 50 ? 'bg-blue-100 text-blue-900 border-blue-300' :
+                                              'bg-amber-100 text-amber-900 border-amber-300'
+                                            }`}>
+                                              {item.roiPct >= 100 ? `+${item.roiPct}% ROI` : `${item.roiPct}%`}
+                                            </span>
+                                          </td>
+                                          <td className="py-3 px-3 text-center">
+                                            <button
+                                              type="button"
+                                              onClick={() => handleOpenValuationModal(item)}
+                                              className="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 font-extrabold text-[11px] rounded-lg border border-amber-300 transition shadow-2xs cursor-pointer flex items-center gap-1 mx-auto"
+                                              title="Edit Purchase Cost & Stock Asset Value"
+                                            >
+                                              ✏️ Set Value
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            {/* PAGINATION CONTROLS */}
+                            {analyticsRoiRowsPerPage !== 'ALL' && totalPages > 1 && (
+                              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs">
+                                <div className="flex items-center gap-2 font-bold text-slate-600">
+                                  <span>Page <strong className="text-slate-900">{safePage}</strong> of <strong className="text-slate-900">{totalPages}</strong></span>
+                                </div>
+
+                                <div className="flex items-center gap-1.5 font-extrabold">
+                                  {/* FIRST PAGE << */}
+                                  <button
+                                    type="button"
+                                    disabled={safePage === 1}
+                                    onClick={() => setAnalyticsRoiPage(1)}
+                                    className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-800 disabled:opacity-40 disabled:hover:bg-white border border-slate-300 rounded-lg shadow-sm transition cursor-pointer"
+                                    title="First Page"
+                                  >
+                                    &laquo; First
+                                  </button>
+
+                                  {/* PREV PAGE < */}
+                                  <button
+                                    type="button"
+                                    disabled={safePage === 1}
+                                    onClick={() => setAnalyticsRoiPage(prev => Math.max(1, prev - 1))}
+                                    className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 disabled:opacity-40 disabled:hover:bg-white border border-slate-300 rounded-lg shadow-sm transition cursor-pointer"
+                                  >
+                                    &lt; Prev
+                                  </button>
+
+                                  {/* PAGE NUMBER BUTTONS */}
+                                  <div className="flex items-center gap-1">
+                                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                                      .filter(p => p === 1 || p === totalPages || Math.abs(p - safePage) <= 2)
+                                      .map((pageNum, idx, arr) => {
+                                        const prev = arr[idx - 1];
+                                        const showEllipsis = prev && pageNum - prev > 1;
+                                        return (
+                                          <React.Fragment key={pageNum}>
+                                            {showEllipsis && <span className="px-1 text-slate-400">...</span>}
+                                            <button
+                                              type="button"
+                                              onClick={() => setAnalyticsRoiPage(pageNum)}
+                                              className={`px-3 py-1.5 rounded-lg border transition shadow-sm cursor-pointer ${
+                                                safePage === pageNum
+                                                  ? 'bg-amber-500 text-slate-950 border-amber-600 font-black'
+                                                  : 'bg-white text-slate-700 border-slate-300 hover:bg-amber-50'
+                                              }`}
+                                            >
+                                              {pageNum}
+                                            </button>
+                                          </React.Fragment>
+                                        );
+                                      })}
+                                  </div>
+
+                                  {/* NEXT PAGE > */}
+                                  <button
+                                    type="button"
+                                    disabled={safePage === totalPages}
+                                    onClick={() => setAnalyticsRoiPage(prev => Math.min(totalPages, prev + 1))}
+                                    className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 disabled:opacity-40 disabled:hover:bg-white border border-slate-300 rounded-lg shadow-sm transition cursor-pointer"
+                                  >
+                                    Next &gt;
+                                  </button>
+
+                                  {/* LAST PAGE >> */}
+                                  <button
+                                    type="button"
+                                    disabled={safePage === totalPages}
+                                    onClick={() => setAnalyticsRoiPage(totalPages)}
+                                    className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-800 disabled:opacity-40 disabled:hover:bg-white border border-slate-300 rounded-lg shadow-sm transition cursor-pointer"
+                                    title="Last Page"
+                                  >
+                                    Last &raquo;
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </>
                   )}
                 </div>
@@ -15943,6 +16723,665 @@ export default function KiltHireApp() {
                   </div>
                 </div>
               )}
+
+{/* TAB 9: ACCOUNTANT & STATUTORY TAX PORTAL (READ-ONLY AUDIT & HMRC REPORTING) */}
+              {activeTab === 'accountant' && (
+                <div className="space-y-6">
+                  {!isMasterAdmin && !isAccountant ? (
+                    <div className="bg-white border border-slate-200 rounded-3xl p-12 text-center shadow-sm max-w-xl mx-auto space-y-4">
+                      <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center text-amber-700 mx-auto">
+                        <Lock className="w-8 h-8" />
+                      </div>
+                      <h3 className="text-xl font-bold text-slate-900">Accountant Portal Access Restricted</h3>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        Statutory accountancy records, HMRC tax ledgers, and financial reconciliation tools are restricted exclusively to Authorized Accountants and Master Admin Allan.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* DASHBOARD HEADER BANNER */}
+                      <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-amber-950 text-white rounded-3xl p-6 shadow-xl space-y-4">
+                        <div className="flex flex-wrap items-center justify-between gap-4">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="px-3 py-0.5 bg-amber-400 text-slate-950 font-black text-[11px] rounded-full uppercase tracking-wider flex items-center gap-1.5 shadow-sm">
+                                <FileSpreadsheet className="w-3.5 h-3.5" /> HMRC &amp; Year-End Ready
+                              </span>
+                              <span className="px-2.5 py-0.5 bg-slate-800 text-slate-300 font-bold text-[10px] rounded-full border border-slate-700">
+                                🔒 Read-Only Auditor Mode
+                              </span>
+                            </div>
+                            <h2 className="text-xl font-extrabold text-white flex items-center gap-2">
+                              Statutory Accountancy, Tax &amp; P&amp;L Portal
+                            </h2>
+                            <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
+                              Highland Kilt Hire standard financial reporting ledger. Tracks taxable hire revenue, security deposit liability accounting, fleet stock capital asset values, and PayPal merchant reconciliation.
+                            </p>
+                          </div>
+
+                          {/* 1-CLICK EXPORT ACTIONS */}
+                          <div className="flex flex-wrap items-center gap-2.5">
+                            {/* CSV EXPORT */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                // Generate Accounting CSV
+                                const headers = [
+                                  'PO_Reference',
+                                  'Date',
+                                  'Customer_Name',
+                                  'Customer_Email',
+                                  'Garment_Count',
+                                  'Hire_Fee_Taxable_GBP',
+                                  'Security_Deposit_Held_GBP',
+                                  'Deposit_Refunded_GBP',
+                                  'Deposit_Retained_Forfeited_GBP',
+                                  'Payment_Status',
+                                  'PayPal_Capture_Ref',
+                                  'Order_Status'
+                                ];
+
+                                const rows = pos.map(po => {
+                                  let refunded = 0;
+                                  let retained = 0;
+                                  po.items.forEach(li => {
+                                    if (li.depositAction === 'REFUNDED') refunded += li.depositAmount;
+                                    else if (li.depositAction === 'HELD_FOR_REPAIR' || li.depositAction === 'HELD_FOR_MISSING') retained += li.depositAmount;
+                                  });
+
+                                  return [
+                                    `"${po.id}"`,
+                                    `"${po.createdAt || po.eventDate}"`,
+                                    `"${(po.customerName || '').replace(/"/g, '""')}"`,
+                                    `"${(po.customerEmail || '').replace(/"/g, '""')}"`,
+                                    po.items.length,
+                                    po.totalHireFee.toFixed(2),
+                                    po.totalDepositHeld.toFixed(2),
+                                    refunded.toFixed(2),
+                                    retained.toFixed(2),
+                                    `"${po.paymentStatus || 'UNPAID'}"`,
+                                    `"${po.paypalTransactionId || 'N/A'}"`,
+                                    `"${po.orderStatus}"`
+                                  ].join(',');
+                                });
+
+                                const csvContent = [headers.join(','), ...rows].join('\n');
+                                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                                const url = URL.createObjectURL(blob);
+                                const link = document.createElement('a');
+                                link.setAttribute('href', url);
+                                link.setAttribute('download', `Highland_Kilt_Hire_Tax_Ledger_${new Date().toISOString().slice(0, 10)}.csv`);
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+                                showToast('📥 Exported Full Tax Ledger CSV for Xero / QuickBooks!', 'success');
+                              }}
+                              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs rounded-xl shadow-lg transition flex items-center gap-2 cursor-pointer"
+                            >
+                              <Download className="w-4 h-4" /> Download Full Tax CSV
+                            </button>
+
+                            {/* PRINT P&L REPORT */}
+                            <button
+                              type="button"
+                              onClick={() => window.print()}
+                              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-xs rounded-xl border border-slate-700 shadow transition flex items-center gap-2 cursor-pointer"
+                            >
+                              <Printer className="w-4 h-4 text-amber-400" /> Print Summary (PDF)
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* TAX PERIOD & FILTER TOOLBAR */}
+                        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-800/80 text-xs">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-extrabold text-amber-300 flex items-center gap-1.5">
+                              <Calendar className="w-4 h-4 text-amber-400" /> Financial Period:
+                            </span>
+                            <select
+                              value={accountantTaxPeriod}
+                              onChange={e => setAccountantTaxPeriod(e.target.value)}
+                              className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 font-bold text-amber-200 outline-none focus:border-amber-400"
+                            >
+                              <option value="ALL_TIME">All Historical Records (Lifetime)</option>
+                              <option value="UK_TAX_2026_2027">2026/2027 UK Tax Year (6 Apr 2026 – 5 Apr 2027)</option>
+                              <option value="UK_TAX_2025_2026">2025/2026 UK Tax Year (6 Apr 2025 – 5 Apr 2026)</option>
+                              <option value="THIS_YEAR">Current Calendar Year (2026)</option>
+                              <option value="THIS_MONTH">Current Month</option>
+                              <option value="CUSTOM">Custom Date Range...</option>
+                            </select>
+
+                            {accountantTaxPeriod === 'CUSTOM' && (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="date"
+                                  value={accountantCustomFromDate}
+                                  onChange={e => setAccountantCustomFromDate(e.target.value)}
+                                  className="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1 text-white text-xs outline-none"
+                                />
+                                <span className="text-slate-400">➔</span>
+                                <input
+                                  type="date"
+                                  value={accountantCustomToDate}
+                                  onChange={e => setAccountantCustomToDate(e.target.value)}
+                                  className="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1 text-white text-xs outline-none"
+                                />
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="text-slate-400 text-[11px] font-mono">
+                            Reporting Currency: <strong>GBP (£)</strong> • Basis: <strong>Accrual / Cash Mixed</strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* FINANCIAL STATEMENT KPI CARDS */}
+                      {(() => {
+                        let grossTurnover = 0;
+                        let totalDepositsHeldActive = 0;
+                        let totalDepositsRefunded = 0;
+                        let totalDepositsForfeited = 0;
+                        let outsourcedCosts = 0;
+
+                        pos.forEach(po => {
+                          grossTurnover += po.totalHireFee;
+                          let poRefunded = 0;
+                          let poRetained = 0;
+
+                          po.items.forEach(li => {
+                            if (li.depositAction === 'REFUNDED') poRefunded += li.depositAmount;
+                            else if (li.depositAction === 'HELD_FOR_REPAIR' || li.depositAction === 'HELD_FOR_MISSING') poRetained += li.depositAmount;
+                            if (Boolean(items.find(i => i.id === li.qrCodeId)?.isOutsourcedDefault)) {
+                              outsourcedCosts += (items.find(i => i.id === li.qrCodeId)?.outsourcedWholesaleCost || 0);
+                            }
+                          });
+
+                          totalDepositsRefunded += poRefunded;
+                          totalDepositsForfeited += poRetained;
+
+                          if (po.orderStatus === 'OUT_ON_HIRE' || po.orderStatus === 'READY_FOR_COLLECTION' || po.orderStatus === 'ASSEMBLY_DUE') {
+                            totalDepositsHeldActive += (po.totalDepositHeld - poRefunded - poRetained);
+                          }
+                        });
+
+                        // Operating Expenses from Deposit Ledger
+                        const laundryExpenses = depositLedgerEntries.filter(e => e.entryType === 'EXPENSE_DRY_CLEANING').reduce((s, e) => s + (e.amount || 0), 0);
+                        const repairExpenses = depositLedgerEntries.filter(e => e.entryType === 'EXPENSE_TAILOR_REPAIR').reduce((s, e) => s + (e.amount || 0), 0);
+                        const replacementExpenses = depositLedgerEntries.filter(e => e.entryType === 'EXPENSE_REPLACEMENT').reduce((s, e) => s + (e.amount || 0), 0);
+                        const totalOperatingExpenses = laundryExpenses + repairExpenses + replacementExpenses;
+
+                        // Stock Fleet Valuation
+                        const fleetAssetValuation = items.reduce((sum, item) => sum + (item.currentAssetValue != null ? item.currentAssetValue : (item.purchaseCost != null ? item.purchaseCost : (item.sizeGroup === 'Kid' ? 120 : 250))), 0);
+                        const fleetInitialOutlay = items.reduce((sum, item) => sum + (item.purchaseCost != null ? item.purchaseCost : (item.sizeGroup === 'Kid' ? 120 : 250)), 0);
+
+                        // Net Taxable Trading Profit
+                        const netTaxableProfit = grossTurnover + totalDepositsForfeited - outsourcedCosts - totalOperatingExpenses;
+
+                        return (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
+                            {/* GROSS TURNOVER */}
+                            <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm space-y-1">
+                              <span className="text-[11px] text-slate-500 font-bold block flex items-center gap-1">
+                                <PoundIcon className="w-3.5 h-3.5 text-amber-600" /> Taxable Turnover
+                              </span>
+                              <span className="text-xl font-extrabold text-slate-900 block">£{grossTurnover.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              <span className="text-[10px] text-slate-400 block">{pos.length} Customer POs</span>
+                            </div>
+
+                            {/* DEPOSIT LIABILITIES HELD */}
+                            <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm space-y-1">
+                              <span className="text-[11px] text-blue-700 font-bold block flex items-center gap-1">
+                                <ShieldCheck className="w-3.5 h-3.5 text-blue-600" /> Current Liability (Deposits)
+                              </span>
+                              <span className="text-xl font-extrabold text-blue-900 block">£{totalDepositsHeldActive.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              <span className="text-[10px] text-blue-600/80 block">Refundable client trust funds</span>
+                            </div>
+
+                            {/* FORFEITED DEPOSITS */}
+                            <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm space-y-1">
+                              <span className="text-[11px] text-emerald-800 font-bold block flex items-center gap-1">
+                                <Tag className="w-3.5 h-3.5 text-emerald-600" /> Forfeited Deposits
+                              </span>
+                              <span className="text-xl font-extrabold text-emerald-700 block">£{totalDepositsForfeited.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              <span className="text-[10px] text-slate-400 block">Damages / missing gear</span>
+                            </div>
+
+                            {/* OPERATING EXPENSES */}
+                            <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm space-y-1">
+                              <span className="text-[11px] text-rose-700 font-bold block flex items-center gap-1">
+                                <Scissors className="w-3.5 h-3.5 text-rose-600" /> Allowable Expenses
+                              </span>
+                              <span className="text-xl font-extrabold text-rose-700 block">£{totalOperatingExpenses.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              <span className="text-[10px] text-slate-400 block">Laundry, repairs &amp; fixes</span>
+                            </div>
+
+                            {/* CLOSING FLEET STOCK WORTH */}
+                            <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm space-y-1">
+                              <span className="text-[11px] text-purple-800 font-bold block flex items-center gap-1">
+                                <Layers className="w-3.5 h-3.5 text-purple-600" /> Closing Stock Assets
+                              </span>
+                              <span className="text-xl font-extrabold text-purple-950 block">£{fleetAssetValuation.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              <span className="text-[10px] text-purple-600 block">{items.length} Registered Units</span>
+                            </div>
+
+                            {/* NET TAXABLE OPERATING PROFIT */}
+                            <div className="bg-gradient-to-br from-amber-50 to-amber-100/60 border-2 border-amber-300 p-4 rounded-2xl shadow-sm space-y-1">
+                              <span className="text-[11px] text-amber-950 font-black block flex items-center gap-1">
+                                <Calculator className="w-3.5 h-3.5 text-amber-700" /> Net Taxable Profit
+                              </span>
+                              <span className={`text-xl font-black block ${netTaxableProfit >= 0 ? 'text-emerald-800' : 'text-rose-700'}`}>
+                                {netTaxableProfit >= 0 ? `+£${netTaxableProfit.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `-£${Math.abs(netTaxableProfit).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                              </span>
+                              <span className="text-[10px] text-amber-800 font-bold block">Trading profit for tax</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* SUB-TABS NAVIGATION */}
+                      <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200 overflow-x-auto text-xs font-bold">
+                        <button
+                          type="button"
+                          onClick={() => setAccountantSubTab('pnl')}
+                          className={`px-4 py-2.5 rounded-xl transition flex items-center gap-2 shrink-0 ${
+                            accountantSubTab === 'pnl' ? 'bg-white text-slate-900 shadow-sm border border-slate-200' : 'text-slate-600 hover:bg-white/60'
+                          }`}
+                        >
+                          <FileSpreadsheet className="w-4 h-4 text-amber-600" /> 1. Statutory Profit &amp; Loss (P&amp;L) Statement
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setAccountantSubTab('deposits')}
+                          className={`px-4 py-2.5 rounded-xl transition flex items-center gap-2 shrink-0 ${
+                            accountantSubTab === 'deposits' ? 'bg-white text-slate-900 shadow-sm border border-slate-200' : 'text-slate-600 hover:bg-white/60'
+                          }`}
+                        >
+                          <ShieldCheck className="w-4 h-4 text-blue-600" /> 2. Security Deposit Liability Schedule
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setAccountantSubTab('stock_valuation')}
+                          className={`px-4 py-2.5 rounded-xl transition flex items-center gap-2 shrink-0 ${
+                            accountantSubTab === 'stock_valuation' ? 'bg-white text-slate-900 shadow-sm border border-slate-200' : 'text-slate-600 hover:bg-white/60'
+                          }`}
+                        >
+                          <Layers className="w-4 h-4 text-purple-600" /> 3. Inventory Stock &amp; Capital Asset Schedule
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setAccountantSubTab('transactions')}
+                          className={`px-4 py-2.5 rounded-xl transition flex items-center gap-2 shrink-0 ${
+                            accountantSubTab === 'transactions' ? 'bg-white text-slate-900 shadow-sm border border-slate-200' : 'text-slate-600 hover:bg-white/60'
+                          }`}
+                        >
+                          <CreditCard className="w-4 h-4 text-emerald-600" /> 4. Merchant &amp; PayPal Reconciliation Ledger
+                        </button>
+                      </div>
+
+                      {/* SUB-TAB 1: STATUTORY PROFIT & LOSS STATEMENT */}
+                      {accountantSubTab === 'pnl' && (
+                        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-5">
+                          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <div>
+                              <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                                <FileSpreadsheet className="w-5 h-5 text-amber-600" /> Statutory Trading Profit &amp; Loss Statement
+                              </h3>
+                              <p className="text-xs text-slate-500">
+                                UK Small Business GAAP format for annual HMRC tax return and Corporation Tax / Self-Assessment filing.
+                              </p>
+                            </div>
+                            <span className="text-xs font-mono font-bold text-slate-500 bg-slate-50 px-3 py-1 rounded-xl border">
+                              Format: Standard UK GAAP
+                            </span>
+                          </div>
+
+                          {(() => {
+                            let grossTurnover = 0;
+                            let totalDepositsForfeited = 0;
+                            let outsourcedCosts = 0;
+
+                            pos.forEach(po => {
+                              grossTurnover += po.totalHireFee;
+                              po.items.forEach(li => {
+                                if (li.depositAction === 'HELD_FOR_REPAIR' || li.depositAction === 'HELD_FOR_MISSING') totalDepositsForfeited += li.depositAmount;
+                                if (Boolean(items.find(i => i.id === li.qrCodeId)?.isOutsourcedDefault)) outsourcedCosts += (items.find(i => i.id === li.qrCodeId)?.outsourcedWholesaleCost || 0);
+                              });
+                            });
+
+                            const totalRevenue = grossTurnover + totalDepositsForfeited;
+                            const grossProfit = totalRevenue - outsourcedCosts;
+
+                            const dryCleaningCost = depositLedgerEntries.filter(e => e.entryType === 'EXPENSE_DRY_CLEANING').reduce((s, e) => s + (e.amount || 0), 0);
+                            const repairsCost = depositLedgerEntries.filter(e => e.entryType === 'EXPENSE_TAILOR_REPAIR').reduce((s, e) => s + (e.amount || 0), 0);
+                            const replacementCost = depositLedgerEntries.filter(e => e.entryType === 'EXPENSE_REPLACEMENT').reduce((s, e) => s + (e.amount || 0), 0);
+                            const totalAdminExpenses = dryCleaningCost + repairsCost + replacementCost;
+                            const netOperatingProfit = grossProfit - totalAdminExpenses;
+
+                            return (
+                              <div className="space-y-4">
+                                <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                                  <table className="w-full text-left text-xs text-slate-700">
+                                    <thead className="bg-slate-100 text-slate-900 font-extrabold border-b border-slate-200 uppercase tracking-wider text-[10px]">
+                                      <tr>
+                                        <th className="py-3 px-4">Financial Ledger Account Category</th>
+                                        <th className="py-3 px-4 text-center">Tax Treatment</th>
+                                        <th className="py-3 px-4 text-right">Debit (£)</th>
+                                        <th className="py-3 px-4 text-right">Credit / Amount (£)</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 font-semibold bg-white">
+                                      {/* REVENUE */}
+                                      <tr className="bg-amber-50/40">
+                                        <td colSpan={4} className="py-2 px-4 font-extrabold text-amber-950 uppercase tracking-wider text-[11px]">
+                                          1. Trading Turnover &amp; Operational Income
+                                        </td>
+                                      </tr>
+                                      <tr>
+                                        <td className="py-3 px-4 pl-6 text-slate-900">Garment &amp; Rigout Hire Rental Revenue</td>
+                                        <td className="py-3 px-4 text-center text-[10px] text-emerald-800 font-bold bg-emerald-50/50">Taxable Turnover</td>
+                                        <td className="py-3 px-4 text-right text-slate-400 font-mono">-</td>
+                                        <td className="py-3 px-4 text-right font-mono font-bold text-slate-900">£{grossTurnover.toFixed(2)}</td>
+                                      </tr>
+                                      <tr>
+                                        <td className="py-3 px-4 pl-6 text-slate-900">Retained / Forfeited Security Deposits (Damages/Loss)</td>
+                                        <td className="py-3 px-4 text-center text-[10px] text-emerald-800 font-bold bg-emerald-50/50">Taxable Misc Income</td>
+                                        <td className="py-3 px-4 text-right text-slate-400 font-mono">-</td>
+                                        <td className="py-3 px-4 text-right font-mono font-bold text-slate-900">£{totalDepositsForfeited.toFixed(2)}</td>
+                                      </tr>
+                                      <tr className="bg-slate-50 font-bold border-t border-slate-200">
+                                        <td className="py-2.5 px-4 font-bold text-slate-900">Total Operational Trading Revenue</td>
+                                        <td></td>
+                                        <td></td>
+                                        <td className="py-2.5 px-4 text-right font-mono font-extrabold text-slate-900">£{totalRevenue.toFixed(2)}</td>
+                                      </tr>
+
+                                      {/* COST OF SALES */}
+                                      <tr className="bg-slate-100/60">
+                                        <td colSpan={4} className="py-2 px-4 font-extrabold text-slate-900 uppercase tracking-wider text-[11px]">
+                                          2. Cost of Sales (Direct Operational Sub-Hire Outlays)
+                                        </td>
+                                      </tr>
+                                      <tr>
+                                        <td className="py-3 px-4 pl-6 text-slate-900">Third-Party External Sub-Hire Wholesale Payments</td>
+                                        <td className="py-3 px-4 text-center text-[10px] text-blue-800 font-bold bg-blue-50/50">Direct Cost of Sale</td>
+                                        <td className="py-3 px-4 text-right font-mono text-rose-700">£{outsourcedCosts.toFixed(2)}</td>
+                                        <td className="py-3 px-4 text-right text-slate-400 font-mono">-</td>
+                                      </tr>
+                                      <tr className="bg-slate-50 font-bold border-t border-slate-200">
+                                        <td className="py-2.5 px-4 font-extrabold text-slate-900">Gross Trading Profit (Turnover less Direct Outlays)</td>
+                                        <td></td>
+                                        <td></td>
+                                        <td className="py-2.5 px-4 text-right font-mono font-black text-slate-950">£{grossProfit.toFixed(2)}</td>
+                                      </tr>
+
+                                      {/* ALLOWABLE EXPENSES */}
+                                      <tr className="bg-slate-100/60">
+                                        <td colSpan={4} className="py-2 px-4 font-extrabold text-slate-900 uppercase tracking-wider text-[11px]">
+                                          3. Allowable Operating Maintenance &amp; Administrative Expenses
+                                        </td>
+                                      </tr>
+                                      <tr>
+                                        <td className="py-3 px-4 pl-6 text-slate-900">Dry Cleaning &amp; Laundry Services</td>
+                                        <td className="py-3 px-4 text-center text-[10px] text-rose-800 font-bold bg-rose-50/50">Allowable Expense</td>
+                                        <td className="py-3 px-4 text-right font-mono text-rose-700">£{dryCleaningCost.toFixed(2)}</td>
+                                        <td className="py-3 px-4 text-right text-slate-400 font-mono">-</td>
+                                      </tr>
+                                      <tr>
+                                        <td className="py-3 px-4 pl-6 text-slate-900">Seamstress Repairs &amp; Garment Workshop Maintenance</td>
+                                        <td className="py-3 px-4 text-center text-[10px] text-rose-800 font-bold bg-rose-50/50">Allowable Expense</td>
+                                        <td className="py-3 px-4 text-right font-mono text-rose-700">£{repairsCost.toFixed(2)}</td>
+                                        <td className="py-3 px-4 text-right text-slate-400 font-mono">-</td>
+                                      </tr>
+                                      <tr>
+                                        <td className="py-3 px-4 pl-6 text-slate-900">Garment Component &amp; Accessory Replacements</td>
+                                        <td className="py-3 px-4 text-center text-[10px] text-rose-800 font-bold bg-rose-50/50">Allowable Expense</td>
+                                        <td className="py-3 px-4 text-right font-mono text-rose-700">£{replacementCost.toFixed(2)}</td>
+                                        <td className="py-3 px-4 text-right text-slate-400 font-mono">-</td>
+                                      </tr>
+                                      <tr className="bg-rose-50/40 font-bold border-t border-slate-200">
+                                        <td className="py-2.5 px-4 font-bold text-rose-950">Total Allowable Operating Expenses</td>
+                                        <td></td>
+                                        <td className="py-2.5 px-4 text-right font-mono font-extrabold text-rose-800">£{totalAdminExpenses.toFixed(2)}</td>
+                                        <td></td>
+                                      </tr>
+
+                                      {/* NET PROFIT */}
+                                      <tr className="bg-gradient-to-r from-amber-100 to-amber-200 font-black border-t-2 border-amber-400 text-sm">
+                                        <td className="py-4 px-4 font-black text-slate-950">
+                                          ⚖️ NET TAXABLE TRADING PROFIT (Before Corporation / Income Tax)
+                                        </td>
+                                        <td className="py-4 px-4 text-center text-[11px] text-amber-950 font-black">HMRC Tax Base</td>
+                                        <td></td>
+                                        <td className={`py-4 px-4 text-right font-mono font-black text-base ${netOperatingProfit >= 0 ? 'text-emerald-950' : 'text-rose-900'}`}>
+                                          {netOperatingProfit >= 0 ? `£${netOperatingProfit.toFixed(2)}` : `-£${Math.abs(netOperatingProfit).toFixed(2)}`}
+                                        </td>
+                                      </tr>
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )}
+
+                      {/* SUB-TAB 2: SECURITY DEPOSIT LIABILITY LEDGER */}
+                      {accountantSubTab === 'deposits' && (
+                        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+                          <div className="border-b border-slate-100 pb-3">
+                            <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                              <ShieldCheck className="w-5 h-5 text-blue-600" /> Security Deposit Trust &amp; Liability Schedule
+                            </h3>
+                            <p className="text-xs text-slate-500">
+                              Crucial tax reconciliation: Customer security deposits are held in trust as <strong>Current Liabilities</strong> and are not taxable turnover until returned or forfeited.
+                            </p>
+                          </div>
+
+                          <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                            <table className="w-full text-left text-xs text-slate-700">
+                              <thead className="bg-slate-100 text-slate-900 font-extrabold border-b border-slate-200 uppercase tracking-wider text-[10px]">
+                                <tr>
+                                  <th className="py-3 px-4">PO Reference</th>
+                                  <th className="py-3 px-4">Customer Name</th>
+                                  <th className="py-3 px-4">Event Date</th>
+                                  <th className="py-3 px-4 text-right">Deposit Held (£)</th>
+                                  <th className="py-3 px-4 text-right">Refunded (£)</th>
+                                  <th className="py-3 px-4 text-right">Forfeited / Retained (£)</th>
+                                  <th className="py-3 px-4 text-center">Accounting Status</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 font-semibold bg-white">
+                                {pos.map(po => {
+                                  let refunded = 0;
+                                  let retained = 0;
+                                  po.items.forEach(li => {
+                                    if (li.depositAction === 'REFUNDED') refunded += li.depositAmount;
+                                    else if (li.depositAction === 'HELD_FOR_REPAIR' || li.depositAction === 'HELD_FOR_MISSING') retained += li.depositAmount;
+                                  });
+                                  const balanceHeld = Math.max(0, po.totalDepositHeld - refunded - retained);
+
+                                  return (
+                                    <tr key={po.id} className="hover:bg-slate-50 transition">
+                                      <td className="py-3 px-4 font-mono font-bold text-slate-900">{po.id}</td>
+                                      <td className="py-3 px-4 font-bold text-slate-900">{po.customerName}</td>
+                                      <td className="py-3 px-4 text-slate-500">{po.eventDate}</td>
+                                      <td className="py-3 px-4 text-right font-mono font-bold text-blue-900">£{po.totalDepositHeld.toFixed(2)}</td>
+                                      <td className="py-3 px-4 text-right font-mono text-emerald-700">£{refunded.toFixed(2)}</td>
+                                      <td className="py-3 px-4 text-right font-mono text-rose-700">£{retained.toFixed(2)}</td>
+                                      <td className="py-3 px-4 text-center">
+                                        <span className={`px-2.5 py-0.5 text-[10px] font-extrabold rounded-full border ${
+                                          balanceHeld > 0 
+                                            ? 'bg-blue-100 text-blue-900 border-blue-300' 
+                                            : retained > 0 
+                                            ? 'bg-amber-100 text-amber-900 border-amber-300' 
+                                            : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                        }`}>
+                                          {balanceHeld > 0 ? `Liability Held (£${balanceHeld.toFixed(2)})` : retained > 0 ? 'Partially Forfeited' : 'Fully Cleared / Refunded'}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* SUB-TAB 3: INVENTORY STOCK & CAPITAL ASSET VALUATION SCHEDULE */}
+                      {accountantSubTab === 'stock_valuation' && (
+                        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+                          <div className="border-b border-slate-100 pb-3">
+                            <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                              <Layers className="w-5 h-5 text-purple-600" /> Balance Sheet Inventory Asset Schedule
+                            </h3>
+                            <p className="text-xs text-slate-500">
+                              Fleet acquisition cost vs current closing stock valuation grouped by garment category for balance sheet capital asset reporting.
+                            </p>
+                          </div>
+
+                          {(() => {
+                            const categoryGroups: Record<string, { count: number; totalCost: number; totalAssetVal: number }> = {};
+
+                            items.forEach(item => {
+                              const cat = item.category || 'Miscellaneous';
+                              if (!categoryGroups[cat]) {
+                                categoryGroups[cat] = { count: 0, totalCost: 0, totalAssetVal: 0 };
+                              }
+                              const cost = item.purchaseCost != null ? item.purchaseCost : (item.sizeGroup === 'Kid' ? 120 : 250);
+                              const assetVal = item.currentAssetValue != null ? item.currentAssetValue : cost;
+                              categoryGroups[cat].count += 1;
+                              categoryGroups[cat].totalCost += cost;
+                              categoryGroups[cat].totalAssetVal += assetVal;
+                            });
+
+                            const totalAllCount = items.length;
+                            const totalAllCost = Object.values(categoryGroups).reduce((s, g) => s + g.totalCost, 0);
+                            const totalAllAssetVal = Object.values(categoryGroups).reduce((s, g) => s + g.totalAssetVal, 0);
+
+                            return (
+                              <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                                <table className="w-full text-left text-xs text-slate-700">
+                                  <thead className="bg-slate-100 text-slate-900 font-extrabold border-b border-slate-200 uppercase tracking-wider text-[10px]">
+                                    <tr>
+                                      <th className="py-3 px-4">Garment Category</th>
+                                      <th className="py-3 px-4 text-center">Unit Count</th>
+                                      <th className="py-3 px-4 text-right">Historic Acquisition Cost (£)</th>
+                                      <th className="py-3 px-4 text-right">Current Asset Valuation (£)</th>
+                                      <th className="py-3 px-4 text-right">Asset Share %</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100 font-semibold bg-white">
+                                    {Object.entries(categoryGroups).map(([cat, stats]) => {
+                                      const sharePct = totalAllAssetVal > 0 ? Math.round((stats.totalAssetVal / totalAllAssetVal) * 100) : 0;
+                                      return (
+                                        <tr key={cat} className="hover:bg-slate-50 transition">
+                                          <td className="py-3 px-4 font-bold text-slate-900">{cat}</td>
+                                          <td className="py-3 px-4 text-center font-mono font-bold text-slate-800">{stats.count} Units</td>
+                                          <td className="py-3 px-4 text-right font-mono text-slate-600">£{stats.totalCost.toFixed(2)}</td>
+                                          <td className="py-3 px-4 text-right font-mono font-bold text-purple-900 bg-purple-50/30">
+                                            £{stats.totalAssetVal.toFixed(2)}
+                                          </td>
+                                          <td className="py-3 px-4 text-right font-mono text-slate-500">{sharePct}%</td>
+                                        </tr>
+                                      );
+                                    })}
+                                    <tr className="bg-purple-100/70 font-extrabold text-purple-950 border-t-2 border-purple-300">
+                                      <td className="py-3 px-4">Total Inventory Fleet Asset Worth</td>
+                                      <td className="py-3 px-4 text-center font-mono">{totalAllCount} Total Items</td>
+                                      <td className="py-3 px-4 text-right font-mono">£{totalAllCost.toFixed(2)}</td>
+                                      <td className="py-3 px-4 text-right font-mono text-sm font-black">£{totalAllAssetVal.toFixed(2)}</td>
+                                      <td className="py-3 px-4 text-right font-mono">100%</td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )}
+
+                      {/* SUB-TAB 4: MERCHANT & PAYPAL RECONCILIATION */}
+                      {accountantSubTab === 'transactions' && (
+                        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+                          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-3">
+                            <div>
+                              <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                                <CreditCard className="w-5 h-5 text-emerald-600" /> Merchant &amp; PayPal Settlement Ledger
+                              </h3>
+                              <p className="text-xs text-slate-500">
+                                Direct capture IDs and settlement references for bank reconciliation against PayPal statements.
+                              </p>
+                            </div>
+
+                            <div className="relative w-full sm:w-64">
+                              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                              <input
+                                type="text"
+                                placeholder="Search PO, customer, PayPal ref..."
+                                value={accountantSearchQuery}
+                                onChange={e => setAccountantSearchQuery(e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-900 outline-none focus:border-amber-500"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                            <table className="w-full text-left text-xs text-slate-700">
+                              <thead className="bg-slate-100 text-slate-900 font-extrabold border-b border-slate-200 uppercase tracking-wider text-[10px]">
+                                <tr>
+                                  <th className="py-3 px-3">PO Reference</th>
+                                  <th className="py-3 px-3">Date</th>
+                                  <th className="py-3 px-3">Customer</th>
+                                  <th className="py-3 px-3 text-right">Hire Fee (£)</th>
+                                  <th className="py-3 px-3 text-right">Deposit (£)</th>
+                                  <th className="py-3 px-3 text-right">Total (£)</th>
+                                  <th className="py-3 px-3 font-mono">PayPal Capture ID</th>
+                                  <th className="py-3 px-3 text-center">Settlement Status</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 font-semibold bg-white">
+                                {pos
+                                  .filter(p => !accountantSearchQuery || p.id.toLowerCase().includes(accountantSearchQuery.toLowerCase()) || (p.customerName || '').toLowerCase().includes(accountantSearchQuery.toLowerCase()) || (p.paypalTransactionId || '').toLowerCase().includes(accountantSearchQuery.toLowerCase()))
+                                  .map(po => {
+                                    return (
+                                      <tr key={po.id} className="hover:bg-slate-50 transition">
+                                        <td className="py-3 px-3 font-mono font-bold text-amber-900">{po.id}</td>
+                                        <td className="py-3 px-3 text-slate-500 font-mono text-[11px]">{po.createdAt || po.eventDate}</td>
+                                        <td className="py-3 px-3 font-bold text-slate-900">{po.customerName}</td>
+                                        <td className="py-3 px-3 text-right font-mono">£{po.totalHireFee.toFixed(2)}</td>
+                                        <td className="py-3 px-3 text-right font-mono text-slate-500">£{po.totalDepositHeld.toFixed(2)}</td>
+                                        <td className="py-3 px-3 text-right font-mono font-bold text-slate-900">£{(po.totalHireFee + po.totalDepositHeld).toFixed(2)}</td>
+                                        <td className="py-3 px-3 font-mono text-[11px] text-slate-700">{po.paypalTransactionId || 'OFFLINE / CASH'}</td>
+                                        <td className="py-3 px-3 text-center">
+                                          <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded-full border ${
+                                            po.paymentStatus === 'FULL_BALANCE_PAID' 
+                                              ? 'bg-emerald-100 text-emerald-900 border-emerald-300' 
+                                              : po.paymentStatus === 'PAID_WITH_DEPOSIT' || po.paymentStatus === 'PARTIAL_DEPOSIT' 
+                                              ? 'bg-blue-100 text-blue-900 border-blue-300' 
+                                              : po.paymentStatus === 'CANCELLED' 
+                                              ? 'bg-rose-100 text-rose-900 border-rose-300' 
+                                              : 'bg-amber-100 text-amber-900 border-amber-300'
+                                          }`}>
+                                            {po.paymentStatus || 'UNPAID'}
+                                          </span>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
             </>
           )}
 
@@ -16485,6 +17924,7 @@ export default function KiltHireApp() {
                   <option value="Shop Assistant">Shop Assistant (Floor Terminal, Scanner & PO Returns)</option>
                   <option value="Admin">Admin (Inventory, Batches, POs, Laundry & Workshop)</option>
                   <option value="Master Admin">Master Admin (Full Access, Pricing & User Control)</option>
+                  <option value="Accountant & Auditor">Accountant & Auditor (Read-Only Tax & P&L Portal)</option>
                 </select>
               </div>
 
@@ -16556,6 +17996,7 @@ export default function KiltHireApp() {
                   <option value="Shop Assistant">Shop Assistant (Floor Terminal, Scanner & Returns)</option>
                   <option value="Admin">Admin (Inventory, POs, Batches, Laundry & Workshop)</option>
                   <option value="Master Admin">Master Admin (Full System Access)</option>
+                  <option value="Accountant & Auditor">Accountant & Auditor (Read-Only Tax & P&L Portal)</option>
                 </select>
               </div>
 
@@ -18753,6 +20194,96 @@ export default function KiltHireApp() {
 
 
 
+      {/* MASTER ADMIN STOCK VALUATION & PURCHASE COST MODAL */}
+      {editingItemValuation && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border-2 border-amber-400 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 rounded-2xl bg-amber-100 border border-amber-300 flex items-center justify-center text-amber-800">
+                  <PoundIcon className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900">Garment Asset Valuation</h3>
+                  <span className="text-xs font-mono font-bold text-amber-900">{editingItemValuation.id}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingItemValuation(null)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-lg p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs space-y-1">
+              <strong className="text-slate-900 font-bold block">{editingItemValuation.name}</strong>
+              <span className="text-slate-500 block">{editingItemValuation.category} • {editingItemValuation.sizeGroup} ({editingItemValuation.size})</span>
+            </div>
+
+            <form onSubmit={handleSaveItemValuation} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-700 font-extrabold mb-1">
+                  🏷️ Initial Purchase Cost / Wholesale Cost (£) *
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-3 text-slate-400 font-bold">£</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    value={valuationCostInput}
+                    onChange={e => setValuationCostInput(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-8 pr-3 py-2.5 font-mono font-extrabold text-slate-900 outline-none focus:border-amber-500"
+                    placeholder="e.g. 250.00"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">Used to calculate lifetime net profit, expenditure, and fleet ROI %.</p>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-extrabold mb-1">
+                  💎 Current Stock Asset Value / Market Resale Worth (£) *
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-3 text-slate-400 font-bold">£</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    value={valuationAssetValueInput}
+                    onChange={e => setValuationAssetValueInput(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-8 pr-3 py-2.5 font-mono font-extrabold text-slate-900 outline-none focus:border-amber-500"
+                    placeholder="e.g. 220.00"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">Used to calculate total business stock worth and capital valuation over time.</p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingItemValuation(null)}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingValuation}
+                  className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Save className="w-4 h-4" /> {isSavingValuation ? 'Saving...' : 'Save Valuation'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* BREVO EMAIL DISPATCH MODAL */}
       {showBrevoEmailModal && brevoEmailData && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -18909,15 +20440,25 @@ export default function KiltHireApp() {
 
               <div>
                 <label className="block text-slate-700 font-extrabold mb-1">💰 Deposit Refund Handling & Accounting *</label>
-                <select
-                  value={cancelRefundOption}
-                  onChange={e => setCancelRefundOption(e.target.value as any)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 font-bold text-slate-900 outline-none focus:border-rose-500"
-                >
-                  <option value="FULL_REFUND_ISSUED">💸 Full Deposit Refund Issued (£{showCancelPoModal.totalDepositHeld})</option>
-                  <option value="DEPOSIT_FORFEITED">🔒 Deposit Retained / Forfeited by Shop (£0 Refunded)</option>
-                  <option value="NO_DEPOSIT_WAS_PAID">📖 No Deposit Was Paid (Paper Diary Legacy Entry)</option>
-                </select>
+                {showCancelPoModal.paymentStatus === 'UNPAID' || showCancelPoModal.totalDepositHeld === 0 ? (
+                  <div className="bg-slate-50 border border-slate-200 p-3 rounded-xl text-slate-700 font-bold text-xs flex items-center gap-2">
+                    <span className="text-base">🚫</span>
+                    <div>
+                      <p className="text-slate-900 font-extrabold">No Deposit Was Paid (£0.00 Collected)</p>
+                      <p className="text-[11px] text-slate-500 font-normal">This order is currently unpaid. No refund will be issued or charged to PayPal.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <select
+                    value={cancelRefundOption}
+                    onChange={e => setCancelRefundOption(e.target.value as any)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 font-bold text-slate-900 outline-none focus:border-rose-500"
+                  >
+                    <option value="FULL_REFUND_ISSUED">💸 Full Deposit Refund Issued (£{showCancelPoModal.totalDepositHeld.toFixed(2)})</option>
+                    <option value="DEPOSIT_FORFEITED">🔒 Deposit Retained / Forfeited by Shop (£0.00 Refunded)</option>
+                    <option value="NO_DEPOSIT_WAS_PAID">📖 No Deposit Was Paid (Unpaid / Paper Diary)</option>
+                  </select>
+                )}
               </div>
 
               <div>

@@ -140,13 +140,14 @@ export async function POST(request: Request) {
         </tr>
       `;
 
-      const totalFee = orderData?.totalHireFee ?? 110;
-      const depositHeld = orderData?.totalDepositHeld ?? 50;
+      const totalFee = typeof orderData?.totalHireFee === 'number' ? orderData.totalHireFee : 0;
+      const depositHeld = typeof orderData?.totalDepositHeld === 'number' ? orderData.totalDepositHeld : 0;
+      const hasHireFee = totalFee > 0;
       const paymentStatus = orderData?.paymentStatus || 'UNPAID';
       const isFullyPaid = paymentStatus === 'FULL_BALANCE_PAID' || paymentStatus === 'PAID_WITH_DEPOSIT';
       const isDepositPaid = paymentStatus === 'PARTIAL_DEPOSIT';
       const outstandingAmount = isFullyPaid ? 0 : isDepositPaid ? totalFee : (totalFee + depositHeld);
-      const paypalLink = orderData?.paypalPaymentLink || `http://localhost:3006/pay?po=${orderData?.poId || 'PO-1001'}&amount=${outstandingAmount}&name=${encodeURIComponent(toName || 'Customer')}`;
+      const paypalLink = orderData?.paypalPaymentLink || `http://localhost:3006/pay?po=${orderData?.poId || 'PO-1001'}&hire=${totalFee}&deposit=${depositHeld}&amount=${outstandingAmount}&name=${encodeURIComponent(toName || 'Customer')}`;
 
       htmlContent = emailShell(headline, 'CONFIRMATION', `
         <h2 style="margin:0 0 12px 0;font-size:18px;font-weight:800;color:#0f172a;">
@@ -167,19 +168,29 @@ export async function POST(request: Request) {
             <td style="padding:4px 8px;font-size:13px;color:#0f172a;font-weight:800;text-align:right;">${orderData?.hireEndDate || 'Upcoming Monday'}</td>
           </tr>
           <tr>
-            <td style="padding:4px 8px;font-size:12px;color:#64748b;font-weight:600;">💰 Total Hire Fee:</td>
-            <td style="padding:4px 8px;font-size:13px;color:#0f172a;font-weight:800;text-align:right;">£${totalFee.toFixed(2)}</td>
-          </tr>
-          <tr>
-            <td style="padding:4px 8px;font-size:12px;color:#64748b;font-weight:600;">🛡️ Security Deposit:</td>
-            <td style="padding:4px 8px;font-size:13px;color:#059669;font-weight:800;text-align:right;">£${depositHeld.toFixed(2)} (Refundable upon safe return)</td>
-          </tr>
-          <tr style="border-top:1px solid #e2e8f0;">
-            <td style="padding:8px 8px 4px 8px;font-size:12px;color:#334155;font-weight:800;">💳 Balance Outstanding:</td>
-            <td style="padding:8px 8px 4px 8px;font-size:14px;color:${isFullyPaid ? '#059669' : '#b45309'};font-weight:900;text-align:right;">
-              ${isFullyPaid ? '£0.00 (Paid in Full ✓)' : `£${outstandingAmount.toFixed(2)}`}
+            <td style="padding:4px 8px;font-size:12px;color:#64748b;font-weight:600;">👔 Garment Hire Fee:</td>
+            <td style="padding:4px 8px;font-size:13px;color:#0f172a;font-weight:800;text-align:right;">
+              ${hasHireFee ? `£${totalFee.toFixed(2)}` : '£0.00 (Free of charge)'}
             </td>
           </tr>
+          <tr>
+            <td style="padding:4px 8px;font-size:12px;color:#64748b;font-weight:600;">🛡️ Security Deposit (Refundable):</td>
+            <td style="padding:4px 8px;font-size:13px;color:#059669;font-weight:800;text-align:right;">£${depositHeld.toFixed(2)}</td>
+          </tr>
+          <tr style="border-top:1px solid #e2e8f0;">
+            <td style="padding:8px 8px 4px 8px;font-size:12px;color:#0f172a;font-weight:800;">🔒 Deposit Due to Confirm:</td>
+            <td style="padding:8px 8px 4px 8px;font-size:14px;color:${isDepositPaid || isFullyPaid ? '#059669' : '#b45309'};font-weight:900;text-align:right;">
+              ${isDepositPaid || isFullyPaid ? `£${depositHeld.toFixed(2)} (Paid ✓)` : `£${depositHeld.toFixed(2)}`}
+            </td>
+          </tr>
+          {hasHireFee && (
+            <tr>
+              <td style="padding:4px 8px 8px 8px;font-size:12px;color:#64748b;font-weight:600;">💳 Hire Balance Due at Collection:</td>
+              <td style="padding:4px 8px 8px 8px;font-size:13px;color:${isFullyPaid ? '#059669' : '#334155'};font-weight:800;text-align:right;">
+                ${isFullyPaid ? '£0.00 (Paid in Advance ✓)' : `£${totalFee.toFixed(2)}`}
+              </td>
+            </tr>
+          )}
         </table>
 
         <!-- ITEMS INCLUDED -->
@@ -191,7 +202,7 @@ export async function POST(request: Request) {
         </table>
 
         <div style="background-color:#fffbe6;border:1px solid #ffe58f;border-radius:12px;padding:14px;margin-bottom:20px;font-size:12px;color:#78350f;">
-          <strong>📋 Store Policy:</strong> ${policyNotice}
+          <strong>📋 Booking Policy:</strong> Security deposit is held to confirm booking. Deposit will be promptly refunded upon return of garments in safe condition.
         </div>
 
         ${isFullyPaid ? `
@@ -200,17 +211,45 @@ export async function POST(request: Request) {
               ✅ Payment Received in Full (£${(totalFee + depositHeld).toFixed(2)})
             </p>
             <p style="margin:4px 0 0 0;font-size:11px;color:#15803d;">
-              Your booking is 100% confirmed with zero balance remaining. We look forward to seeing you at collection!
+              Your booking is 100% confirmed. We look forward to seeing you at collection!
             </p>
           </div>
-        ` : `
-          <div style="text-align:center;margin:28px 0 16px 0;">
-            <a href="${paypalLink}" style="background-color:#0070ba;color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:12px;font-size:14px;font-weight:900;display:inline-block;box-shadow:0 2px 8px rgba(0,112,186,0.3);">
-              💳 Pay £${outstandingAmount.toFixed(2)} ${isDepositPaid ? 'Remaining Balance' : 'Deposit & Balance'} via PayPal
-            </a>
-            <p style="margin:8px 0 0 0;font-size:11px;color:#64748b;">${paypalNotice}</p>
+        ` : isDepositPaid ? `
+          <div style="background-color:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:16px;text-align:center;margin:20px 0;">
+            <p style="margin:0;font-size:13px;font-weight:900;color:#1e40af;">
+              ✅ Security Deposit Paid (£${depositHeld.toFixed(2)}) — Booking Confirmed!
+            </p>
+            ${hasHireFee ? `
+              <p style="margin:4px 0 12px 0;font-size:11px;color:#1e3a8a;">
+                Remaining Hire Balance Due at Collection: <strong>£${totalFee.toFixed(2)}</strong>
+              </p>
+              <a href="${paypalLink}" style="background-color:#0070ba;color:#ffffff;text-decoration:none;padding:10px 22px;border-radius:10px;font-size:12px;font-weight:800;display:inline-block;">
+                💳 Settle Remaining £${totalFee.toFixed(2)} Online Ahead of Time
+              </a>
+            ` : ''}
           </div>
-        `}
+        ` : (() => {
+          const depositLink = `${paypalLink}${paypalLink.includes('?') ? '&' : '?'}type=DEPOSIT&deposit=${depositHeld}&hire=${totalFee}`;
+          const fullLink = `${paypalLink}${paypalLink.includes('?') ? '&' : '?'}type=FULL&deposit=${depositHeld}&hire=${totalFee}`;
+          return `
+            <!-- PAYMENT OPTIONS: PAY DEPOSIT NOW OR PAY IN FULL -->
+            <div style="text-align:center;margin:24px 0 16px 0;">
+              <div style="margin-bottom:12px;">
+                <a href="${depositLink}" style="background-color:#0070ba;color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:12px;font-size:14px;font-weight:900;display:inline-block;box-shadow:0 2px 8px rgba(0,112,186,0.3);">
+                  🔒 Pay £${depositHeld.toFixed(2)} Security Deposit
+                </a>
+              </div>
+              ${hasHireFee ? `
+                <div>
+                  <a href="${fullLink}" style="color:#0070ba;text-decoration:underline;font-size:12px;font-weight:700;">
+                    Or pay full £${(totalFee + depositHeld).toFixed(2)} (Deposit + Hire Balance in Advance)
+                  </a>
+                </div>
+              ` : ''}
+              <p style="margin:10px 0 0 0;font-size:11px;color:#64748b;">${paypalNotice}</p>
+            </div>
+          `;
+        })()}
       `);
 
     } else if (emailType === 'READY_FOR_COLLECTION') {
