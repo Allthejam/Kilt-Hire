@@ -14,43 +14,38 @@ export async function sendBrevoEmail({
   toName,
   subject,
   htmlContent,
-  senderName = 'Highland Kilt Hire',
-  senderEmail = 'orders@kilt-hire.co.uk'
+  senderName = 'Highland Kiltmakers',
+  senderEmail = 'sales@scottishhighlandkilthire.co.uk'
 }: BrevoEmailPayload): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  const apiKey = process.env.NEXT_PUBLIC_BREVO_API_KEY || process.env.BREVO_API_KEY;
-
-  if (!apiKey) {
-    console.warn('Brevo API key not set in environment (NEXT_PUBLIC_BREVO_API_KEY). Email preview mode active.');
-    return { 
-      success: true, 
-      messageId: `PREVIEW-SIMULATED-${Date.now()}`,
-      error: 'Brevo API key missing. Email simulated in preview mode.' 
-    };
-  }
-
   try {
-    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+    const res = await fetch('/api/send-email', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'api-key': apiKey,
         'accept': 'application/json'
       },
       body: JSON.stringify({
-        sender: { name: senderName, email: senderEmail },
-        to: [{ email: toEmail, name: toName }],
+        toEmail,
+        toName,
         subject,
-        htmlContent
+        htmlContent,
+        emailType: 'CUSTOM'
       })
     });
 
-    if (!res.ok) {
-      const errData = await res.json();
-      throw new Error(errData.message || `Brevo HTTP error ${res.status}`);
+    const data = await res.json();
+
+    if (!res.ok || !data.success) {
+      return { 
+        success: false, 
+        error: data.error || `Email dispatch failed with status ${res.status}` 
+      };
     }
 
-    const data = await res.json();
-    return { success: true, messageId: data.messageId };
+    return { 
+      success: true, 
+      messageId: data.messageId 
+    };
   } catch (err: any) {
     console.error('Brevo Email dispatch failed:', err);
     return { success: false, error: err.message || 'Failed to dispatch Brevo email' };

@@ -34,6 +34,93 @@ export interface RepairRecord {
   fixedNotes?: string;
 }
 
+export type AlterationStage = 'QUEUED' | 'IN_PROGRESS' | 'COMPLETED';
+export type AlterationType = 'PRE_HIRE_FITTING' | 'POST_HIRE_RESTOCK_RESET' | 'REPAIR_SEWING';
+
+export interface AlterationTask {
+  id: string; // e.g. "ALT-2026-101"
+  taskType: AlterationType;
+  poId?: string; // Linked Customer PO (for pre-hire)
+  wearerName?: string; // e.g. "Gordon MacLeod"
+  customerPhone?: string;
+  itemId: string; // QR ID, e.g. "KILT-1088"
+  itemName: string; // e.g. "Royal Stewart Heavyweight 8-Yard Kilt"
+  category: string; // "Kilts", "Jackets", "Waistcoats"
+  sizeGroup: SizeGroup;
+  originalGarmentSize: string; // e.g. "Waist 36"
+  targetMeasurement: string; // e.g. "Take in waist 2 inches (36\" -> 34\")" or "Reset waist back to standard 36\""
+  adjustmentType: 'WAIST_TAKE_IN' | 'WAIST_LET_OUT' | 'HEM_SHORTEN' | 'HEM_LENGTHEN' | 'SLEEVE_SHORTEN' | 'SLEEVE_LENGTHEN' | 'STRAP_BUCKLE' | 'RESTOCK_RESET' | 'OTHER';
+  instructions: string;
+  stage: AlterationStage;
+  destination: 'BAG_FOR_CUSTOMER' | 'RESTOCK_TO_SHELVES';
+  collectionDate?: string; // Target completion deadline
+  eventDate?: string;
+  assignedTailor?: string; // e.g. "Mary (Seamstress)"
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  completedBy?: string;
+  notes?: string;
+}
+
+export type DepositLedgerEntryType = 
+  | 'DEPOSIT_RETAINED' 
+  | 'EXPENSE_DRY_CLEANING' 
+  | 'EXPENSE_TAILOR_REPAIR' 
+  | 'EXPENSE_REPLACEMENT' 
+  | 'DEPOSIT_REFUNDED';
+
+export interface DepositLedgerEntry {
+  id: string;
+  entryType: DepositLedgerEntryType;
+  poId?: string;
+  customerName?: string;
+  itemId?: string;
+  itemName?: string;
+  amount: number; // £ positive value
+  reason: string;
+  vendorOrPayer?: string; // e.g. "Customer (Gordon MacLeod)", "Highland Dry Cleaners Ltd", "Mary (Seamstress)"
+  invoiceRef?: string; // Receipt / invoice number
+  date: string;
+  recordedByStaff: string;
+  status: 'SETTLED' | 'PENDING_INVOICE';
+  notes?: string;
+}
+
+export interface StoreEmailSettings {
+  storeName: string;
+  senderEmail: string;
+  storePhone: string;
+  storeAddress: string;
+  storeOpeningHours: string;
+  brandColor: string; // e.g. '#b45309'
+  bookingConfirmation: {
+    headline: string;
+    customIntro: string;
+    paypalNotice: string;
+    policyNotice: string;
+    showMeasurements: boolean;
+  };
+  collectionReady: {
+    headline: string;
+    customIntro: string;
+    idRequirementNotice: string;
+    parkingOrPickupTips: string;
+  };
+  returnReminder: {
+    headline: string;
+    customIntro: string;
+    checklistNotice: string;
+    depositRefundNotice: string;
+  };
+  overdueAlert: {
+    headline: string;
+    customIntro: string;
+    urgencyStatement: string;
+    depositForfeitureNotice: string;
+  };
+}
+
 export interface CalendarNote {
   id: string;
   date: string;
@@ -179,6 +266,11 @@ export interface PurchaseOrder {
   totalHireFee: number;
   totalDepositHeld: number;
   paypalTransactionId?: string;
+  paypalCaptureId?: string;
+  paypalRefundId?: string;
+  paypalRefundAmount?: number;
+  paypalRefundDate?: string;
+  paypalPayerEmail?: string;
   paymentStatus: 'UNPAID' | 'PARTIAL_DEPOSIT' | 'PAID_WITH_DEPOSIT' | 'FULL_BALANCE_PAID' | 'REFUNDED' | 'FULLY_REFUNDED' | 'DEPOSIT_PARTIALLY_REFUNDED' | 'CANCELLED';
   orderStatus: POOrderStatus;
   measurements?: CustomerMeasurements;

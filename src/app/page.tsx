@@ -65,7 +65,13 @@ import {
   CalendarNote,
   StaffRole,
   CustomerMeasurements,
-  POOrderStatus
+  POOrderStatus,
+  AlterationTask,
+  AlterationStage,
+  AlterationType,
+  DepositLedgerEntry,
+  DepositLedgerEntryType,
+  StoreEmailSettings
 } from './types';
 import {
   sendBrevoEmail,
@@ -81,7 +87,10 @@ import {
   INITIAL_BATCHES, 
   INITIAL_POS, 
   INITIAL_LOGS,
-  DEFAULT_PRICING_MATRIX
+  INITIAL_ALTERATIONS,
+  INITIAL_DEPOSIT_LEDGER_ENTRIES,
+  DEFAULT_PRICING_MATRIX,
+  DEFAULT_STORE_EMAIL_SETTINGS
 } from './mock-data';
 import { generateQrMatrix, renderQrSvgPath, getQrViewBoxSize } from './qr-utils';
 import { 
@@ -154,7 +163,17 @@ import {
   Table as TableIcon,
   List,
   Target,
-  Scissors
+  Scissors,
+  Undo2,
+  Volume2,
+  VolumeX,
+  Flame,
+  CheckSquare,
+  Filter,
+  ShoppingBag,
+  Wallet,
+  Receipt,
+  Scale
 } from 'lucide-react';
 
 const CATEGORIES: ItemCategory[] = [
@@ -337,7 +356,7 @@ export default function KiltHireApp() {
   const [showOutsourcedApprovalModal, setShowOutsourcedApprovalModal] = useState(false);
 
   // Staff Outsourced PIN Authorization Modal State
-  const [staffStockSubTab, setStaffStockSubTab] = useState<'SHOP_STOCK' | 'OUTSOURCED_DEFAULTS'>('SHOP_STOCK');
+  const [staffStockSubTab, setStaffStockSubTab] = useState<'SHOP_STOCK' | 'OUTSOURCED_DEFAULTS' | 'ON_HIRE' | 'IN_REPAIR' | 'NEEDS_CLEANING'>('SHOP_STOCK');
   const [outsourcedPinModalItem, setOutsourcedPinModalItem] = useState<KiltItem | null>(null);
   const [adminPinInput, setAdminPinInput] = useState<string>('');
   const [pinErrorMsg, setPinErrorMsg] = useState<string>('');
@@ -382,8 +401,8 @@ export default function KiltHireApp() {
   const [regError, setRegError] = useState('');
   const [showRegPassword, setShowRegPassword] = useState(false);
 
-  // Tab State for Admin: 'scanner' | 'batches' | 'inventory' | 'pos' | 'laundry' | 'repairs' | 'analytics' | 'pricing' | 'admin' | 'start_fitting'
-  const [activeTab, setActiveTab] = useState<'scanner' | 'batches' | 'inventory' | 'pos' | 'laundry' | 'repairs' | 'analytics' | 'pricing' | 'admin' | 'start_fitting'>('scanner');
+  // Tab State for Admin: 'scanner' | 'batches' | 'inventory' | 'pos' | 'laundry' | 'repairs' | 'analytics' | 'pricing' | 'admin' | 'start_fitting' | 'deposit_ledger'
+  const [activeTab, setActiveTab] = useState<'scanner' | 'batches' | 'inventory' | 'pos' | 'laundry' | 'repairs' | 'analytics' | 'pricing' | 'admin' | 'start_fitting' | 'deposit_ledger' | 'email_settings'>('scanner');
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Scanner & Selected QR State
@@ -444,11 +463,111 @@ export default function KiltHireApp() {
     onConfirm?: () => void;
   } | null>(null);
 
+  // FAST-PACED SATURDAY TURNAROUND (ZAP & GO CONTINUOUS SCANNER) STATE
+  const [zapAndGoMode, setZapAndGoMode] = useState<boolean>(false);
+  const [zapDisposition, setZapDisposition] = useState<'CLEANERS' | 'SHOP_STOCK'>('CLEANERS');
+  const [zapAudioEnabled, setZapAudioEnabled] = useState<boolean>(true);
+  const [zapSessionLogs, setZapSessionLogs] = useState<Array<{
+    id: string;
+    timestamp: string;
+    itemId: string;
+    itemName: string;
+    size: string;
+    tartanOrColour: string;
+    category: ItemCategory;
+    sizeGroup?: SizeGroup;
+    poId?: string;
+    customerName?: string;
+    customerPhone?: string;
+    actionTaken: string;
+    isPoComplete: boolean;
+    depositHeld?: number;
+  }>>([]);
+  const [zapFlash, setZapFlash] = useState<boolean>(false);
+  const [showZapBatchSummaryModal, setShowZapBatchSummaryModal] = useState<boolean>(false);
+
   // Edit Item & Remove from Rotation Modals
   const [showEditItemModal, setShowEditItemModal] = useState<KiltItem | null>(null);
   const [showRemoveRotationModal, setShowRemoveRotationModal] = useState<KiltItem | null>(null);
   const [retireReasonCategory, setRetireReasonCategory] = useState<'SOLD' | 'STOLEN' | 'DESTROYED' | 'WRITTEN_OFF'>('SOLD');
   const [retireNotes, setRetireNotes] = useState('');
+
+  // MODULE 3: TAILOR'S ALTERATION WORKSHOP BOARD STATE
+  const [alterationTasks, setAlterationTasks] = useState<AlterationTask[]>(INITIAL_ALTERATIONS);
+  const [workshopView, setWorkshopView] = useState<'ALTERATIONS' | 'DEFECT_REPAIRS'>('ALTERATIONS');
+  const [alterationUrgencyFilter, setAlterationUrgencyFilter] = useState<'ALL' | 'URGENT' | 'THIS_WEEK'>('ALL');
+  const [alterationCategoryFilter, setAlterationCategoryFilter] = useState<string>('ALL');
+  const [alterationSearchQuery, setAlterationSearchQuery] = useState<string>('');
+  const [showCreateAlterationModal, setShowCreateAlterationModal] = useState<boolean>(false);
+  const [showPrintJobCardModal, setShowPrintJobCardModal] = useState<AlterationTask | null>(null);
+  const [showPrintWorkshopManifestModal, setShowPrintWorkshopManifestModal] = useState<boolean>(false);
+  const [newAlterationForm, setNewAlterationForm] = useState<{
+    taskType: AlterationType;
+    itemId: string;
+    wearerName: string;
+    customerPhone: string;
+    poId: string;
+    adjustmentType: 'WAIST_TAKE_IN' | 'WAIST_LET_OUT' | 'HEM_SHORTEN' | 'HEM_LENGTHEN' | 'SLEEVE_SHORTEN' | 'SLEEVE_LENGTHEN' | 'STRAP_BUCKLE' | 'RESTOCK_RESET' | 'OTHER';
+    targetMeasurement: string;
+    instructions: string;
+    destination: 'BAG_FOR_CUSTOMER' | 'RESTOCK_TO_SHELVES';
+    collectionDate: string;
+    assignedTailor: string;
+  }>({
+    taskType: 'PRE_HIRE_FITTING',
+    itemId: '',
+    wearerName: '',
+    customerPhone: '',
+    poId: '',
+    adjustmentType: 'WAIST_TAKE_IN',
+    targetMeasurement: 'Take in waist 2 inches',
+    instructions: 'Adjust waistband buckle straps.',
+    destination: 'BAG_FOR_CUSTOMER',
+    collectionDate: '',
+    assignedTailor: 'Mary (Seamstress)'
+  });
+
+  // MODULE 4: RETAINED DEPOSIT & REPAIR EXPENSES LEDGER STATE
+  const [depositLedgerEntries, setDepositLedgerEntries] = useState<DepositLedgerEntry[]>(INITIAL_DEPOSIT_LEDGER_ENTRIES);
+  const [depositLedgerTypeFilter, setDepositLedgerTypeFilter] = useState<'ALL' | DepositLedgerEntryType>('ALL');
+  const [depositLedgerSearchQuery, setDepositLedgerSearchQuery] = useState<string>('');
+  const [showLogExpenseModal, setShowLogExpenseModal] = useState<boolean>(false);
+  const [showDeductDepositModal, setShowDeductDepositModal] = useState<{ po: PurchaseOrder; item?: KiltItem } | null>(null);
+  const [showPrintLedgerStatementModal, setShowPrintLedgerStatementModal] = useState<boolean>(false);
+
+  const [newExpenseForm, setNewExpenseForm] = useState<{
+    entryType: 'EXPENSE_DRY_CLEANING' | 'EXPENSE_TAILOR_REPAIR' | 'EXPENSE_REPLACEMENT';
+    poId: string;
+    customerName: string;
+    itemId: string;
+    amount: number;
+    reason: string;
+    vendorOrPayer: string;
+    invoiceRef: string;
+    notes: string;
+  }>({
+    entryType: 'EXPENSE_DRY_CLEANING',
+    poId: '',
+    customerName: '',
+    itemId: '',
+    amount: 25.00,
+    reason: 'Specialty dry cleaning stain removal',
+    vendorOrPayer: 'Highland Sparkle Cleaners Ltd',
+    invoiceRef: 'INV-2026-001',
+    notes: 'Paid via shop business card.'
+  });
+
+  const [deductDepositForm, setDeductDepositForm] = useState<{
+    deductAmount: number;
+    reason: string;
+    itemId: string;
+    notes: string;
+  }>({
+    deductAmount: 30.00,
+    reason: 'Heavy wine stain / torn kilt lining',
+    itemId: '',
+    notes: 'Partial deposit deducted from held security bond.'
+  });
 
   // Form states
   const [regForm, setRegForm] = useState<{
@@ -696,6 +815,17 @@ export default function KiltHireApp() {
   const [showUserGuideModal, setShowUserGuideModal] = useState<boolean>(false);
   const [guideTopic, setGuideTopic] = useState<'SCANNER' | 'CALENDAR' | 'QR_PRINTING' | 'BULK_BINS' | 'LAUNDRY' | 'ANALYTICS'>('SCANNER');
 
+  // Brevo Test Email State
+  const [isSendingBrevoTest, setIsSendingBrevoTest] = useState<boolean>(false);
+  const [brevoTestTargetEmail, setBrevoTestTargetEmail] = useState<string>('sales@scottishhighlandkilthire.co.uk');
+
+  // Store Email Templates & Branding Customizer State (Admin Only)
+  const [emailSettings, setEmailSettings] = useState<StoreEmailSettings>(DEFAULT_STORE_EMAIL_SETTINGS);
+  const [activeEmailTemplateTab, setActiveEmailTemplateTab] = useState<'BRANDING' | 'BOOKING' | 'COLLECTION' | 'REMINDER' | 'OVERDUE'>('BRANDING');
+  const [emailPreviewDevice, setEmailPreviewDevice] = useState<'DESKTOP' | 'MOBILE'>('DESKTOP');
+  const [isSavingEmailSettings, setIsSavingEmailSettings] = useState<boolean>(false);
+  const [isSendingTemplateTest, setIsSendingTemplateTest] = useState<boolean>(false);
+
   // ─── LOAD DATA & PWA SETUP ───────────────────────────────────────────────────
   useEffect(() => {
     setMounted(true);
@@ -704,6 +834,13 @@ export default function KiltHireApp() {
         const saved = localStorage.getItem('kilt_current_user');
         if (saved) {
           setCurrentUser(JSON.parse(saved));
+        }
+      } catch {}
+
+      try {
+        const savedEmailSettings = localStorage.getItem('kilt_email_settings');
+        if (savedEmailSettings) {
+          setEmailSettings(JSON.parse(savedEmailSettings));
         }
       } catch {}
 
@@ -1890,6 +2027,78 @@ export default function KiltHireApp() {
       setPos(prev => [...createdPos, ...prev]);
       addAuditLog('CREATED_FITTING_ORDER', `Created fitting order for ${fittingForm.customerName} (${fittingForm.outfits.length} outfit(s), Billing: ${fittingForm.billingMode})`);
 
+      // Automatically detect and spawn Alteration Tasks for garments needing tailoring
+      const newAlterationTasks: AlterationTask[] = [];
+      fittingForm.outfits.forEach((outfit, oIdx) => {
+        const wearerName = (outfit.wearerName || (oIdx === 0 ? fittingForm.customerName : `Outfit #${oIdx + 1}`)).trim();
+        outfit.selectedItemIds.forEach(itemId => {
+          const garment = items.find(i => i.id === itemId);
+          if (!garment) return;
+          
+          let needsAlteration = false;
+          let targetMeasurement = '';
+          let adjustmentType: any = 'OTHER';
+          let instructions = '';
+
+          if (garment.category === 'Kilts' && outfit.waistInches) {
+            const match = garment.size.match(/Waist\s*(\d+)/i);
+            if (match) {
+              const garmentWaist = parseInt(match[1], 10);
+              const diff = outfit.waistInches - garmentWaist;
+              if (diff !== 0) {
+                needsAlteration = true;
+                adjustmentType = diff < 0 ? 'WAIST_TAKE_IN' : 'WAIST_LET_OUT';
+                targetMeasurement = `Waist ${garmentWaist}" ➔ ${outfit.waistInches}" (${diff > 0 ? '+' : ''}${diff}")`;
+                instructions = `Adjust kilt waistband buckle straps to fit customer's ${outfit.waistInches}" waist measurement.`;
+              }
+            }
+          } else if (garment.category === 'Jackets' && outfit.chestInches) {
+            const match = garment.size.match(/Chest\s*(\d+)/i) || garment.size.match(/(\d+)[RSL]/i);
+            if (match) {
+              const garmentChest = parseInt(match[1], 10);
+              const diff = outfit.chestInches - garmentChest;
+              if (diff !== 0) {
+                needsAlteration = true;
+                adjustmentType = diff < 0 ? 'SLEEVE_SHORTEN' : 'SLEEVE_LENGTHEN';
+                targetMeasurement = `Chest ${garmentChest}" ➔ ${outfit.chestInches}" (${diff > 0 ? '+' : ''}${diff}")`;
+                instructions = `Tailor jacket sleeve/back seam to fit customer's ${outfit.chestInches}" chest and sleeve length (${outfit.sleeveLengthInches || 'standard'}).`;
+              }
+            }
+          }
+
+          if (needsAlteration) {
+            const matchingPo = createdPos.find(p => p.items.some(li => li.qrCodeId === garment.id)) || createdPos[0];
+            newAlterationTasks.push({
+              id: `ALT-2026-${Math.floor(100 + Math.random() * 900)}`,
+              taskType: 'PRE_HIRE_FITTING',
+              poId: matchingPo?.id,
+              wearerName: wearerName,
+              customerPhone: outfit.wearerPhone || fittingForm.customerPhone,
+              itemId: garment.id,
+              itemName: garment.name,
+              category: garment.category,
+              sizeGroup: garment.sizeGroup,
+              originalGarmentSize: garment.size,
+              targetMeasurement: targetMeasurement,
+              adjustmentType: adjustmentType,
+              instructions: instructions,
+              stage: 'QUEUED',
+              destination: 'BAG_FOR_CUSTOMER',
+              collectionDate: fittingForm.collectionDate,
+              eventDate: fittingForm.eventDate,
+              createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
+            });
+          }
+        });
+      });
+
+      if (newAlterationTasks.length > 0) {
+        setAlterationTasks(prev => [...newAlterationTasks, ...prev]);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('kilt_alteration_tasks', JSON.stringify([...newAlterationTasks, ...alterationTasks]));
+        }
+      }
+
       // Asynchronously dispatch Brevo confirmation & PayPal deposit invoices to all wearers/customers
       createdPos.forEach((createdPo) => {
         if (createdPo.customerEmail && createdPo.depositPaymentMethod !== 'PAPER_DIARY_LEGACY') {
@@ -1957,9 +2166,9 @@ export default function KiltHireApp() {
       setActiveTab('pos');
 
       if (isSplitBilling) {
-        showToast(`🎉 Created ${createdPos.length} separate fitting POs! Added to POs page & Calendar. Form reset for next customer!`, 'success');
+        showToast(`🎉 Created ${createdPos.length} separate fitting POs! ${newAlterationTasks.length > 0 ? `(${newAlterationTasks.length} alteration task(s) queued for tailors)` : ''}`, 'success');
       } else {
-        showToast(`🎉 Purchase Order ${createdPos[0].id} created for ${fittingForm.customerName}! Added to POs page & Calendar. Form reset for next customer!`, 'success');
+        showToast(`🎉 Purchase Order ${createdPos[0].id} created for ${fittingForm.customerName}! ${newAlterationTasks.length > 0 ? `(${newAlterationTasks.length} alteration task(s) queued for tailors)` : ''}`, 'success');
       }
     } catch (err: any) {
       showToast(`Failed to save fitting order: ${err.message}`, 'warning');
@@ -2126,7 +2335,106 @@ export default function KiltHireApp() {
     }
   };
 
+  const handleSendBrevoTest = async () => {
+    if (!brevoTestTargetEmail) {
+      showToast('Please enter an email address for the test.', 'warning');
+      return;
+    }
+    setIsSendingBrevoTest(true);
+    try {
+      const res = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toEmail: brevoTestTargetEmail,
+          toName: 'Highland Kiltmakers Admin',
+          emailType: 'TEST_EMAIL'
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(`🎉 Test email dispatched successfully to ${brevoTestTargetEmail}! (Brevo ID: ${data.messageId || 'sent'})`, 'success');
+        addAuditLog('SENT_BREVO_TEST_EMAIL', `Sent Brevo test verification email to ${brevoTestTargetEmail}`);
+      } else {
+        showToast(`❌ Brevo Error: ${data.error || 'Failed to dispatch email.'}`, 'warning');
+      }
+    } catch (err: any) {
+      showToast(`❌ Connection Error: ${err.message}`, 'warning');
+    } finally {
+      setIsSendingBrevoTest(false);
+    }
+  };
 
+  const handleSaveEmailSettings = (updated?: StoreEmailSettings) => {
+    const toSave = updated || emailSettings;
+    setIsSavingEmailSettings(true);
+    try {
+      localStorage.setItem('kilt_email_settings', JSON.stringify(toSave));
+      setEmailSettings(toSave);
+      showToast('✨ Store email templates & branding saved successfully!', 'success');
+      addAuditLog('UPDATED_EMAIL_SETTINGS', `Saved updated store email templates and branding settings.`);
+    } catch (err: any) {
+      showToast(`Failed to save settings: ${err.message}`, 'warning');
+    } finally {
+      setTimeout(() => setIsSavingEmailSettings(false), 400);
+    }
+  };
+
+  const handleResetEmailSettings = () => {
+    if (window.confirm('Reset all email templates and store contact info back to system defaults?')) {
+      setEmailSettings(DEFAULT_STORE_EMAIL_SETTINGS);
+      localStorage.setItem('kilt_email_settings', JSON.stringify(DEFAULT_STORE_EMAIL_SETTINGS));
+      showToast('↺ Email templates reset to system defaults.', 'info');
+      addAuditLog('RESET_EMAIL_SETTINGS', `Reset store email settings to system defaults.`);
+    }
+  };
+
+  const handleSendTemplateTestEmail = async (templateType: 'BOOKING_CONFIRMATION' | 'READY_FOR_COLLECTION' | 'RETURN_REMINDER' | 'OVERDUE_ALERT') => {
+    if (!brevoTestTargetEmail) {
+      showToast('Please enter an email address for the test.', 'warning');
+      return;
+    }
+    setIsSendingTemplateTest(true);
+    try {
+      const res = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toEmail: brevoTestTargetEmail,
+          toName: 'Highland Kiltmakers Test Recipient',
+          emailType: templateType,
+          emailSettings: emailSettings,
+          orderData: {
+            poId: 'PO-2026-TEST',
+            customerName: 'Allan (Sample Wearer)',
+            customerPhone: '07700 900123',
+            hireStartDate: '2026-08-28',
+            hireEndDate: '2026-08-31',
+            items: [
+              { itemName: 'Royal Stewart 8-Yard Kilt (36")', category: 'Kilts' },
+              { itemName: 'Prince Charlie Jacket & Vest (40R)', category: 'Jackets' },
+              { itemName: 'Dress Sporran Antique Finish', category: 'Sporrans' }
+            ],
+            totalHireFee: 110.00,
+            totalDepositHeld: 50.00,
+            paymentStatus: 'DEPOSIT_PAID_CONFIRMED',
+            paypalPaymentLink: `https://www.paypal.com/checkout?po=PO-2026-TEST&amount=160.00`
+          }
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(`🎉 Live template test sent to ${brevoTestTargetEmail}! (ID: ${data.messageId || 'sent'})`, 'success');
+        addAuditLog('SENT_TEMPLATE_TEST_EMAIL', `Sent ${templateType} live preview test to ${brevoTestTargetEmail}`);
+      } else {
+        showToast(`❌ Brevo Error: ${data.error || 'Failed to dispatch email.'}`, 'warning');
+      }
+    } catch (err: any) {
+      showToast(`❌ Connection Error: ${err.message}`, 'warning');
+    } finally {
+      setIsSendingTemplateTest(false);
+    }
+  };
 
   // Update Pricing Matrix Entry
   const handleUpdatePriceSetting = (category: ItemCategory, field: keyof CategoryPriceSetting, value: number) => {
@@ -2403,6 +2711,104 @@ export default function KiltHireApp() {
       : { hireRate: setting.adultHireRate, deposit: setting.adultDeposit };
   };
 
+  // Web Audio API feedback for Saturday Zap & Go Turnaround
+  const playAudioBeep = (type: 'success' | 'info' | 'warning' | 'error') => {
+    if (!zapAudioEnabled || typeof window === 'undefined') return;
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const ctx = new AudioContextClass();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      if (type === 'success') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(659.25, ctx.currentTime);
+        osc.frequency.setValueAtTime(880, ctx.currentTime + 0.08);
+        gain.gain.setValueAtTime(0.25, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.22);
+      } else if (type === 'info') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(523.25, ctx.currentTime);
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.12);
+      } else if (type === 'warning') {
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(349.23, ctx.currentTime);
+        gain.gain.setValueAtTime(0.2, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.18);
+      } else {
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(220, ctx.currentTime);
+        gain.gain.setValueAtTime(0.2, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.25);
+      }
+    } catch (e) {
+      // AudioContext blocked or unsupported
+    }
+  };
+
+  // Undo a specific Zap & Go check-in
+  const handleUndoZapScan = (logId: string) => {
+    const entry = zapSessionLogs.find(l => l.id === logId);
+    if (!entry) return;
+
+    if (entry.poId) {
+      const targetPo = pos.find(p => p.id === entry.poId);
+      if (targetPo) {
+        const revertedItems = targetPo.items.map(li => {
+          if (li.qrCodeId.trim().toUpperCase() === entry.itemId.trim().toUpperCase()) {
+            return {
+              ...li,
+              returned: false,
+              returnCondition: undefined,
+              returnDate: undefined
+            };
+          }
+          return li;
+        });
+
+        const revertedPo: PurchaseOrder = {
+          ...targetPo,
+          items: revertedItems,
+          orderStatus: targetPo.orderStatus === 'RETURNED_COMPLETED' ? 'OUT_ON_HIRE' : targetPo.orderStatus
+        };
+
+        setPos(prev => prev.map(p => p.id === targetPo.id ? revertedPo : p));
+        upsertPurchaseOrder(revertedPo).catch(e => console.warn(e));
+      }
+    }
+
+    const targetItem = items.find(i => i.id === entry.itemId);
+    if (targetItem) {
+      const revertedItem: KiltItem = {
+        ...targetItem,
+        status: 'ON_HIRE',
+        currentPoId: entry.poId,
+        laundryHistory: (targetItem.laundryHistory || []).filter(h => !h.notes?.includes('Saturday Turnaround') && !h.notes?.includes('Zap & Go'))
+      };
+
+      const updated = itemsRef.current.map(i => i.id === entry.itemId ? revertedItem : i);
+      itemsRef.current = updated;
+      setItems(updated);
+      if (typeof window !== 'undefined') localStorage.setItem('kilt_inventory_items', JSON.stringify(updated));
+      upsertItem(revertedItem).catch(e => console.warn(e));
+    }
+
+    setZapSessionLogs(prev => prev.filter(l => l.id !== logId));
+    showToast(`↩️ Undid Zap for ${entry.itemName} (${entry.itemId}). Reverted to On-Hire!`, 'info');
+  };
+
   // =========================================================================
   // ZERO-FRICTION AUTOMATED MULTI-ITEM PO SCANNER DISCOVERY HANDLER
   // =========================================================================
@@ -2415,7 +2821,7 @@ export default function KiltHireApp() {
     setScanError('');
     setScannedCode(cleanCode);
     setSimulatedInput('');
-    
+
     // Check if code is already registered in database (using live itemsRef for zero-delay lookup without refresh)
     const currentItemList = itemsRef.current.length > 0 ? itemsRef.current : items;
     const existing = currentItemList.find(i => 
@@ -2424,6 +2830,185 @@ export default function KiltHireApp() {
       cleanCode.endsWith(i.id.trim().toUpperCase()) ||
       i.id.trim().toUpperCase().endsWith(cleanCode)
     );
+
+    // =========================================================================
+    // ⚡ 1. FAST-PACED SATURDAY TURNAROUND (ZAP & GO CONTINUOUS SCANNER MODE)
+    // =========================================================================
+    if (zapAndGoMode) {
+      if (!existing) {
+        playAudioBeep('error');
+        showToast(`⚠️ QR (${cleanCode}) not registered in inventory. Switch off Zap & Go to register new stock.`, 'warning');
+        return;
+      }
+
+      // Check if item belongs to an active hire PO (out on hire, ready for collection, or deposit confirmed)
+      const matchingPo = pos.find(p => 
+        p.orderStatus !== 'CANCELLED' && 
+        p.orderStatus !== 'RETURNED_COMPLETED' && 
+        p.items.some(li => (li.qrCodeId.trim().toUpperCase() === existing.id.trim().toUpperCase() || li.qrCodeId.trim().toUpperCase() === cleanCode) && !li.returned)
+      );
+
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const isCleaners = zapDisposition === 'CLEANERS';
+
+      if (matchingPo) {
+        // Mark item as returned on PO
+        const updatedPoItems = matchingPo.items.map(li => {
+          if (li.qrCodeId.trim().toUpperCase() === existing.id.trim().toUpperCase() || li.qrCodeId.trim().toUpperCase() === cleanCode) {
+            return {
+              ...li,
+              returned: true,
+              returnCondition: (isCleaners ? 'NEEDS_CLEANING' : 'GOOD_CLEAN') as any,
+              returnDate: todayStr
+            };
+          }
+          return li;
+        });
+
+        const isAllReturned = updatedPoItems.every(li => li.returned);
+        const updatedPo: PurchaseOrder = {
+          ...matchingPo,
+          items: updatedPoItems,
+          orderStatus: isAllReturned ? 'RETURNED_COMPLETED' : matchingPo.orderStatus,
+          notes: isAllReturned 
+            ? `${matchingPo.notes || ''} [Zap & Go Turnaround Closed on ${todayStr} by ${currentUser?.name || 'Staff'}]`.trim() 
+            : matchingPo.notes
+        };
+
+        // Update PO in pos state and Firestore
+        setPos(prev => prev.map(p => p.id === matchingPo.id ? updatedPo : p));
+        upsertPurchaseOrder(updatedPo).catch(err => console.warn('Failed to update PO in Firestore:', err));
+
+        // Update garment item status
+        const newStatus: ItemStatus = isCleaners ? 'NEEDS_CLEANING' : 'AVAILABLE';
+        const newLaunRecord: LaundryRecord = {
+          id: `LAUN-${Date.now()}`,
+          dateSent: todayStr,
+          sentByStaff: currentUser ? currentUser.name : 'Floor Staff',
+          notes: `Saturday Turnaround from PO ${matchingPo.id}`
+        };
+
+        const updatedItem: KiltItem = {
+          ...existing,
+          status: newStatus,
+          currentPoId: undefined,
+          laundryHistory: isCleaners ? [newLaunRecord, ...(existing.laundryHistory || [])] : existing.laundryHistory
+        };
+
+        const updatedItems = itemsRef.current.map(i => i.id === existing.id ? updatedItem : i);
+        itemsRef.current = updatedItems;
+        setItems(updatedItems);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('kilt_inventory_items', JSON.stringify(updatedItems));
+        }
+        upsertItem(updatedItem).catch(err => console.warn('Failed to update Item in Firestore:', err));
+
+        addAuditLog('ZAP_AND_GO_RETURN', `⚡ Zap & Go check-in: ${existing.name} (${existing.id}) from PO #${matchingPo.id} ➔ ${isCleaners ? 'Sent to Dry Cleaners 🧼' : 'Returned to Available Shelf 📦'}`, existing.id);
+
+        // Flash and Audio
+        playAudioBeep('success');
+        setZapFlash(true);
+        setTimeout(() => setZapFlash(false), 350);
+
+        // Record in Zap Session Log
+        const sessionEntry = {
+          id: `ZAP-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          itemId: existing.id,
+          itemName: existing.name,
+          size: existing.size,
+          tartanOrColour: existing.tartanOrColour || existing.category,
+          category: existing.category,
+          sizeGroup: existing.sizeGroup,
+          poId: matchingPo.id,
+          customerName: matchingPo.customerName,
+          customerPhone: matchingPo.customerPhone,
+          actionTaken: isCleaners ? 'Dispatched to Cleaners 🧼' : 'Returned to Shelf 📦',
+          isPoComplete: isAllReturned,
+          depositHeld: matchingPo.totalDepositHeld
+        };
+
+        setZapSessionLogs(prev => [sessionEntry, ...prev]);
+
+        if (isAllReturned) {
+          showToast(`🎉 PO #${matchingPo.id} (${matchingPo.customerName}) 100% COMPLETE! £${matchingPo.totalDepositHeld} deposit ready to release.`, 'success');
+        } else {
+          const remainingCount = updatedPoItems.filter(li => !li.returned).length;
+          showToast(`⚡ Zapped ${existing.name} (${existing.id})! PO #${matchingPo.id} has ${remainingCount} item(s) remaining.`, 'success');
+        }
+        return;
+      }
+
+      // If garment was on hire but PO not found
+      if (existing.status === 'ON_HIRE') {
+        const newStatus: ItemStatus = isCleaners ? 'NEEDS_CLEANING' : 'AVAILABLE';
+        const newLaunRecord: LaundryRecord = {
+          id: `LAUN-${Date.now()}`,
+          dateSent: todayStr,
+          sentByStaff: currentUser ? currentUser.name : 'Floor Staff',
+          notes: `Saturday Turnaround scan`
+        };
+
+        const updatedItem: KiltItem = {
+          ...existing,
+          status: newStatus,
+          currentPoId: undefined,
+          laundryHistory: isCleaners ? [newLaunRecord, ...(existing.laundryHistory || [])] : existing.laundryHistory
+        };
+
+        const updatedItems = itemsRef.current.map(i => i.id === existing.id ? updatedItem : i);
+        itemsRef.current = updatedItems;
+        setItems(updatedItems);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('kilt_inventory_items', JSON.stringify(updatedItems));
+        }
+        upsertItem(updatedItem).catch(err => console.warn('Failed to update Item in Firestore:', err));
+
+        playAudioBeep('success');
+        setZapFlash(true);
+        setTimeout(() => setZapFlash(false), 350);
+
+        const sessionEntry = {
+          id: `ZAP-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          itemId: existing.id,
+          itemName: existing.name,
+          size: existing.size,
+          tartanOrColour: existing.tartanOrColour || existing.category,
+          category: existing.category,
+          sizeGroup: existing.sizeGroup,
+          actionTaken: isCleaners ? 'Dispatched to Cleaners 🧼' : 'Returned to Shelf 📦',
+          isPoComplete: false
+        };
+        setZapSessionLogs(prev => [sessionEntry, ...prev]);
+        showToast(`⚡ Zapped ${existing.name} (${existing.id}) ➔ ${isCleaners ? 'Sent to Cleaners' : 'Back in Stock'}.`, 'success');
+        return;
+      }
+
+      // If garment is already available in stock
+      if (existing.status === 'AVAILABLE') {
+        playAudioBeep('info');
+        showToast(`ℹ️ ${existing.name} (${existing.id}) is ALREADY in store stock (Available).`, 'info');
+        return;
+      }
+
+      // If garment is currently at dry cleaners
+      if (existing.status === 'NEEDS_CLEANING') {
+        playAudioBeep('warning');
+        showToast(`🧼 ${existing.name} (${existing.id}) is ALREADY marked as At Dry Cleaners.`, 'info');
+        return;
+      }
+
+      // If garment is in repair
+      if (existing.status === 'IN_REPAIR') {
+        playAudioBeep('warning');
+        showToast(`🔧 ${existing.name} (${existing.id}) is marked as In Repair Queue.`, 'info');
+        return;
+      }
+
+      showToast(`🔍 ${existing.name} status is ${existing.status}.`, 'info');
+      return;
+    }
 
     // IF AN OUTFIT BAG QR OR BESPOKE HANGER QR IS SCANNED (e.g. BAG-1001 or assigned outfitBagQr / hangerQr on an active PO)
     const matchingBagPo = pos.find(p => 
@@ -2822,6 +3407,179 @@ export default function KiltHireApp() {
     showToast(`✓ Repair confirmed for ${item.id}. Returned to Available Stock!`, 'success');
   };
 
+  // ─── MODULE 3: TAILOR'S ALTERATION WORKSHOP HANDLERS ───────────────────────
+  const handleCreateAlterationTaskSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAlterationForm.itemId) {
+      showToast('Please select a garment for tailoring/alterations.', 'warning');
+      return;
+    }
+    const garment = items.find(i => i.id === newAlterationForm.itemId);
+    if (!garment) {
+      showToast('Selected garment not found in inventory.', 'warning');
+      return;
+    }
+
+    const newTask: AlterationTask = {
+      id: `ALT-2026-${Math.floor(100 + Math.random() * 900)}`,
+      taskType: newAlterationForm.taskType,
+      poId: newAlterationForm.poId || undefined,
+      wearerName: newAlterationForm.wearerName || undefined,
+      customerPhone: newAlterationForm.customerPhone || undefined,
+      itemId: garment.id,
+      itemName: garment.name,
+      category: garment.category,
+      sizeGroup: garment.sizeGroup,
+      originalGarmentSize: garment.size,
+      targetMeasurement: newAlterationForm.targetMeasurement,
+      adjustmentType: newAlterationForm.adjustmentType,
+      instructions: newAlterationForm.instructions,
+      stage: 'QUEUED',
+      destination: newAlterationForm.destination,
+      collectionDate: newAlterationForm.collectionDate || undefined,
+      assignedTailor: newAlterationForm.assignedTailor || undefined,
+      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
+    };
+
+    const updated = [newTask, ...alterationTasks];
+    setAlterationTasks(updated);
+    if (typeof window !== 'undefined') localStorage.setItem('kilt_alteration_tasks', JSON.stringify(updated));
+    setShowCreateAlterationModal(false);
+    addAuditLog('CREATED_ALTERATION_TASK', `Logged new tailoring job for ${garment.name} (${garment.id}) - ${newTask.targetMeasurement}`, garment.id);
+    showToast(`✂️ Created Tailor Task ${newTask.id} for ${garment.name}!`, 'success');
+  };
+
+  const handleUpdateAlterationStage = (taskId: string, nextStage: AlterationStage, tailorName?: string) => {
+    const task = alterationTasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const updatedTasks = alterationTasks.map(t => {
+      if (t.id === taskId) {
+        return {
+          ...t,
+          stage: nextStage,
+          assignedTailor: tailorName || t.assignedTailor || (currentUser ? currentUser.name : 'Tailor'),
+          startedAt: nextStage === 'IN_PROGRESS' ? (t.startedAt || nowStr) : t.startedAt,
+          completedAt: nextStage === 'COMPLETED' ? nowStr : undefined,
+          completedBy: nextStage === 'COMPLETED' ? (currentUser ? currentUser.name : 'Mary') : undefined
+        };
+      }
+      return t;
+    });
+
+    setAlterationTasks(updatedTasks);
+    if (typeof window !== 'undefined') localStorage.setItem('kilt_alteration_tasks', JSON.stringify(updatedTasks));
+
+    // If marked completed and destination is RESTOCK_TO_SHELVES, update garment status back to AVAILABLE
+    if (nextStage === 'COMPLETED' && task.destination === 'RESTOCK_TO_SHELVES') {
+      const targetItem = items.find(i => i.id === task.itemId);
+      if (targetItem) {
+        const resetItem: KiltItem = {
+          ...targetItem,
+          status: 'AVAILABLE',
+          currentPoId: undefined
+        };
+        const updatedItems = itemsRef.current.map(i => i.id === task.itemId ? resetItem : i);
+        itemsRef.current = updatedItems;
+        setItems(updatedItems);
+        if (typeof window !== 'undefined') localStorage.setItem('kilt_inventory_items', JSON.stringify(updatedItems));
+        upsertItem(resetItem).catch(e => console.warn(e));
+        showToast(`✨ Re-alteration complete! ${targetItem.name} (${targetItem.id}) is now RESET and AVAILABLE for store rehire.`, 'success');
+      }
+    } else if (nextStage === 'COMPLETED') {
+      showToast(`✨ Alteration complete! ${task.itemName} is now tailored and ready for customer outfit bagging.`, 'success');
+    } else if (nextStage === 'IN_PROGRESS') {
+      showToast(`✂️ Task ${task.id} moved to Tailor Bench with ${tailorName || 'Tailor'}.`, 'info');
+    }
+
+    addAuditLog('ALTERATION_STAGE_UPDATED', `Alteration task ${task.id} (${task.itemName}) stage changed to ${nextStage}`);
+  };
+
+  const handleDeleteAlterationTask = (taskId: string) => {
+    if (!window.confirm(`Are you sure you want to remove tailor task ${taskId}?`)) return;
+    const updated = alterationTasks.filter(t => t.id !== taskId);
+    setAlterationTasks(updated);
+    if (typeof window !== 'undefined') localStorage.setItem('kilt_alteration_tasks', JSON.stringify(updated));
+    showToast(`Deleted tailor task ${taskId}.`, 'info');
+  };
+
+  // ─── MODULE 4: RETAINED DEPOSIT & REPAIR EXPENSES LEDGER HANDLERS ──────────
+  const handleLogExpenseSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newExpenseForm.amount <= 0) {
+      showToast('Please enter a valid expense amount greater than £0.', 'warning');
+      return;
+    }
+
+    const linkedItem = items.find(i => i.id === newExpenseForm.itemId);
+
+    const newEntry: DepositLedgerEntry = {
+      id: `LEDGER-${Math.floor(1000 + Math.random() * 9000)}`,
+      entryType: newExpenseForm.entryType,
+      poId: newExpenseForm.poId || undefined,
+      customerName: newExpenseForm.customerName || undefined,
+      itemId: newExpenseForm.itemId || undefined,
+      itemName: linkedItem ? linkedItem.name : undefined,
+      amount: Number(newExpenseForm.amount),
+      reason: newExpenseForm.reason,
+      vendorOrPayer: newExpenseForm.vendorOrPayer,
+      invoiceRef: newExpenseForm.invoiceRef || undefined,
+      date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+      recordedByStaff: currentUser?.name || 'Staff',
+      status: 'SETTLED',
+      notes: newExpenseForm.notes || undefined
+    };
+
+    const updated = [newEntry, ...depositLedgerEntries];
+    setDepositLedgerEntries(updated);
+    if (typeof window !== 'undefined') localStorage.setItem('kilt_deposit_ledger', JSON.stringify(updated));
+    setShowLogExpenseModal(false);
+    addAuditLog('LOGGED_REPAIR_EXPENSE', `Logged £${newEntry.amount.toFixed(2)} expense (${newEntry.reason}) from ${newEntry.vendorOrPayer}`, newEntry.itemId);
+    showToast(`🧾 Logged £${newEntry.amount.toFixed(2)} expense from ${newEntry.vendorOrPayer}!`, 'success');
+  };
+
+  const handleDeductDepositSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!showDeductDepositModal) return;
+    const { po, item } = showDeductDepositModal;
+    if (deductDepositForm.deductAmount <= 0) {
+      showToast('Please enter a deposit deduction amount greater than £0.', 'warning');
+      return;
+    }
+
+    const newEntry: DepositLedgerEntry = {
+      id: `LEDGER-${Math.floor(1000 + Math.random() * 9000)}`,
+      entryType: 'DEPOSIT_RETAINED',
+      poId: po.id,
+      customerName: po.customerName,
+      itemId: item?.id || deductDepositForm.itemId || undefined,
+      itemName: item?.name || (deductDepositForm.itemId ? items.find(i => i.id === deductDepositForm.itemId)?.name : undefined),
+      amount: Number(deductDepositForm.deductAmount),
+      reason: deductDepositForm.reason,
+      vendorOrPayer: `Customer (${po.customerName})`,
+      date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+      recordedByStaff: currentUser?.name || 'Staff',
+      status: 'SETTLED',
+      notes: deductDepositForm.notes || undefined
+    };
+
+    const updated = [newEntry, ...depositLedgerEntries];
+    setDepositLedgerEntries(updated);
+    if (typeof window !== 'undefined') localStorage.setItem('kilt_deposit_ledger', JSON.stringify(updated));
+    setShowDeductDepositModal(null);
+    addAuditLog('RETAINED_SECURITY_DEPOSIT', `Retained £${newEntry.amount.toFixed(2)} deposit from ${po.customerName} (${po.id}) for ${newEntry.reason}`, newEntry.itemId);
+    showToast(`💰 Recorded £${newEntry.amount.toFixed(2)} deposit retention from ${po.customerName}!`, 'success');
+  };
+
+  const handleDeleteLedgerEntry = (entryId: string) => {
+    if (!window.confirm(`Are you sure you want to remove ledger entry ${entryId}?`)) return;
+    const updated = depositLedgerEntries.filter(e => e.id !== entryId);
+    setDepositLedgerEntries(updated);
+    if (typeof window !== 'undefined') localStorage.setItem('kilt_deposit_ledger', JSON.stringify(updated));
+    showToast(`Deleted ledger entry ${entryId}.`, 'info');
+  };
+
   // Step 5: Confirm Dry Cleaning / Laundry Completed
   const handleConfirmLaundryCleaned = (codeId: string) => {
     if (!currentUser) return;
@@ -2981,7 +3739,7 @@ export default function KiltHireApp() {
   // =========================================================================
   // AUTOMATED MULTI-ITEM PO BATCH RETURN PROCESSOR WITH DEPOSIT RETENTION LOGIC
   // =========================================================================
-  const handleConfirmMultiItemReturnSubmit = (e: React.FormEvent) => {
+  const handleConfirmMultiItemReturnSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeReturnPo || !currentUser) return;
 
@@ -3130,6 +3888,63 @@ export default function KiltHireApp() {
     upsertPurchaseOrder(updatedPo).catch(err => console.warn('Failed to update PO in Firestore:', err));
 
     setPos(prev => prev.map(p => p.id === activeReturnPo.id ? updatedPo : p));
+
+    // MODULE 4: Automatically log retained security deposit to Financial Ledger
+    if (totalDepositActuallyRetained > 0) {
+      const autoLedgerEntry: DepositLedgerEntry = {
+        id: `LEDGER-${Math.floor(1000 + Math.random() * 9000)}`,
+        entryType: 'DEPOSIT_RETAINED',
+        poId: activeReturnPo.id,
+        customerName: activeReturnPo.customerName,
+        amount: totalDepositActuallyRetained,
+        reason: totalHeldDepositForRepair > 0 
+          ? `Garment damage / stain repairs penalty (£${totalHeldDepositForRepair})`
+          : totalHeldDepositForMissing > 0
+          ? `Missing item forfeiture (£${totalHeldDepositForMissing})`
+          : `Late return penalty fee (£${retainedLateFee})`,
+        vendorOrPayer: `Customer (${activeReturnPo.customerName})`,
+        date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+        recordedByStaff: currentUser?.name || 'Staff',
+        status: 'SETTLED',
+        notes: `Automatically recorded from PO ${activeReturnPo.id} check-in. Net customer refund: £${netRefundToCustomer}.`
+      };
+      setDepositLedgerEntries(prev => {
+        const next = [autoLedgerEntry, ...prev];
+        if (typeof window !== 'undefined') localStorage.setItem('kilt_deposit_ledger', JSON.stringify(next));
+        return next;
+      });
+    }
+
+    // Automated 1-Click PayPal Deposit Refund Execution
+    if (netRefundToCustomer > 0 && activeReturnPo.paypalCaptureId) {
+      try {
+        const refundRes = await fetch('/api/paypal/refund', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            captureId: activeReturnPo.paypalCaptureId,
+            amount: netRefundToCustomer,
+            poId: activeReturnPo.id,
+            noteToPayer: `Highland Kilt Hire - Security Deposit Refund for PO #${activeReturnPo.id}`,
+            refundReason: 'Return check-in deposit refund',
+            staffName: currentUser?.name || 'Staff'
+          })
+        });
+        const refundData = await refundRes.json();
+        if (refundRes.ok && refundData.success) {
+          updatedPo.paypalRefundId = refundData.refundId;
+          updatedPo.paypalRefundAmount = refundData.amountRefunded;
+          updatedPo.paypalRefundDate = new Date().toISOString().replace('T', ' ').slice(0, 16);
+          await upsertPurchaseOrder(updatedPo);
+          setPos(prev => prev.map(p => p.id === activeReturnPo.id ? updatedPo : p));
+          showToast(`💸 PayPal Deposit Refund of £${netRefundToCustomer.toFixed(2)} dispatched to customer's account! (Refund ID: ${refundData.refundId})`, 'success');
+          addAuditLog('PROCESSED_PAYPAL_REFUND', `Automated PayPal deposit refund of £${netRefundToCustomer.toFixed(2)} dispatched for PO ${activeReturnPo.id} (Refund ID: ${refundData.refundId})`, activeReturnPo.id);
+        }
+      } catch (err: any) {
+        console.warn('PayPal return refund error:', err);
+        showToast(`Note: Automated PayPal deposit refund error: ${err.message}`, 'warning');
+      }
+    }
 
     const summaryDetails = `Processed PO ${activeReturnPo.id} Return for ${activeReturnPo.customerName}: Net PayPal Refund £${netRefundToCustomer}. Retained £${retainedLateFee} late return fee, £${totalHeldDepositForRepair} for repairs, £${totalHeldDepositForMissing} for missing items.`;
     addAuditLog('PROCESSED_MULTI_ITEM_PO_RETURN', summaryDetails);
@@ -3738,6 +4553,36 @@ export default function KiltHireApp() {
     setPos(prev => prev.map(p => p.id === po.id ? updatedPo : p));
     setItems(updatedItemsList);
 
+    // Automated 1-Click PayPal Refund execution for Cancelled Orders
+    if (cancelRefundOption === 'FULL_REFUND_ISSUED' && po.paypalCaptureId) {
+      try {
+        const refundRes = await fetch('/api/paypal/refund', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            captureId: po.paypalCaptureId,
+            poId: po.id,
+            noteToPayer: `Highland Kilt Hire - Full Cancellation Refund for Order #${po.id}: ${cancelReasonInput.trim()}`,
+            refundReason: cancelReasonInput.trim(),
+            staffName: currentUser?.name || 'Staff'
+          })
+        });
+        const refundData = await refundRes.json();
+        if (refundRes.ok && refundData.success) {
+          updatedPo.paypalRefundId = refundData.refundId;
+          updatedPo.paypalRefundAmount = refundData.amountRefunded;
+          updatedPo.paypalRefundDate = new Date().toISOString().replace('T', ' ').slice(0, 16);
+          await upsertPurchaseOrder(updatedPo);
+          setPos(prev => prev.map(p => p.id === po.id ? updatedPo : p));
+          showToast(`💸 PayPal Refund of £${refundData.amountRefunded} processed instantly! (ID: ${refundData.refundId})`, 'success');
+          addAuditLog('PROCESSED_PAYPAL_REFUND', `Automated PayPal refund of £${refundData.amountRefunded} issued for cancelled order ${po.id} (Refund ID: ${refundData.refundId})`, po.id);
+        }
+      } catch (err: any) {
+        console.warn('PayPal cancellation refund error:', err);
+        showToast(`Note: PayPal automated refund notification: ${err.message}`, 'warning');
+      }
+    }
+
     addAuditLog(
       'CANCELLED_HIRE_ORDER',
       `Cancelled Purchase Order ${po.id} for ${po.customerName}. Reason: "${cancelReasonInput.trim()}". Refund Status: ${cancelRefundOption}. Authorized by Staff PIN (${currentUser?.name || 'Staff'})`,
@@ -3819,18 +4664,18 @@ export default function KiltHireApp() {
     );
   };
 
-  // Navigation Items Config for Admin
+  // Navigation Items Config for Admin Back Office
   const NAV_ITEMS = [
-    { id: 'start_fitting', label: 'Start New Fitting & Order', icon: User, badge: 'New Order', restricted: false },
-    { id: 'scanner', label: 'QR Scanner & Actions', icon: QrCode, badge: scItem ? '1 Active' : null, restricted: false },
-    { id: 'pricing', label: 'Pricing Settings Matrix', icon: PriceTag, badge: 'Adult & Kids', restricted: !isMasterAdmin },
+    { id: 'analytics', label: 'Store & Revenue Analytics', icon: BarChart3, badge: 'Analytics', restricted: !isMasterAdmin },
+    { id: 'inventory', label: 'Master Stock Catalog & Pools', icon: Layers, badge: `${items.filter(i=>i.status!=='RETIRED' && !i.isOutsourcedDefault && !i.id.startsWith('EXT-')).length} Items`, restricted: false },
+    { id: 'pricing', label: 'Pricing Settings Matrix', icon: PriceTag, badge: 'Pricing', restricted: !isMasterAdmin },
     { id: 'batches', label: 'QR Batch Printing', icon: Printer, badge: `${batches.length} Batches`, restricted: !isMasterAdmin },
-    { id: 'inventory', label: 'Stock Inventory', icon: Layers, badge: `${items.filter(i=>i.status!=='RETIRED' && !i.isOutsourcedDefault && !i.id.startsWith('EXT-')).length} Shop Items`, restricted: false },
-    { id: 'pos', label: 'Hire POs & PayPal', icon: CreditCard, badge: `${pos.filter(p => p.orderStatus !== 'CANCELLED' && p.orderStatus !== 'RETURNED_COMPLETED' && !p.items.every(i => i.returned)).length} Active`, restricted: false },
-    { id: 'laundry', label: 'Dry Cleaning Laundry', icon: Sparkles, badge: `${items.filter(i=>i.status==='NEEDS_CLEANING').length}`, restricted: false },
-    { id: 'repairs', label: 'In Repair / Workshop', icon: Wrench, badge: `${items.filter(i=>i.status==='IN_REPAIR').length}`, restricted: false },
-    { id: 'analytics', label: 'Master Admin Analytics', icon: BarChart3, badge: 'ROI & Revenue', restricted: !isMasterAdmin },
-    { id: 'admin', label: 'Master Admin & Invites', icon: ShieldCheck, badge: invites.filter(i=>i.status==='PENDING').length ? `${invites.filter(i=>i.status==='PENDING').length} Invites` : null, restricted: false },
+    { id: 'pos', label: 'Master Orders & Calendar', icon: CreditCard, badge: `${pos.filter(p => p.orderStatus !== 'CANCELLED' && p.orderStatus !== 'RETURNED_COMPLETED' && !p.items.every(i => i.returned)).length} Active`, restricted: false },
+    { id: 'laundry', label: 'Dry Cleaning Laundry', icon: Sparkles, badge: `${items.filter(i=>i.status==='NEEDS_CLEANING').length} In Wash`, restricted: false },
+    { id: 'repairs', label: 'Tailors & Repairs Workshop', icon: Scissors, badge: `${alterationTasks.filter(t=>t.stage!=='COMPLETED').length + items.filter(i=>i.status==='IN_REPAIR').length} Tasks`, restricted: false },
+    { id: 'deposit_ledger', label: 'Retained Deposits & Expenses', icon: Wallet, badge: `${depositLedgerEntries.length} Records`, restricted: !isMasterAdmin },
+    { id: 'email_settings', label: 'Email Templates & Branding', icon: Mail, badge: 'Brevo', restricted: !isMasterAdmin },
+    { id: 'admin', label: 'Staff Accounts & PINs', icon: ShieldCheck, badge: invites.filter(i=>i.status==='PENDING').length ? `${invites.filter(i=>i.status==='PENDING').length} Invites` : 'Security', restricted: false },
   ];
 
   // ─── HYDRATION SAFEGUARD: LOADING SKELETON BEFORE CLIENT MOUNT ────────────────
@@ -4147,13 +4992,15 @@ export default function KiltHireApp() {
                       <span>{item.label}</span>
                     </div>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       {item.restricted && (
                         <Lock className={`w-3.5 h-3.5 ${isActive ? 'text-slate-900' : 'text-slate-400'}`} />
                       )}
                       {item.badge && (
-                        <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${
-                          isActive ? 'bg-slate-950 text-amber-400' : 'bg-slate-200 text-slate-700'
+                        <span className={`w-[72px] h-5 rounded-full text-[10px] font-black inline-flex items-center justify-center text-center tracking-tight border shrink-0 ${
+                          isActive 
+                            ? 'bg-slate-950 text-amber-400 border-amber-400/40 shadow-xs' 
+                            : 'bg-slate-100 text-slate-700 border-slate-200 group-hover:bg-slate-200'
                         }`}>
                           {item.badge}
                         </span>
@@ -4165,122 +5012,119 @@ export default function KiltHireApp() {
             </nav>
           ) : (
             <nav className="space-y-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 block mb-2">Shop Floor Quick Tabs</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 block mb-2">Shop Floor Navigation</span>
               
               <button
                 onClick={() => navigateSafely('start_fitting', 'Start New Fitting & Order')}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition ${
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   assistantTab === 'start_fitting' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-600 hover:bg-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5">
-                  <User className="w-4 h-4 text-amber-600" />
-                  <span>Start New Fitting & Order</span>
+                  <User className="w-4 h-4 text-amber-950" />
+                  <span>Start Fitting &amp; Order</span>
                 </div>
-                <span className="px-2 py-0.5 text-[10px] rounded-full font-bold bg-amber-100 text-amber-900">
+                <span className={`w-[72px] h-5 rounded-full text-[10px] font-black inline-flex items-center justify-center text-center tracking-tight border shrink-0 ${
+                  assistantTab === 'start_fitting'
+                    ? 'bg-slate-950 text-amber-400 border-amber-400/40'
+                    : 'bg-amber-100 text-amber-950 border-amber-300'
+                }`}>
                   New Order
                 </span>
               </button>
 
               <button
                 onClick={() => navigateSafely('scanner', 'Auto QR Scanner')}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition ${
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   assistantTab === 'scanner' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5">
-                  <Zap className="w-4 h-4" />
+                  <Zap className="w-4 h-4 text-amber-300" />
                   <span>Auto QR Scanner</span>
                 </div>
-              </button>
-
-              <button
-                onClick={() => navigateSafely('in_stock', 'In Stock Inventory')}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition ${
-                  assistantTab === 'in_stock' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <Package className="w-4 h-4 text-emerald-600" />
-                  <span>In Stock</span>
-                </div>
-                <span className="px-2 py-0.5 text-[10px] rounded-full font-bold bg-emerald-100 text-emerald-800">
-                  {availableItems.length}
-                </span>
-              </button>
-
-              <button
-                onClick={() => navigateSafely('on_hire', 'On Hire')}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition ${
-                  assistantTab === 'on_hire' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <PackageCheck className="w-4 h-4 text-blue-600" />
-                  <span>On Hire (Out)</span>
-                </div>
-                <span className="px-2 py-0.5 text-[10px] rounded-full font-bold bg-blue-100 text-blue-800">
-                  {onHireItems.length}
-                </span>
-              </button>
-
-              <button
-                onClick={() => navigateSafely('in_repair', 'In Repair / Cleaners')}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition ${
-                  assistantTab === 'in_repair' ? 'bg-rose-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <Wrench className="w-4 h-4 text-rose-600" />
-                  <span>In Repair / Cleaners</span>
-                </div>
-                <span className="px-2 py-0.5 text-[10px] rounded-full font-bold bg-rose-100 text-rose-800">
-                  {inRepairItems.length}
+                <span className={`w-[72px] h-5 rounded-full text-[10px] font-black inline-flex items-center justify-center text-center tracking-tight border shrink-0 ${
+                  assistantTab === 'scanner'
+                    ? 'bg-slate-950 text-emerald-300 border-emerald-400/40'
+                    : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                }`}>
+                  Camera
                 </span>
               </button>
 
               <button
                 onClick={() => navigateSafely('pos', 'Active Customer POs')}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition ${
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   assistantTab === 'pos' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-600 hover:bg-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5">
-                  <CreditCard className="w-4 h-4 text-amber-600" />
-                  <span>Active Customer POs</span>
+                  <CreditCard className="w-4 h-4 text-amber-700" />
+                  <span>Customer POs &amp; Returns</span>
                 </div>
-                <span className="px-2 py-0.5 text-[10px] rounded-full font-bold bg-amber-100 text-amber-900">
-                  {pos.filter(p => p.orderStatus !== 'CANCELLED' && p.orderStatus !== 'RETURNED_COMPLETED' && !p.items.every(i => i.returned)).length}
-                </span>
-              </button>
-
-              <button
-                onClick={() => navigateSafely('historic_pos', 'Historic PO Archive')}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition ${
-                  assistantTab === 'historic_pos' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <FileText className="w-4 h-4 text-purple-600" />
-                  <span>Historic PO Archive</span>
-                </div>
-                <span className="px-2 py-0.5 text-[10px] rounded-full font-bold bg-purple-100 text-purple-900">
-                  {pos.filter(p => p.orderStatus === 'CANCELLED' || p.orderStatus === 'RETURNED_COMPLETED' || p.items.every(i => i.returned)).length}
+                <span className={`w-[72px] h-5 rounded-full text-[10px] font-black inline-flex items-center justify-center text-center tracking-tight border shrink-0 ${
+                  assistantTab === 'pos'
+                    ? 'bg-slate-950 text-amber-400 border-amber-400/40'
+                    : 'bg-amber-100 text-amber-900 border-amber-300'
+                }`}>
+                  {pos.filter(p => p.orderStatus !== 'CANCELLED' && p.orderStatus !== 'RETURNED_COMPLETED' && !p.items.every(i => i.returned)).length} Active
                 </span>
               </button>
 
               <button
                 onClick={() => navigateSafely('calendar', 'Availability Calendar')}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition ${
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   assistantTab === 'calendar' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-600 hover:bg-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5">
-                  <Calendar className="w-4 h-4 text-amber-600" />
+                  <Calendar className="w-4 h-4 text-slate-600" />
                   <span>Availability Calendar</span>
                 </div>
-                <span className="px-2 py-0.5 text-[10px] rounded-full font-bold bg-amber-100 text-amber-900">
-                  {pos.filter(p => p.orderStatus !== 'CANCELLED' && p.orderStatus !== 'RETURNED_COMPLETED' && !p.items.every(i => i.returned)).length} Active Hires
+                <span className={`w-[72px] h-5 rounded-full text-[10px] font-black inline-flex items-center justify-center text-center tracking-tight border shrink-0 ${
+                  assistantTab === 'calendar'
+                    ? 'bg-slate-950 text-amber-400 border-amber-400/40'
+                    : 'bg-slate-100 text-slate-700 border-slate-200'
+                }`}>
+                  Calendar
+                </span>
+              </button>
+
+              <button
+                onClick={() => navigateSafely('in_stock', 'In Stock Inventory')}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  assistantTab === 'in_stock' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Layers className="w-4 h-4 text-emerald-600" />
+                  <span>Shop Stock Inventory</span>
+                </div>
+                <span className={`w-[72px] h-5 rounded-full text-[10px] font-black inline-flex items-center justify-center text-center tracking-tight border shrink-0 ${
+                  assistantTab === 'in_stock'
+                    ? 'bg-slate-950 text-emerald-300 border-emerald-400/40'
+                    : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                }`}>
+                  {items.filter(i => i.status !== 'RETIRED').length} Items
+                </span>
+              </button>
+
+              <button
+                onClick={() => navigateSafely('historic_pos', 'Historic PO Archive')}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  assistantTab === 'historic_pos' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Clock className="w-4 h-4 text-purple-600" />
+                  <span>Historic Archive</span>
+                </div>
+                <span className={`w-[72px] h-5 rounded-full text-[10px] font-black inline-flex items-center justify-center text-center tracking-tight border shrink-0 ${
+                  assistantTab === 'historic_pos'
+                    ? 'bg-slate-950 text-purple-300 border-purple-400/40'
+                    : 'bg-purple-100 text-purple-900 border-purple-300'
+                }`}>
+                  {pos.filter(p => p.orderStatus === 'CANCELLED' || p.orderStatus === 'RETURNED_COMPLETED' || p.items.every(i => i.returned)).length} Past
                 </span>
               </button>
             </nav>
@@ -4461,18 +5305,38 @@ export default function KiltHireApp() {
               </button>
             )}
 
-            <button
-              onClick={() => setInterfaceMode(interfaceMode === 'admin_portal' ? 'shop_assistant' : 'admin_portal')}
-              className={`px-2.5 sm:px-3.5 py-1.5 rounded-full text-xs font-extrabold flex items-center gap-1 shrink-0 border shadow-sm transition ${
-                interfaceMode === 'shop_assistant'
-                  ? 'bg-emerald-100 border-emerald-300 text-emerald-900'
-                  : 'bg-amber-100 border-amber-300 text-amber-900'
-              }`}
-            >
-              {interfaceMode === 'shop_assistant' ? <Store className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> : <ShieldCheck className="w-3.5 h-3.5 text-amber-600 shrink-0" />}
-              <span className="hidden sm:inline">{interfaceMode === 'shop_assistant' ? 'Switch to Full Admin' : 'Switch to Shop Assistant'}</span>
-              <span className="sm:hidden text-[11px]">{interfaceMode === 'shop_assistant' ? 'Admin' : 'Shop Mode'}</span>
-            </button>
+            {/* DUAL INTERFACE MODE TOGGLE SWITCH */}
+            <div className="flex items-center bg-slate-100 p-0.5 sm:p-1 rounded-full border border-slate-300 shadow-2xs shrink-0">
+              <button
+                type="button"
+                onClick={() => setInterfaceMode('shop_assistant')}
+                className={`px-2.5 sm:px-3.5 py-1.5 rounded-full text-xs font-black flex items-center gap-1.5 transition cursor-pointer ${
+                  interfaceMode === 'shop_assistant'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                }`}
+                title="Switch to Shop Floor Assistant (Touch & tablet optimized for Fittings, Scanning & Returns)"
+              >
+                <Store className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Shop Floor</span>
+                <span className="sm:hidden text-[11px]">Floor</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setInterfaceMode('admin_portal')}
+                className={`px-2.5 sm:px-3.5 py-1.5 rounded-full text-xs font-black flex items-center gap-1.5 transition cursor-pointer ${
+                  interfaceMode === 'admin_portal'
+                    ? 'bg-amber-500 text-slate-950 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                }`}
+                title="Switch to Admin Back Office (Management, Pricing Matrix, Cloud DB, Staff & Analytics)"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Admin Portal</span>
+                <span className="sm:hidden text-[11px]">Admin</span>
+              </button>
+            </div>
 
             <button
               onClick={handleOpenMyAccount}
@@ -4497,121 +5361,45 @@ export default function KiltHireApp() {
             <div className="space-y-6">
               
               {/* SHOP ASSISTANT QUICK STATUS FILTER TABS */}
-              <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm">
-                <div className="flex flex-wrap items-center gap-2">
+              {/* SHOP ASSISTANT STREAMLINED FLOOR TABS */}
+              <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-2 sm:p-2.5 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                   <button
                     onClick={handleOpenStartFitting}
-                    className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
+                    className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-black flex items-center gap-2 transition cursor-pointer ${
                       assistantTab === 'start_fitting' 
                         ? 'bg-amber-500 text-slate-950 shadow-sm ring-2 ring-amber-400' 
                         : 'bg-amber-100/90 text-amber-950 hover:bg-amber-200 border border-amber-300'
                     }`}
                   >
-                    <User className="w-4 h-4 text-amber-900" /> Start New Fitting & Order
+                    <User className="w-4 h-4 text-amber-950" /> 
+                    <span>Start New Fitting &amp; Order</span>
                   </button>
 
                   <button
                     onClick={() => { setAssistantTab('scanner'); setActiveTab('scanner'); }}
-                    className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
+                    className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-black flex items-center gap-2 transition cursor-pointer ${
                       assistantTab === 'scanner' 
-                        ? 'bg-emerald-600 text-white shadow-sm' 
-                        : 'text-slate-600 hover:bg-slate-100'
+                        ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-400' 
+                        : 'text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200'
                     }`}
                   >
-                    <Zap className="w-4 h-4 text-amber-300" /> Auto QR Scanner
-                  </button>
-
-                  <button
-                    onClick={() => { setAssistantTab('in_stock'); setStaffStockSubTab('SHOP_STOCK'); setActiveTab('inventory'); }}
-                    className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition cursor-pointer ${
-                      assistantTab === 'in_stock' && staffStockSubTab === 'SHOP_STOCK'
-                        ? 'bg-emerald-600 text-white shadow-sm' 
-                        : 'text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    <Package className="w-4 h-4" /> Available In-House Stock
-                    <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${
-                      assistantTab === 'in_stock' && staffStockSubTab === 'SHOP_STOCK' ? 'bg-white text-emerald-900' : 'bg-emerald-100 text-emerald-800'
-                    }`}>
-                      {availableItems.length}
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={() => { setAssistantTab('in_stock'); setStaffStockSubTab('OUTSOURCED_DEFAULTS'); setActiveTab('inventory'); }}
-                    className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition cursor-pointer ${
-                      assistantTab === 'in_stock' && staffStockSubTab === 'OUTSOURCED_DEFAULTS'
-                        ? 'bg-indigo-600 text-white shadow-sm' 
-                        : 'text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    <Store className="w-4 h-4 text-indigo-300" /> Outsourced &amp; Sub-Hire Defaults
-                    <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${
-                      assistantTab === 'in_stock' && staffStockSubTab === 'OUTSOURCED_DEFAULTS' ? 'bg-white text-indigo-950' : 'bg-indigo-100 text-indigo-900'
-                    }`}>
-                      {items.filter(i => i.isOutsourcedDefault || i.id.startsWith('EXT-')).length}
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={() => { setAssistantTab('on_hire'); setActiveTab('inventory'); }}
-                    className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
-                      assistantTab === 'on_hire' 
-                        ? 'bg-blue-600 text-white shadow-sm' 
-                        : 'text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    <PackageCheck className="w-4 h-4" /> Currently On Hire
-                    <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${
-                      assistantTab === 'on_hire' ? 'bg-white text-blue-900' : 'bg-blue-100 text-blue-800'
-                    }`}>
-                      {onHireItems.length}
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={() => { setAssistantTab('in_repair'); setActiveTab('repairs'); }}
-                    className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
-                      assistantTab === 'in_repair' 
-                        ? 'bg-rose-600 text-white shadow-sm' 
-                        : 'text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    <Wrench className="w-4 h-4" /> In Repair / Cleaners
-                    <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${
-                      assistantTab === 'in_repair' ? 'bg-white text-rose-900' : 'bg-rose-100 text-rose-800'
-                    }`}>
-                      {inRepairItems.length}
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={() => { setAssistantTab('needs_cleaning'); setActiveTab('laundry'); }}
-                    className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
-                      assistantTab === 'needs_cleaning' 
-                        ? 'bg-cyan-600 text-white shadow-sm' 
-                        : 'text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    <Sparkles className="w-4 h-4 text-cyan-300" /> At Dry Cleaners
-                    <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${
-                      assistantTab === 'needs_cleaning' ? 'bg-white text-cyan-900' : 'bg-cyan-100 text-cyan-800'
-                    }`}>
-                      {items.filter(i => i.status === 'NEEDS_CLEANING').length}
-                    </span>
+                    <Zap className="w-4 h-4 text-amber-400" /> 
+                    <span>Auto QR Scanner</span>
                   </button>
 
                   <button
                     onClick={() => { setAssistantTab('pos'); setActiveTab('pos'); }}
-                    className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
+                    className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-black flex items-center gap-2 transition cursor-pointer ${
                       assistantTab === 'pos' 
-                        ? 'bg-amber-500 text-slate-950 shadow-sm' 
-                        : 'text-slate-600 hover:bg-slate-100'
+                        ? 'bg-amber-500 text-slate-950 shadow-sm ring-2 ring-amber-400' 
+                        : 'text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200'
                     }`}
                   >
-                    <CreditCard className="w-4 h-4" /> Customer POs
+                    <CreditCard className="w-4 h-4 text-amber-700" /> 
+                    <span>Customer POs &amp; Returns</span>
                     <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${
-                      assistantTab === 'pos' ? 'bg-slate-950 text-amber-400' : 'bg-amber-100 text-amber-900'
+                      assistantTab === 'pos' ? 'bg-slate-950 text-amber-400' : 'bg-amber-200 text-amber-950'
                     }`}>
                       {pos.filter(p => p.orderStatus !== 'CANCELLED' && p.orderStatus !== 'RETURNED_COMPLETED' && !p.items.every(i => i.returned)).length} Active
                     </span>
@@ -4619,23 +5407,50 @@ export default function KiltHireApp() {
 
                   <button
                     onClick={() => { setAssistantTab('calendar'); setActiveTab('pos'); }}
-                    className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
+                    className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-black flex items-center gap-2 transition cursor-pointer ${
                       assistantTab === 'calendar' 
-                        ? 'bg-amber-500 text-slate-950 shadow-sm' 
-                        : 'text-slate-600 hover:bg-slate-100'
+                        ? 'bg-amber-500 text-slate-950 shadow-sm ring-2 ring-amber-400' 
+                        : 'text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200'
                     }`}
                   >
-                    <Calendar className="w-4 h-4" /> Availability Calendar
+                    <Calendar className="w-4 h-4 text-slate-600" /> 
+                    <span>Availability Calendar</span>
+                  </button>
+
+                  <button
+                    onClick={() => { setAssistantTab('in_stock'); setStaffStockSubTab('SHOP_STOCK'); setActiveTab('inventory'); }}
+                    className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-black flex items-center gap-2 transition cursor-pointer ${
+                      assistantTab === 'in_stock' || assistantTab === 'on_hire' || assistantTab === 'in_repair' || assistantTab === 'needs_cleaning'
+                        ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-400' 
+                        : 'text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200'
+                    }`}
+                  >
+                    <Layers className="w-4 h-4" /> 
+                    <span>Shop Inventory</span>
                     <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${
-                      assistantTab === 'calendar' ? 'bg-slate-950 text-amber-400' : 'bg-amber-100 text-amber-900'
+                      assistantTab === 'in_stock' || assistantTab === 'on_hire' || assistantTab === 'in_repair' || assistantTab === 'needs_cleaning'
+                        ? 'bg-white text-emerald-900' 
+                        : 'bg-emerald-100 text-emerald-800'
                     }`}>
-                      📅 Live
+                      {items.filter(i => i.status !== 'RETIRED').length}
                     </span>
+                  </button>
+
+                  <button
+                    onClick={() => { setAssistantTab('historic_pos'); setActiveTab('pos'); }}
+                    className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-black flex items-center gap-2 transition cursor-pointer ${
+                      assistantTab === 'historic_pos' 
+                        ? 'bg-purple-600 text-white shadow-sm ring-2 ring-purple-400' 
+                        : 'text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200'
+                    }`}
+                  >
+                    <Clock className="w-4 h-4 text-purple-600" /> 
+                    <span>Historic Archive</span>
                   </button>
                 </div>
 
                 {/* ADULTS VS KIDS SIZE DEMOGRAPHIC TOGGLE FILTER */}
-                {assistantTab !== 'scanner' && assistantTab !== 'pos' && (
+                {assistantTab !== 'scanner' && assistantTab !== 'pos' && assistantTab !== 'start_fitting' && assistantTab !== 'calendar' && (
                   <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
                     <button
                       onClick={() => setAssistantSizeFilter('ALL')}
@@ -4700,24 +5515,151 @@ export default function KiltHireApp() {
                     </div>
                   </div>
 
+                  {/* ⚡ MODULE 2: FAST-PACED SATURDAY TURNAROUND (ZAP & GO) CONTROL BAR */}
+                  <div className={`p-4 sm:p-5 rounded-3xl border-2 transition-all shadow-md ${
+                    zapAndGoMode 
+                      ? 'bg-gradient-to-r from-slate-950 via-slate-900 to-emerald-950 border-emerald-500 ring-4 ring-emerald-500/20 text-white' 
+                      : 'bg-white border-slate-200 text-slate-900'
+                  }`}>
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${
+                          zapAndGoMode ? 'bg-emerald-500 text-slate-950 animate-pulse' : 'bg-slate-100 text-amber-600'
+                        }`}>
+                          <Flame className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className={`text-base font-black tracking-tight ${zapAndGoMode ? 'text-white' : 'text-slate-900'}`}>
+                              ⚡ Saturday "Zap &amp; Go" Rapid Turnaround Mode
+                            </h3>
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                              zapAndGoMode ? 'bg-emerald-400 text-slate-950 shadow-sm' : 'bg-slate-200 text-slate-600'
+                            }`}>
+                              {zapAndGoMode ? 'ACTIVE & CONTINUOUS' : 'STANDARD MODE'}
+                            </span>
+                          </div>
+                          <p className={`text-xs mt-0.5 max-w-xl ${zapAndGoMode ? 'text-emerald-200' : 'text-slate-500'}`}>
+                            Zero-click rapid returns for peak rush hours. Scan 50+ kilts/jackets continuously without stopping camera or clicking modals.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        {/* ZAP DESTINATION SELECTOR */}
+                        {zapAndGoMode && (
+                          <div className="flex items-center bg-slate-800/90 p-1 rounded-xl border border-slate-700 text-xs font-bold">
+                            <button
+                              type="button"
+                              onClick={() => setZapDisposition('CLEANERS')}
+                              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+                                zapDisposition === 'CLEANERS'
+                                  ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
+                                  : 'text-slate-300 hover:text-white'
+                              }`}
+                            >
+                              <Sparkles className="w-3.5 h-3.5" />
+                              <span>To Cleaners 🧼</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setZapDisposition('SHOP_STOCK')}
+                              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+                                zapDisposition === 'SHOP_STOCK'
+                                  ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
+                                  : 'text-slate-300 hover:text-white'
+                              }`}
+                            >
+                              <Package className="w-3.5 h-3.5" />
+                              <span>To Shelves 📦</span>
+                            </button>
+                          </div>
+                        )}
+
+                        {/* AUDIO CHIME TOGGLE */}
+                        {zapAndGoMode && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setZapAudioEnabled(!zapAudioEnabled);
+                              if (!zapAudioEnabled) playAudioBeep('success');
+                            }}
+                            className={`p-2 rounded-xl text-xs font-bold border transition flex items-center gap-1 cursor-pointer ${
+                              zapAudioEnabled
+                                ? 'bg-slate-800 border-slate-700 text-amber-400 hover:bg-slate-700'
+                                : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
+                            }`}
+                            title={zapAudioEnabled ? 'Audio Chime Enabled' : 'Audio Chime Muted'}
+                          >
+                            {zapAudioEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                          </button>
+                        )}
+
+                        {/* VIEW BATCH MANIFEST BUTTON */}
+                        {zapSessionLogs.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setShowZapBatchSummaryModal(true)}
+                            className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-black text-xs rounded-xl shadow transition flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>Manifest ({zapSessionLogs.length})</span>
+                          </button>
+                        )}
+
+                        {/* MAIN ZAP TOGGLE SWITCH */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const nextState = !zapAndGoMode;
+                            setZapAndGoMode(nextState);
+                            if (nextState) {
+                              if (!activeCamera) toggleCamera();
+                              playAudioBeep('success');
+                              showToast('⚡ Zap & Go Turnaround Mode ACTIVATED! Point at returned garment QRs.', 'success');
+                            } else {
+                              showToast('Standard Scanner Mode restored.', 'info');
+                            }
+                          }}
+                          className={`px-4 py-2.5 rounded-xl font-black text-xs shadow-md transition flex items-center gap-2 cursor-pointer ${
+                            zapAndGoMode
+                              ? 'bg-emerald-400 hover:bg-emerald-300 text-slate-950 ring-2 ring-emerald-300'
+                              : 'bg-slate-900 hover:bg-black text-amber-400 border border-slate-700'
+                          }`}
+                        >
+                          <Zap className="w-4 h-4" />
+                          <span>{zapAndGoMode ? 'Turn Off Zap & Go' : '⚡ Enable Saturday Zap & Go'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                     <div className="lg:col-span-6 space-y-4">
-                      <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+                      <div className={`bg-white border rounded-3xl p-6 shadow-sm space-y-4 transition ${
+                        zapAndGoMode ? 'border-emerald-300 ring-2 ring-emerald-100' : 'border-slate-200'
+                      }`}>
                         <div className="flex items-center justify-between">
                           <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
                             <QrCode className="w-5 h-5 text-amber-600" /> Floor Scanner Input
                           </h3>
-                          {scannedCode && (
+                          {zapAndGoMode ? (
+                            <span className="px-3 py-1 bg-emerald-100 text-emerald-950 font-black text-xs rounded-xl border border-emerald-300 flex items-center gap-1.5 animate-pulse">
+                              <Zap className="w-3.5 h-3.5 text-emerald-600" /> Continuous Auto-Checkin
+                            </span>
+                          ) : scannedCode ? (
                             <span className="px-3 py-1 bg-amber-100 text-amber-900 font-mono font-bold text-xs rounded-lg border border-amber-300">
                               Active: {scannedCode}
                             </span>
-                          )}
+                          ) : null}
                         </div>
 
                         {activeCamera ? (
                           <div className="space-y-2">
-                            {/* SQUARE CAMERA VIEWPORT — WITH 25% ZOOM TRANSFORMATION */}
-                            <div className="relative w-full aspect-square max-w-xs mx-auto rounded-2xl overflow-hidden bg-black border-4 border-emerald-500 shadow-md">
+                            {/* SQUARE CAMERA VIEWPORT — WITH 25% ZOOM TRANSFORMATION & FLASH OVERLAY */}
+                            <div className={`relative w-full aspect-square max-w-xs mx-auto rounded-2xl overflow-hidden bg-black shadow-md transition-all ${
+                              zapAndGoMode ? 'border-4 border-emerald-500 ring-4 ring-emerald-400/30' : 'border-4 border-amber-500'
+                            }`}>
                               <video 
                                 ref={videoRef} 
                                 autoPlay 
@@ -4726,12 +5668,23 @@ export default function KiltHireApp() {
                                 style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'center center' }} 
                                 className="w-full h-full object-cover transition-transform duration-200" 
                               />
+                              
+                              {/* ZAP FLASH ANIMATION ON SUCCESSFUL CONTINUOUS CHECK-IN */}
+                              {zapFlash && (
+                                <div className="absolute inset-0 bg-emerald-400/50 backdrop-blur-xs flex items-center justify-center z-20 animate-in fade-in zoom-in-95">
+                                  <div className="p-4 bg-slate-950/90 rounded-2xl border-2 border-emerald-400 text-white text-center shadow-2xl space-y-1">
+                                    <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto animate-bounce" />
+                                    <p className="font-black text-sm text-emerald-300">CHECKED IN!</p>
+                                  </div>
+                                </div>
+                              )}
+
                               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                                 <div className="relative w-52 h-52">
-                                  <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-amber-400 rounded-tl-xl" />
-                                  <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-amber-400 rounded-tr-xl" />
-                                  <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-amber-400 rounded-bl-xl" />
-                                  <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-amber-400 rounded-br-xl" />
+                                  <div className={`absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 rounded-tl-xl ${zapAndGoMode ? 'border-emerald-400' : 'border-amber-400'}`} />
+                                  <div className={`absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 rounded-tr-xl ${zapAndGoMode ? 'border-emerald-400' : 'border-amber-400'}`} />
+                                  <div className={`absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 rounded-bl-xl ${zapAndGoMode ? 'border-emerald-400' : 'border-amber-400'}`} />
+                                  <div className={`absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 rounded-br-xl ${zapAndGoMode ? 'border-emerald-400' : 'border-amber-400'}`} />
                                 </div>
                               </div>
                             </div>
@@ -4780,8 +5733,14 @@ export default function KiltHireApp() {
 
                             {/* STATUS + INSTRUCTION BELOW CAMERA */}
                             <div className="flex items-center justify-between px-1">
-                              <span className="text-[11px] font-semibold text-slate-600">Centre QR label inside amber frame</span>
-                              <span className="text-[10px] text-emerald-700 font-bold bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300 animate-pulse">🟢 Scanning...</span>
+                              <span className="text-[11px] font-semibold text-slate-600">
+                                {zapAndGoMode ? '⚡ Continuous Rush Mode Active — Keep Zapping' : 'Centre QR label inside square frame'}
+                              </span>
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border animate-pulse ${
+                                zapAndGoMode ? 'bg-emerald-100 text-emerald-900 border-emerald-300' : 'bg-amber-100 text-amber-900 border-amber-300'
+                              }`}>
+                                🟢 Scanner Ready
+                              </span>
                             </div>
                             {scanError && (
                               <div className="flex items-center gap-2 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2.5">
@@ -4804,7 +5763,7 @@ export default function KiltHireApp() {
                           <div className="flex gap-2">
                             <input 
                               type="text"
-                              placeholder="Manual QR entry — or use camera above"
+                              placeholder={zapAndGoMode ? "⚡ Scan with USB barcode gun into here..." : "Manual QR entry — or use camera above"}
                               value={simulatedInput}
                               onChange={e => setSimulatedInput(e.target.value)}
                               onKeyDown={e => {
@@ -4814,7 +5773,7 @@ export default function KiltHireApp() {
                             />
                             <button
                               onClick={() => { handleScanCode(simulatedInput); setSimulatedInput(''); }}
-                              className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold rounded-xl text-xs shadow transition"
+                              className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold rounded-xl text-xs shadow transition cursor-pointer"
                             >
                               Scan
                             </button>
@@ -4823,10 +5782,10 @@ export default function KiltHireApp() {
                           <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-600 space-y-1.5">
                             <p className="font-bold text-slate-800 flex items-center gap-1.5"><Camera className="w-3.5 h-3.5 text-amber-600" /> How to Scan</p>
                             <ul className="list-disc list-inside space-y-1 text-[11px]">
-                              <li>Click <strong>Start Camera</strong> above and point at an iron-on QR label</li>
-                              <li>Hold steady inside the amber square frame — it scans automatically</li>
-                              <li>Or connect a USB barcode scanner gun and scan directly into the text field</li>
-                              <li>Each scan triggers the correct action based on garment status</li>
+                              <li>Click <strong>Launch Camera</strong> above or plug in a USB barcode gun</li>
+                              <li>In <strong>Zap &amp; Go Mode</strong>, returning garments are checked in immediately without stopping</li>
+                              <li>Garments are routed directly to <strong>Dry Cleaners 🧼</strong> or <strong>Store Shelves 📦</strong></li>
+                              <li>When the last item on a PO is returned, the deposit refund is calculated automatically!</li>
                             </ul>
                           </div>
                         </div>
@@ -4834,7 +5793,151 @@ export default function KiltHireApp() {
                     </div>
 
                     <div className="lg:col-span-6">
-                      {scannedCode ? (
+                      {/* WHEN IN ZAP & GO MODE: DISPLAY LIVE SATURDAY TURNAROUND FEED & STATS */}
+                      {zapAndGoMode ? (
+                        <div className="bg-white border-2 border-emerald-300 rounded-3xl p-6 shadow-sm space-y-5">
+                          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                            <div>
+                              <h3 className="text-base font-black text-emerald-950 flex items-center gap-2">
+                                <Flame className="w-5 h-5 text-emerald-600" /> Live Saturday Turnaround Feed
+                              </h3>
+                              <p className="text-xs text-slate-500">Real-time check-in ledger for current rush session.</p>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              {zapSessionLogs.length > 0 && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowZapBatchSummaryModal(true)}
+                                    className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5 cursor-pointer"
+                                  >
+                                    <Printer className="w-3.5 h-3.5" /> Print Manifest
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (window.confirm('Clear current turnaround session history log?')) {
+                                        setZapSessionLogs([]);
+                                        showToast('Session log reset.', 'info');
+                                      }
+                                    }}
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                                    title="Clear session history"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* LIVE TURNAROUND METRIC COUNTER TILES */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-center">
+                              <span className="text-[10px] font-bold uppercase text-emerald-800 block">Total Zapped</span>
+                              <span className="text-2xl font-black text-emerald-950">{zapSessionLogs.length}</span>
+                            </div>
+                            <div className="p-3 bg-cyan-50 border border-cyan-200 rounded-2xl text-center">
+                              <span className="text-[10px] font-bold uppercase text-cyan-800 block">To Cleaners</span>
+                              <span className="text-2xl font-black text-cyan-950">
+                                {zapSessionLogs.filter(l => l.actionTaken.includes('Cleaners')).length}
+                              </span>
+                            </div>
+                            <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-center">
+                              <span className="text-[10px] font-bold uppercase text-amber-800 block">To Shelves</span>
+                              <span className="text-2xl font-black text-amber-950">
+                                {zapSessionLogs.filter(l => l.actionTaken.includes('Shelf')).length}
+                              </span>
+                            </div>
+                            <div className="p-3 bg-purple-50 border border-purple-200 rounded-2xl text-center">
+                              <span className="text-[10px] font-bold uppercase text-purple-800 block">Closed POs</span>
+                              <span className="text-2xl font-black text-purple-950">
+                                {zapSessionLogs.filter(l => l.isPoComplete).length}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* REAL-TIME SCROLLING FEED TABLE */}
+                          <div className="space-y-3">
+                            <span className="text-xs font-extrabold text-slate-700 block">
+                              Recent Items Scanned ({zapSessionLogs.length}):
+                            </span>
+
+                            {zapSessionLogs.length === 0 ? (
+                              <div className="p-10 bg-slate-50 border border-dashed border-slate-200 rounded-2xl text-center text-slate-500 space-y-2">
+                                <Zap className="w-8 h-8 text-slate-400 mx-auto" />
+                                <p className="text-xs font-bold text-slate-700">No garments scanned in this session yet.</p>
+                                <p className="text-[11px] text-slate-500">Aim camera or scan barcode to begin rapid check-in!</p>
+                              </div>
+                            ) : (
+                              <div className="space-y-2.5 max-h-[420px] overflow-y-auto pr-1">
+                                {zapSessionLogs.map(entry => (
+                                  <div 
+                                    key={entry.id}
+                                    className={`p-3.5 rounded-2xl border transition shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                                      entry.isPoComplete 
+                                        ? 'bg-amber-50/80 border-amber-300 ring-2 ring-amber-300/40' 
+                                        : 'bg-slate-50 hover:bg-white border-slate-200'
+                                    }`}
+                                  >
+                                    <div className="space-y-1 min-w-0">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="font-mono font-black text-slate-900 text-xs bg-white px-2 py-0.5 rounded border border-slate-200">
+                                          {entry.itemId}
+                                        </span>
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-black ${
+                                          entry.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900' : 'bg-blue-100 text-blue-900'
+                                        }`}>
+                                          {entry.sizeGroup || 'Adult'}
+                                        </span>
+                                        <span className="text-[10px] text-slate-400 font-bold">{entry.timestamp}</span>
+                                      </div>
+
+                                      <div className="text-xs font-extrabold text-slate-900 line-clamp-1">
+                                        {entry.itemName} <span className="text-slate-500 font-normal">({entry.size} • {entry.tartanOrColour})</span>
+                                      </div>
+
+                                      {entry.customerName && (
+                                        <div className="text-[11px] text-slate-600 flex items-center gap-1">
+                                          <span>Customer: <strong className="text-slate-900">{entry.customerName}</strong></span>
+                                          <span className="font-mono text-blue-700">({entry.poId})</span>
+                                        </div>
+                                      )}
+
+                                      {entry.isPoComplete && (
+                                        <div className="bg-amber-100 text-amber-950 px-2.5 py-1 rounded-xl text-[11px] font-black border border-amber-300 flex items-center gap-1.5 mt-1">
+                                          <CheckCircle2 className="w-3.5 h-3.5 text-amber-700" />
+                                          <span>100% PO Complete! Release £{entry.depositHeld || 0} deposit refund.</span>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                                      <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black border ${
+                                        entry.actionTaken.includes('Cleaners') 
+                                          ? 'bg-cyan-100 text-cyan-900 border-cyan-300' 
+                                          : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                      }`}>
+                                        {entry.actionTaken}
+                                      </span>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUndoZapScan(entry.id)}
+                                        className="p-1.5 bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 border border-slate-200 hover:border-rose-300 rounded-lg text-xs font-bold transition cursor-pointer"
+                                        title="Undo check-in for this item"
+                                      >
+                                        <Undo2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ) : scannedCode ? (
                         <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
                           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                             <div>
@@ -4945,7 +6048,7 @@ export default function KiltHireApp() {
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <button
                                   onClick={() => setShowCreatePoModal(true)}
-                                  className="p-4 bg-emerald-50 border border-emerald-300 hover:bg-emerald-100 rounded-xl text-left transition shadow-sm group"
+                                  className="p-4 bg-emerald-50 border border-emerald-300 hover:bg-emerald-100 rounded-xl text-left transition shadow-sm group cursor-pointer"
                                 >
                                   <div className="flex items-center gap-3 mb-1">
                                     <div className="p-2 bg-emerald-600 text-white rounded-lg group-hover:scale-105 transition">
@@ -4960,7 +6063,7 @@ export default function KiltHireApp() {
 
                                 <button
                                   onClick={() => setShowSendRepairModal(true)}
-                                  className="p-4 bg-rose-50 border border-rose-300 hover:bg-rose-100 rounded-xl text-left transition shadow-sm group"
+                                  className="p-4 bg-rose-50 border border-rose-300 hover:bg-rose-100 rounded-xl text-left transition shadow-sm group cursor-pointer"
                                 >
                                   <div className="flex items-center gap-3 mb-1">
                                     <div className="p-2 bg-rose-600 text-white rounded-lg group-hover:scale-105 transition">
@@ -4968,39 +6071,39 @@ export default function KiltHireApp() {
                                     </div>
                                     <div>
                                       <h4 className="font-bold text-rose-900 text-sm">Option B: Send to Repair</h4>
-                                      <p className="text-[11px] text-rose-700">Remove from stock & log damage reason</p>
+                                      <p className="text-[11px] text-rose-700">Log damage & remove from rotation</p>
                                     </div>
                                   </div>
                                 </button>
-                              </div>
 
-                              {/* OPTION C: SEND TO DRY CLEANERS */}
-                              <button
-                                onClick={() => handleManualSendToLaundry(scItem.id)}
-                                className="w-full p-3 bg-cyan-50 border border-cyan-300 hover:bg-cyan-100 rounded-xl text-left transition shadow-sm group flex items-center gap-3"
-                              >
-                                <div className="p-2 bg-cyan-600 text-white rounded-lg group-hover:scale-105 transition">
-                                  <Sparkles className="w-4 h-4 text-cyan-200" />
-                                </div>
-                                <div>
-                                  <h4 className="font-bold text-cyan-950 text-xs">Option C: Send Garment to Dry Cleaners</h4>
-                                  <p className="text-[10px] text-cyan-800">Dispatch item for professional dry cleaning</p>
-                                </div>
-                              </button>
-
-                              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
                                 <button
-                                  onClick={() => setShowEditItemModal(scItem)}
-                                  className="py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl border border-slate-300 transition flex items-center justify-center gap-1.5"
+                                  onClick={() => handleManualSendToLaundry(scItem.id)}
+                                  className="p-4 bg-cyan-50 border border-cyan-300 hover:bg-cyan-100 rounded-xl text-left transition shadow-sm group cursor-pointer"
                                 >
-                                  <Edit3 className="w-4 h-4 text-amber-600" /> Edit Item Description
+                                  <div className="flex items-center gap-3 mb-1">
+                                    <div className="p-2 bg-cyan-600 text-white rounded-lg group-hover:scale-105 transition">
+                                      <Sparkles className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                      <h4 className="font-bold text-cyan-950 text-sm">Option C: Send to Dry Cleaners</h4>
+                                      <p className="text-[11px] text-cyan-700">Mark as out at laundry</p>
+                                    </div>
+                                  </div>
                                 </button>
 
                                 <button
-                                  onClick={() => setShowRemoveRotationModal(scItem)}
-                                  className="py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200 transition flex items-center justify-center gap-1.5"
+                                  onClick={() => setShowEditItemModal(scItem)}
+                                  className="p-4 bg-slate-50 border border-slate-300 hover:bg-slate-100 rounded-xl text-left transition shadow-sm group cursor-pointer"
                                 >
-                                  <Trash2 className="w-4 h-4 text-rose-600" /> Remove from Rotation
+                                  <div className="flex items-center gap-3 mb-1">
+                                    <div className="p-2 bg-slate-700 text-white rounded-lg group-hover:scale-105 transition">
+                                      <Edit3 className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                      <h4 className="font-bold text-slate-900 text-sm">Option D: Edit Garment Info</h4>
+                                      <p className="text-[11px] text-slate-600">Update name, size, tartan or category</p>
+                                    </div>
+                                  </div>
                                 </button>
                               </div>
                             </div>
@@ -5009,9 +6112,9 @@ export default function KiltHireApp() {
                           {scItem && scItem.status === 'ON_HIRE' && (
                             <div className="space-y-4">
                               {(() => {
-                                const po = pos.find(p => p.id === scItem.currentPoId);
+                                const po = pos.find(p => p.items.some(i => i.qrCodeId === scItem.id && !i.returned)) || pos.find(p => p.id === scItem.currentPoId);
                                 return (
-                                  <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-5 space-y-4">
+                                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-3">
                                     <h3 className="font-bold text-blue-950 text-sm flex items-center gap-2">
                                       <PackageCheck className="w-5 h-5 text-blue-600" /> Item is Currently On Hire (Linked to PO {po?.id})
                                     </h3>
@@ -5024,7 +6127,7 @@ export default function KiltHireApp() {
 
                                     <button
                                       onClick={() => po && openPoReturnChecklist(po, scItem.id)}
-                                      className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow flex items-center justify-center gap-2 transition"
+                                      className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow flex items-center justify-center gap-2 transition cursor-pointer"
                                     >
                                       <RotateCcw className="w-4 h-4" /> Open Full Multi-Item PO Return Checklist
                                     </button>
@@ -5050,7 +6153,7 @@ export default function KiltHireApp() {
 
                               <button
                                 onClick={() => handleConfirmRepairFixed(scItem.id)}
-                                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow flex items-center justify-center gap-2 transition"
+                                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow flex items-center justify-center gap-2 transition cursor-pointer"
                               >
                                 <CheckCircle2 className="w-4 h-4" /> Confirm Repair Completed & Return to Stock
                               </button>
@@ -5072,7 +6175,7 @@ export default function KiltHireApp() {
 
                               <button
                                 onClick={() => handleConfirmLaundryCleaned(scItem.id)}
-                                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow flex items-center justify-center gap-2 transition"
+                                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow flex items-center justify-center gap-2 transition cursor-pointer"
                               >
                                 <CheckCircle2 className="w-4 h-4" /> Confirm Returned Clean & Back in Available Stock
                               </button>
@@ -6284,31 +7387,71 @@ export default function KiltHireApp() {
 
               {assistantTab === 'in_stock' && (
                 <div className="space-y-4">
-                  {/* SUB-TAB SWITCHER BAR FOR STAFF AVAILABLE STOCK */}
-                  <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200 text-xs font-bold w-full sm:w-fit">
+                  {/* 5-PILL SUB-TAB SWITCHER BAR FOR SHOP INVENTORY */}
+                  <div className="flex flex-wrap bg-slate-100 p-1.5 rounded-2xl border border-slate-200 text-xs font-bold gap-1.5 w-full">
                     <button
                       type="button"
                       onClick={() => setStaffStockSubTab('SHOP_STOCK')}
-                      className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-2 cursor-pointer ${
+                      className={`px-3.5 py-2 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
                         staffStockSubTab === 'SHOP_STOCK'
-                          ? 'bg-emerald-600 text-white shadow-sm font-extrabold'
+                          ? 'bg-emerald-600 text-white shadow-sm font-black'
                           : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                       }`}
                     >
                       <Package className="w-4 h-4" />
-                      In-House Shop Stock ({availableItems.length})
+                      In-House Stock ({availableItems.length})
                     </button>
+
                     <button
                       type="button"
                       onClick={() => setStaffStockSubTab('OUTSOURCED_DEFAULTS')}
-                      className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-2 cursor-pointer ${
+                      className={`px-3.5 py-2 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
                         staffStockSubTab === 'OUTSOURCED_DEFAULTS'
-                          ? 'bg-indigo-600 text-white shadow-sm font-extrabold'
+                          ? 'bg-indigo-600 text-white shadow-sm font-black'
                           : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                       }`}
                     >
                       <Store className="w-4 h-4 text-indigo-300" />
-                      Outsourced &amp; Sub-Hire Defaults ({items.filter(i => i.isOutsourcedDefault || i.id.startsWith('EXT-')).length})
+                      Outsourced ({items.filter(i => i.isOutsourcedDefault || i.id.startsWith('EXT-')).length})
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setStaffStockSubTab('ON_HIRE')}
+                      className={`px-3.5 py-2 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                        staffStockSubTab === 'ON_HIRE'
+                          ? 'bg-blue-600 text-white shadow-sm font-black'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                      }`}
+                    >
+                      <PackageCheck className="w-4 h-4" />
+                      Currently On Hire ({onHireItems.length})
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setStaffStockSubTab('IN_REPAIR')}
+                      className={`px-3.5 py-2 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                        staffStockSubTab === 'IN_REPAIR'
+                          ? 'bg-rose-600 text-white shadow-sm font-black'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                      }`}
+                    >
+                      <Wrench className="w-4 h-4" />
+                      In Repair ({inRepairItems.length})
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setStaffStockSubTab('NEEDS_CLEANING')}
+                      className={`px-3.5 py-2 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                        staffStockSubTab === 'NEEDS_CLEANING'
+                          ? 'bg-cyan-600 text-white shadow-sm font-black'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                      }`}
+                    >
+                      <Sparkles className="w-4 h-4 text-cyan-300" />
+                      At Cleaners ({items.filter(i => i.status === 'NEEDS_CLEANING').length})
                     </button>
                   </div>
 
@@ -7081,218 +8224,6 @@ export default function KiltHireApp() {
               )}
             </div>
           )}
-
-              {/* ON HIRE LIST TAB */}
-              {assistantTab === 'on_hire' && (
-                <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-3">
-                    <div>
-                      <h3 className="text-base font-extrabold text-blue-900 flex items-center gap-2">
-                        <PackageCheck className="w-5 h-5 text-blue-600" /> Garments Currently On Hire With Customers ({getFilteredItems(onHireItems, assistantSizeFilter, assistantCategoryFilter, assistantTartanFilter).length})
-                      </h3>
-                      <p className="text-xs text-slate-500">Out on rental agreements. Do not search store shelves for these!</p>
-                    </div>
-
-                    <div className="relative w-full sm:w-64">
-                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                      <input 
-                        type="text"
-                        placeholder="Search QR or customer..."
-                        value={assistantSearch}
-                        onChange={e => setAssistantSearch(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-900 outline-none focus:border-blue-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {getFilteredItems(onHireItems, assistantSizeFilter, assistantCategoryFilter, assistantTartanFilter).map(item => {
-                      const po = pos.find(p => p.id === item.currentPoId);
-                      const overdueInfo = getOverdueStatus(po?.hireEndDate);
-
-                      return (
-                        <div key={item.id} className={`p-4 rounded-2xl space-y-2 transition ${overdueInfo.cardBg}`}>
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-mono font-extrabold text-slate-900 text-xs bg-white px-2 py-0.5 rounded border border-slate-200">
-                                {item.id}
-                              </span>
-                              <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded ${item.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900' : 'bg-blue-100 text-blue-900'}`}>
-                                {item.sizeGroup}
-                              </span>
-                            </div>
-
-                            {/* DYNAMIC RETURN DUE DATE & OVERDUE BADGE */}
-                            <span className={`px-2.5 py-1 text-[10px] rounded-full border ${overdueInfo.badgeBg}`}>
-                              {overdueInfo.label}
-                            </span>
-                          </div>
-
-                          <div>
-                            <h4 className="font-bold text-slate-900 text-sm">{item.name}</h4>
-                            <p className="text-xs text-slate-600">{item.tartanOrColour} ({item.size})</p>
-                          </div>
-
-                          <div className="bg-white/90 p-2.5 rounded-xl text-xs space-y-1 border border-slate-200">
-                            <p><span className="text-slate-500">Customer:</span> <strong className="text-slate-900">{po?.customerName}</strong> ({po?.customerPhone})</p>
-                            <p><span className="text-slate-500">PO Ref:</span> <strong className="text-blue-900 font-mono">{po?.id}</strong></p>
-                            <p><span className="text-slate-500">Return Due Date:</span> <strong className={overdueInfo.textColor}>{po?.hireEndDate || 'Not set'}</strong></p>
-                          </div>
-
-                          <button
-                            onClick={() => {
-                              if (po) openPoReturnChecklist(po, item.id);
-                            }}
-                            className={`w-full py-2.5 rounded-xl font-bold text-xs shadow transition flex items-center justify-center gap-1.5 ${
-                              overdueInfo.level === 'OVERDUE_SEVERE' ? 'bg-rose-600 hover:bg-rose-700 text-white' :
-                              overdueInfo.level === 'OVERDUE_LIGHT' ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold' :
-                              'bg-blue-600 hover:bg-blue-700 text-white'
-                            }`}
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" /> Open Full PO Return Checklist
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* IN REPAIR LIST TAB */}
-              {assistantTab === 'in_repair' && (
-                <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-3">
-                    <div>
-                      <h3 className="text-base font-extrabold text-rose-900 flex items-center gap-2">
-                        <Wrench className="w-5 h-5 text-rose-600" /> Garments in Repair Workshop ({getFilteredItems(inRepairItems, assistantSizeFilter, assistantCategoryFilter, assistantTartanFilter).length})
-                      </h3>
-                      <p className="text-xs text-slate-500">Items undergoing maintenance or tailoring repair.</p>
-                    </div>
-
-                    <div className="relative w-full sm:w-64">
-                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                      <input 
-                        type="text"
-                        placeholder="Search repair items..."
-                        value={assistantSearch}
-                        onChange={e => setAssistantSearch(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-900 outline-none focus:border-rose-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {getFilteredItems(inRepairItems, assistantSizeFilter).map(item => {
-                      const rep = item.repairHistory?.[0];
-                      return (
-                        <div key={item.id} className="p-4 bg-rose-50/60 border border-rose-200 rounded-2xl space-y-2 transition shadow-sm">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-mono font-extrabold text-rose-800 text-xs bg-white px-2 py-0.5 rounded border border-rose-200">
-                                {item.id}
-                              </span>
-                              <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded ${item.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900' : 'bg-blue-100 text-blue-900'}`}>
-                                {item.sizeGroup}
-                              </span>
-                            </div>
-                            <span className="px-2 py-0.5 text-[10px] font-bold bg-rose-100 text-rose-900 border border-rose-300 rounded-full">
-                              🔧 In Repair Queue
-                            </span>
-                          </div>
-
-                          <div>
-                            <h4 className="font-bold text-slate-900 text-sm">{item.name}</h4>
-                            <p className="text-xs text-slate-600">{item.tartanOrColour} ({item.size})</p>
-                          </div>
-
-                          <div className="bg-white p-2.5 rounded-xl text-xs space-y-0.5 border border-rose-100">
-                            <p><span className="text-slate-500">Issue:</span> <strong className="text-rose-900">{rep?.reason || 'Repair'}</strong></p>
-                            <p><span className="text-slate-500">Sent:</span> {rep?.dateSent}</p>
-                          </div>
-
-                          <button
-                            onClick={() => handleConfirmRepairFixed(item.id)}
-                            className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow transition flex items-center justify-center gap-1.5"
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Confirm Repair Fixed & Return to Stock
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* AT DRY CLEANERS TAB */}
-              {assistantTab === 'needs_cleaning' && (
-                <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-3">
-                    <div>
-                      <h3 className="text-base font-extrabold text-cyan-950 flex items-center gap-2">
-                        <Sparkles className="w-5 h-5 text-cyan-600" /> Garments Out at Dry Cleaners ({items.filter(i => i.status === 'NEEDS_CLEANING').length})
-                      </h3>
-                      <p className="text-xs text-slate-500">Track garments currently being cleaned. Click confirm when laundered clean and ready in store.</p>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      {items.filter(i => i.status === 'NEEDS_CLEANING').length > 0 && (
-                        <button
-                          onClick={handleBulkConfirmLaundryCleaned}
-                          className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1.5"
-                        >
-                          <CheckCircle2 className="w-4 h-4" /> Bulk Confirm All Clean & Back in Stock
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {items.filter(i => i.status === 'NEEDS_CLEANING').length === 0 ? (
-                    <div className="p-8 text-center text-slate-500 text-xs bg-slate-50 rounded-2xl">
-                      🎉 No garments currently at dry cleaners. All garments are clean & in available stock!
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {getFilteredItems(items.filter(i => i.status === 'NEEDS_CLEANING'), assistantSizeFilter).map(item => {
-                        const laun = item.laundryHistory?.[0];
-                        return (
-                          <div key={item.id} className="p-4 bg-cyan-50/60 border border-cyan-200 rounded-2xl space-y-2 transition shadow-sm">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-mono font-extrabold text-cyan-900 text-xs bg-white px-2 py-0.5 rounded border border-cyan-200">
-                                  {item.id}
-                                </span>
-                                <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded ${item.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900' : 'bg-blue-100 text-blue-900'}`}>
-                                  {item.sizeGroup}
-                                </span>
-                              </div>
-                              <span className="px-2 py-0.5 text-[10px] font-bold bg-cyan-100 text-cyan-900 border border-cyan-300 rounded-full">
-                                🧼 At Dry Cleaners
-                              </span>
-                            </div>
-
-                            <div>
-                              <h4 className="font-bold text-slate-900 text-sm">{item.name}</h4>
-                              <p className="text-xs text-slate-600">{item.tartanOrColour} ({item.size})</p>
-                            </div>
-
-                            <div className="bg-white p-2.5 rounded-xl text-xs space-y-0.5 border border-cyan-100">
-                              <p><span className="text-slate-500">Dispatched:</span> <strong>{laun?.dateSent}</strong> by {laun?.sentByStaff}</p>
-                              <p><span className="text-slate-500">Notes:</span> {laun?.notes || 'Laundry cycle'}</p>
-                            </div>
-
-                            <button
-                              onClick={() => handleConfirmLaundryCleaned(item.id)}
-                              className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow transition flex items-center justify-center gap-1.5"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5" /> Confirm Clean & Back in Stock
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* CUSTOMER POs TAB (ACTIVE HIRES ONLY) */}
               {assistantTab === 'pos' && (
@@ -8841,6 +9772,7 @@ export default function KiltHireApp() {
                                   const isCancelled = po.orderStatus === 'CANCELLED';
                                   const isPaid = po.paymentStatus === 'PAID_WITH_DEPOSIT' || po.paymentStatus === 'FULL_BALANCE_PAID';
                                   const isUnpaidBalance = !isPaid && !isCancelled;
+                                  const isReadyForCollection = po.orderStatus === 'READY_FOR_COLLECTION';
 
                                   return (
                                     <div 
@@ -8848,8 +9780,9 @@ export default function KiltHireApp() {
                                       className={`p-4 rounded-2xl space-y-3 transition border ${
                                         isCancelled ? 'bg-rose-50/50 border-rose-300 opacity-75' :
                                         isCollected ? 'bg-emerald-500/10 border-emerald-500/40 shadow-sm ring-1 ring-emerald-500/30' :
+                                        !isReadyForCollection ? 'bg-amber-50/80 border-amber-300 shadow-sm ring-1 ring-amber-300/60' :
                                         isUnpaidBalance ? 'bg-amber-50 border-amber-400 shadow-md ring-2 ring-amber-400/40' :
-                                        'bg-white border-amber-200 shadow-sm'
+                                        'bg-emerald-50/40 border-emerald-300 shadow-sm'
                                       }`}
                                     >
                                       <div className="flex items-center justify-between gap-1 flex-wrap">
@@ -8864,11 +9797,13 @@ export default function KiltHireApp() {
                                           <span className="text-[10px] font-extrabold bg-emerald-600 text-white px-2.5 py-0.5 rounded-full shadow-xs flex items-center gap-1">
                                             ✓ Collected & Out on Hire (Locked)
                                           </span>
+                                        ) : isReadyForCollection ? (
+                                          <span className="text-[10px] font-extrabold bg-emerald-100 text-emerald-900 border border-emerald-300 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                                            🛍️ Bagged &amp; Ready for Pickup
+                                          </span>
                                         ) : (
-                                          <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${
-                                            po.orderStatus === 'READY_FOR_COLLECTION' ? 'bg-indigo-100 text-indigo-900 border-indigo-300' : 'bg-amber-100 text-amber-900 border-amber-300'
-                                          }`}>
-                                            {po.orderStatus === 'READY_FOR_COLLECTION' ? '🏷️ Ready for Pickup' : '📦 Assembly Needed'}
+                                          <span className="text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                                            ⚠️ Must Be Picked &amp; Assembled First
                                           </span>
                                         )}
                                       </div>
@@ -8925,24 +9860,69 @@ export default function KiltHireApp() {
 
                                       {/* ACTION BUTTONS */}
                                       {!isCancelled && (
-                                        <div className="space-y-1.5">
+                                        <div className="space-y-2">
                                           {isCollected ? (
                                             <div className="w-full py-2 bg-emerald-900/10 border border-emerald-500/30 text-emerald-800 font-extrabold text-xs rounded-xl text-center flex items-center justify-center gap-1.5">
                                               🔒 Order Collected & Handed Out — Locked in Schedule
                                             </div>
+                                          ) : !isReadyForCollection ? (
+                                            /* UNPICKED / UNASSEMBLED ORDER MUST BE PICKED & ASSEMBLED FIRST */
+                                            <div className="space-y-2">
+                                              <div className="flex items-center gap-2">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => openAssemblyModal(po)}
+                                                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer ring-2 ring-indigo-300"
+                                                >
+                                                  <CheckCircle2 className="w-4 h-4" /> 1. Pick &amp; Assemble Outfit Now
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setShowPrintPickSheetModal(po)}
+                                                  className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs rounded-xl transition border border-slate-300 flex items-center justify-center gap-1 cursor-pointer shadow-2xs"
+                                                  title="Print physical paper pick sheet"
+                                                >
+                                                  <Printer className="w-3.5 h-3.5 text-slate-700" />
+                                                </button>
+                                              </div>
+
+                                              <div className="flex items-center gap-2">
+                                                <button
+                                                  type="button"
+                                                  disabled
+                                                  className="flex-1 py-2 font-extrabold text-xs rounded-xl bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed flex items-center justify-center gap-1.5"
+                                                  title="This outfit must be picked and assembled into its garment bag before handing out to the customer."
+                                                >
+                                                  <Lock className="w-3.5 h-3.5 text-slate-400" /> 2. Mark Collected (Locked Until Picked)
+                                                </button>
+
+                                                <button
+                                                  onClick={() => {
+                                                    setShowCancelPoModal(po);
+                                                    setCancelPinInput('');
+                                                    setCancelReasonInput('');
+                                                    setCancelRefundOption(po.totalDepositHeld > 0 ? 'FULL_REFUND_ISSUED' : 'NO_DEPOSIT_WAS_PAID');
+                                                  }}
+                                                  className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-xl font-extrabold text-xs transition flex items-center gap-1 shrink-0 cursor-pointer"
+                                                >
+                                                  <XCircle className="w-4 h-4 text-rose-600" /> Cancel
+                                                </button>
+                                              </div>
+                                            </div>
                                           ) : (
+                                            /* READY FOR COLLECTION - CAN NOW BE HANDED OUT */
                                             <div className="flex items-center gap-2">
                                               <button
                                                 onClick={() => handleMarkHandedOut(po)}
                                                 disabled={isUnpaidBalance}
-                                                className={`flex-1 py-2 font-extrabold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5 ${
+                                                className={`flex-1 py-2.5 font-extrabold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-1.5 ${
                                                   isUnpaidBalance 
                                                     ? 'bg-slate-300 text-slate-500 cursor-not-allowed border border-slate-300 opacity-70' 
-                                                    : 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
+                                                    : 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer ring-2 ring-emerald-400/50'
                                                 }`}
                                                 title={isUnpaidBalance ? 'Collect hire fee balance above before handing out order' : 'Mark order as collected and handed out to customer'}
                                               >
-                                                <CheckCircle2 className="w-4 h-4" /> Mark Collected & Out on Hire
+                                                <CheckCircle2 className="w-4 h-4" /> ✓ Mark Collected &amp; Hand Out (Bag Ready 🛍️)
                                               </button>
 
                                               <button
@@ -8952,7 +9932,7 @@ export default function KiltHireApp() {
                                                   setCancelReasonInput('');
                                                   setCancelRefundOption(po.totalDepositHeld > 0 ? 'FULL_REFUND_ISSUED' : 'NO_DEPOSIT_WAS_PAID');
                                                 }}
-                                                className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-xl font-extrabold text-xs transition flex items-center gap-1 shrink-0 cursor-pointer"
+                                                className="px-3 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-xl font-extrabold text-xs transition flex items-center gap-1 shrink-0 cursor-pointer"
                                               >
                                                 <XCircle className="w-4 h-4 text-rose-600" /> Cancel
                                               </button>
@@ -9019,19 +9999,25 @@ export default function KiltHireApp() {
                                   </span>
                                 </div>
 
-                                {pickPackQueue.map(po => (
-                                  <div key={po.id} className="bg-white border border-indigo-200 p-3.5 rounded-xl space-y-2.5 shadow-sm">
-                                    <div className="flex items-center justify-between">
-                                      <span className="font-mono font-extrabold text-xs text-indigo-900 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">{po.id}</span>
-                                      <span className="text-[10px] font-extrabold bg-indigo-100 text-indigo-900 px-2 py-0.5 rounded-full border border-indigo-300">
-                                        Collect: {po.hireStartDate}
-                                      </span>
-                                    </div>
+                                {pickPackQueue.map(po => {
+                                  const isSameDay = po.hireStartDate === calSelectedDate;
+                                  return (
+                                    <div key={po.id} className={`p-3.5 rounded-xl space-y-2.5 shadow-sm border ${
+                                      isSameDay ? 'bg-amber-50/60 border-amber-300 ring-1 ring-amber-300' : 'bg-white border-indigo-200'
+                                    }`}>
+                                      <div className="flex items-center justify-between">
+                                        <span className="font-mono font-extrabold text-xs text-indigo-900 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">{po.id}</span>
+                                        <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
+                                          isSameDay ? 'bg-amber-500 text-slate-950 border-amber-600 font-black' : 'bg-indigo-100 text-indigo-900 border-indigo-300'
+                                        }`}>
+                                          {isSameDay ? `⚡ Urgent: Collect Today (${po.hireStartDate})` : `Collect: ${po.hireStartDate}`}
+                                        </span>
+                                      </div>
 
-                                    <div>
-                                      <strong className="text-slate-900 text-xs block">{po.customerName}</strong>
-                                      <span className="text-[11px] text-slate-500 block">{po.customerEmail} • {po.customerPhone}</span>
-                                    </div>
+                                      <div>
+                                        <strong className="text-slate-900 text-xs block">{po.customerName}</strong>
+                                        <span className="text-[11px] text-slate-500 block">{po.customerEmail} • {po.customerPhone}</span>
+                                      </div>
 
                                     {/* FITTING MEASUREMENTS CARD */}
                                     {po.measurements && (
@@ -9067,7 +10053,8 @@ export default function KiltHireApp() {
                                       </button>
                                     </div>
                                   </div>
-                                ))}
+                                );
+                              })}
                               </div>
                             )}
 
@@ -12778,57 +13765,487 @@ export default function KiltHireApp() {
                 </div>
               )}
 
-              {/* TAB 6: REPAIRS */}
+              {/* TAB 6: TAILOR'S ALTERATIONS & REPAIRS WORKSHOP */}
               {activeTab === 'repairs' && (
                 <div className="space-y-6">
-                  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-                    <h2 className="text-lg font-bold text-rose-800 flex items-center gap-2">
-                      <Wrench className="w-5 h-5 text-rose-600" /> Repair & Maintenance Workshop Queue
-                    </h2>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Items currently removed from stock awaiting repair, seamstress work, or dry cleaning.
-                    </p>
+                  {/* WORKSHOP HEADER BANNER */}
+                  <div className="bg-gradient-to-r from-purple-950 via-slate-900 to-indigo-950 text-white rounded-3xl p-6 shadow-xl space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <span className="px-3 py-1 bg-white/10 backdrop-blur rounded-full text-[11px] font-extrabold uppercase tracking-wider text-purple-300 inline-flex items-center gap-1.5 border border-purple-400/30">
+                          <Scissors className="w-3.5 h-3.5 text-purple-400" /> In-House Tailoring &amp; Workshop Bench
+                        </span>
+                        <h2 className="text-xl font-extrabold tracking-tight">The Tailor’s Alteration &amp; Maintenance Workshop</h2>
+                        <p className="text-xs text-purple-200 max-w-2xl leading-relaxed">
+                          Manage custom fitting adjustments for upcoming events, post-hire re-stock resets back to standard sizes, and seamstress defect repairs.
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => setShowPrintWorkshopManifestModal(true)}
+                          className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white font-extrabold text-xs rounded-xl border border-white/20 shadow transition flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Printer className="w-4 h-4" /> Daily Workshop Manifest
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewAlterationForm({
+                              taskType: 'PRE_HIRE_FITTING',
+                              itemId: items.find(i => i.category === 'Kilts' && i.status === 'AVAILABLE')?.id || (items[0]?.id || ''),
+                              wearerName: '',
+                              customerPhone: '',
+                              poId: '',
+                              adjustmentType: 'WAIST_TAKE_IN',
+                              targetMeasurement: 'Take in waist 2 inches',
+                              instructions: 'Adjust waistband buckle straps.',
+                              destination: 'BAG_FOR_CUSTOMER',
+                              collectionDate: new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10),
+                              assignedTailor: 'Mary (Seamstress)'
+                            });
+                            setShowCreateAlterationModal(true);
+                          }}
+                          className="px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs rounded-xl shadow-lg transition flex items-center gap-2 cursor-pointer ring-2 ring-amber-300/60"
+                        >
+                          <PlusCircle className="w-4 h-4" /> + Log New Tailor Job
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* WORKSHOP VIEW SUB-NAV TOGGLE */}
+                    <div className="flex items-center gap-2 pt-2 border-t border-purple-800/60">
+                      <button
+                        type="button"
+                        onClick={() => setWorkshopView('ALTERATIONS')}
+                        className={`px-4 py-2 rounded-xl text-xs font-black transition flex items-center gap-2 cursor-pointer ${
+                          workshopView === 'ALTERATIONS'
+                            ? 'bg-purple-600 text-white shadow-md ring-2 ring-purple-400'
+                            : 'bg-white/10 text-purple-200 hover:bg-white/20'
+                        }`}
+                      >
+                        <Scissors className="w-4 h-4" />
+                        <span>Alterations Kanban Board</span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] bg-purple-950 text-purple-200 font-extrabold">
+                          {alterationTasks.filter(t => t.stage !== 'COMPLETED').length} Active
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setWorkshopView('DEFECT_REPAIRS')}
+                        className={`px-4 py-2 rounded-xl text-xs font-black transition flex items-center gap-2 cursor-pointer ${
+                          workshopView === 'DEFECT_REPAIRS'
+                            ? 'bg-rose-600 text-white shadow-md ring-2 ring-rose-400'
+                            : 'bg-white/10 text-purple-200 hover:bg-white/20'
+                        }`}
+                      >
+                        <Wrench className="w-4 h-4" />
+                        <span>Defect Repairs Queue</span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] bg-rose-950 text-rose-200 font-extrabold">
+                          {items.filter(i => i.status === 'IN_REPAIR').length} In Repair
+                        </span>
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {items.filter(i => i.status === 'IN_REPAIR').map(item => {
-                      const latestRep = item.repairHistory?.[0];
-                      return (
-                        <div key={item.id} className="bg-white border border-rose-200 rounded-2xl p-5 shadow-sm space-y-3">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-mono font-extrabold text-amber-800 text-sm bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                                  {item.id}
+                  {/* ───────────────────────────────────────────────────────────── */}
+                  {/* SUB-VIEW 1: ALTERATIONS KANBAN BOARD                          */}
+                  {/* ───────────────────────────────────────────────────────────── */}
+                  {workshopView === 'ALTERATIONS' && (
+                    <div className="space-y-6">
+                      
+                      {/* STATS STRIP */}
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                        <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm text-center">
+                          <span className="text-[10px] font-extrabold uppercase text-slate-500 block">Total Jobs</span>
+                          <span className="text-2xl font-black text-slate-900">{alterationTasks.length}</span>
+                        </div>
+                        <div className="bg-rose-50 border border-rose-200 p-4 rounded-2xl shadow-sm text-center">
+                          <span className="text-[10px] font-extrabold uppercase text-rose-700 block">🔴 Urgent (&lt;48h)</span>
+                          <span className="text-2xl font-black text-rose-900">
+                            {alterationTasks.filter(t => {
+                              if (t.stage === 'COMPLETED' || !t.collectionDate) return false;
+                              const diffDays = (new Date(t.collectionDate).getTime() - Date.now()) / (1000 * 3600 * 24);
+                              return diffDays <= 2;
+                            }).length}
+                          </span>
+                        </div>
+                        <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl shadow-sm text-center">
+                          <span className="text-[10px] font-extrabold uppercase text-amber-800 block">✂️ On Bench</span>
+                          <span className="text-2xl font-black text-amber-950">
+                            {alterationTasks.filter(t => t.stage === 'IN_PROGRESS').length}
+                          </span>
+                        </div>
+                        <div className="bg-purple-50 border border-purple-200 p-4 rounded-2xl shadow-sm text-center">
+                          <span className="text-[10px] font-extrabold uppercase text-purple-800 block">🛍️ Ready for Bagging</span>
+                          <span className="text-2xl font-black text-purple-950">
+                            {alterationTasks.filter(t => t.stage === 'COMPLETED' && t.destination === 'BAG_FOR_CUSTOMER').length}
+                          </span>
+                        </div>
+                        <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl shadow-sm text-center">
+                          <span className="text-[10px] font-extrabold uppercase text-emerald-800 block">📦 Ready for Re-Stock</span>
+                          <span className="text-2xl font-black text-emerald-950">
+                            {alterationTasks.filter(t => t.stage === 'COMPLETED' && t.destination === 'RESTOCK_TO_SHELVES').length}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* FILTER & SEARCH BAR */}
+                      <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs font-extrabold text-slate-500 mr-1 flex items-center gap-1">
+                            <Filter className="w-3.5 h-3.5 text-slate-400" /> Filter:
+                          </span>
+                          
+                          {/* URGENCY FILTERS */}
+                          {(['ALL', 'URGENT', 'THIS_WEEK'] as const).map(u => (
+                            <button
+                              key={u}
+                              type="button"
+                              onClick={() => setAlterationUrgencyFilter(u)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition cursor-pointer ${
+                                alterationUrgencyFilter === u
+                                  ? 'bg-purple-600 text-white shadow-sm'
+                                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                              }`}
+                            >
+                              {u === 'ALL' ? 'All Jobs' : u === 'URGENT' ? '🔴 Urgent (<48h)' : '🟡 This Week'}
+                            </button>
+                          ))}
+
+                          <div className="h-4 w-px bg-slate-200 mx-1" />
+
+                          {/* CATEGORY FILTERS */}
+                          {['ALL', 'Kilts', 'Jackets', 'Waistcoats'].map(cat => (
+                            <button
+                              key={cat}
+                              type="button"
+                              onClick={() => setAlterationCategoryFilter(cat)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition cursor-pointer ${
+                                alterationCategoryFilter === cat
+                                  ? 'bg-slate-900 text-amber-400 shadow-sm'
+                                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                              }`}
+                            >
+                              {cat === 'ALL' ? 'All Items' : cat}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* SEARCH INPUT */}
+                        <div className="relative min-w-[240px]">
+                          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            placeholder="Search garment, customer, tailor..."
+                            value={alterationSearchQuery}
+                            onChange={e => setAlterationSearchQuery(e.target.value)}
+                            className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-purple-500 focus:bg-white shadow-inner"
+                          />
+                        </div>
+                      </div>
+
+                      {/* 3-COLUMN KANBAN BOARD */}
+                      {(() => {
+                        // Apply active filters
+                        const filteredTasks = alterationTasks.filter(task => {
+                          if (alterationCategoryFilter !== 'ALL' && task.category !== alterationCategoryFilter) return false;
+                          if (alterationUrgencyFilter === 'URGENT') {
+                            if (!task.collectionDate) return false;
+                            const diff = (new Date(task.collectionDate).getTime() - Date.now()) / (1000 * 3600 * 24);
+                            if (diff > 2) return false;
+                          } else if (alterationUrgencyFilter === 'THIS_WEEK') {
+                            if (!task.collectionDate) return false;
+                            const diff = (new Date(task.collectionDate).getTime() - Date.now()) / (1000 * 3600 * 24);
+                            if (diff > 7) return false;
+                          }
+
+                          if (alterationSearchQuery.trim()) {
+                            const q = alterationSearchQuery.toLowerCase();
+                            const match = 
+                              task.id.toLowerCase().includes(q) ||
+                              task.itemId.toLowerCase().includes(q) ||
+                              task.itemName.toLowerCase().includes(q) ||
+                              (task.wearerName && task.wearerName.toLowerCase().includes(q)) ||
+                              (task.assignedTailor && task.assignedTailor.toLowerCase().includes(q)) ||
+                              task.instructions.toLowerCase().includes(q);
+                            if (!match) return false;
+                          }
+
+                          return true;
+                        });
+
+                        const queued = filteredTasks.filter(t => t.stage === 'QUEUED');
+                        const bench = filteredTasks.filter(t => t.stage === 'IN_PROGRESS');
+                        const completed = filteredTasks.filter(t => t.stage === 'COMPLETED');
+
+                        const renderTaskCard = (task: AlterationTask) => {
+                          const isUrgent = task.collectionDate && ((new Date(task.collectionDate).getTime() - Date.now()) / (1000 * 3600 * 24) <= 2);
+                          const isRestock = task.destination === 'RESTOCK_TO_SHELVES';
+
+                          return (
+                            <div
+                              key={task.id}
+                              className={`bg-white border-2 rounded-2xl p-4 shadow-sm space-y-3 transition hover:shadow-md ${
+                                task.stage === 'IN_PROGRESS' 
+                                  ? 'border-amber-400 ring-2 ring-amber-200' 
+                                  : isUrgent && task.stage === 'QUEUED'
+                                  ? 'border-rose-400 ring-2 ring-rose-100'
+                                  : 'border-slate-200'
+                              }`}
+                            >
+                              {/* CARD HEADER */}
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-mono font-black text-xs text-purple-900 bg-purple-100 px-2 py-0.5 rounded border border-purple-300">
+                                      {task.id}
+                                    </span>
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${
+                                      isRestock ? 'bg-cyan-100 text-cyan-900 border border-cyan-300' : 'bg-indigo-100 text-indigo-900 border border-indigo-300'
+                                    }`}>
+                                      {isRestock ? '📦 Re-Stock Reset' : '🛍️ Pre-Hire Fitting'}
+                                    </span>
+                                  </div>
+                                  <h4 className="text-xs font-black text-slate-900 leading-snug">{task.itemName}</h4>
+                                  <p className="text-[11px] text-slate-500 font-semibold font-mono">{task.itemId} • {task.originalGarmentSize}</p>
+                                </div>
+
+                                {task.collectionDate && task.stage !== 'COMPLETED' && (
+                                  <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black shrink-0 ${
+                                    isUrgent 
+                                      ? 'bg-rose-600 text-white animate-pulse shadow-sm' 
+                                      : 'bg-slate-100 text-slate-700 border border-slate-200'
+                                  }`}>
+                                    {isUrgent ? '🔴 <48h Rush' : `Due: ${task.collectionDate}`}
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* CUSTOMER & PO INFO */}
+                              {task.wearerName && (
+                                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-[11px] space-y-0.5 text-slate-700">
+                                  <p><span className="text-slate-400">Customer:</span> <strong className="text-slate-900">{task.wearerName}</strong></p>
+                                  {task.poId && <p><span className="text-slate-400">Linked Order:</span> <span className="font-mono font-bold text-blue-700">{task.poId}</span></p>}
+                                </div>
+                              )}
+
+                              {/* TARGET ADJUSTMENT SPECIFICATION */}
+                              <div className="bg-purple-50/80 border border-purple-200 p-2.5 rounded-xl space-y-1 text-xs">
+                                <span className="text-[10px] font-black uppercase text-purple-900 block flex items-center gap-1">
+                                  <Scissors className="w-3 h-3 text-purple-700" /> Target Tailoring Adjustment:
                                 </span>
-                                <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${item.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900' : 'bg-blue-100 text-blue-900'}`}>
-                                  {item.sizeGroup}
+                                <p className="font-black text-purple-950 text-xs">{task.targetMeasurement}</p>
+                                <p className="text-[11px] text-purple-800 leading-tight">{task.instructions}</p>
+                              </div>
+
+                              {/* TAILOR ASSIGNMENT & DESTINATION */}
+                              <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100">
+                                <span>Tailor: <strong className="text-slate-800">{task.assignedTailor || 'Unassigned'}</strong></span>
+                                <span className={`font-bold ${isRestock ? 'text-cyan-700' : 'text-indigo-700'}`}>
+                                  {isRestock ? '➔ Store Shelves' : '➔ Outfit Bag'}
                                 </span>
                               </div>
-                              <h3 className="text-base font-bold text-slate-900 mt-1">{item.name}</h3>
-                              <p className="text-xs text-slate-500">{item.tartanOrColour} ({item.size})</p>
+
+                              {/* ACTION BUTTONS */}
+                              <div className="flex items-center gap-1.5 pt-1">
+                                {task.stage === 'QUEUED' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateAlterationStage(task.id, 'IN_PROGRESS', currentUser?.name || 'Mary (Seamstress)')}
+                                    className="flex-1 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                                  >
+                                    <Scissors className="w-3.5 h-3.5" /> Take to Bench
+                                  </button>
+                                )}
+
+                                {task.stage === 'IN_PROGRESS' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateAlterationStage(task.id, 'COMPLETED')}
+                                    className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" /> Mark Completed &amp; Inspected
+                                  </button>
+                                )}
+
+                                {task.stage === 'COMPLETED' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateAlterationStage(task.id, 'IN_PROGRESS')}
+                                    className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 transition flex items-center justify-center gap-1 cursor-pointer"
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5" /> Reopen Task
+                                  </button>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => setShowPrintJobCardModal(task)}
+                                  className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl border border-slate-200 transition cursor-pointer"
+                                  title="Print Tailor Bench Slip"
+                                >
+                                  <Printer className="w-3.5 h-3.5" />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteAlterationTask(task.id)}
+                                  className="p-2 bg-slate-100 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-xl border border-slate-200 transition cursor-pointer"
+                                  title="Delete Task"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </div>
-                            <span className="px-2.5 py-1 text-xs font-bold bg-rose-100 text-rose-800 rounded-full border border-rose-300">
-                              {latestRep?.severity || 'Medium'} Severity
-                            </span>
-                          </div>
+                          );
+                        };
 
-                          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1 text-slate-700">
-                            <p><span className="text-slate-500">Defect Reason:</span> <strong>{latestRep?.reason || 'Requires repair'}</strong></p>
-                            <p><span className="text-slate-500">Sent Date:</span> {latestRep?.dateSent}</p>
-                            <p><span className="text-slate-500">Logged By:</span> {latestRep?.sentByStaff}</p>
-                          </div>
+                        return (
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            
+                            {/* COLUMN 1: QUEUED (PENDING WORK) */}
+                            <div className="bg-slate-100/80 border border-slate-200 rounded-3xl p-4 space-y-4">
+                              <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-3 h-3 rounded-full bg-slate-400" />
+                                  <h3 className="text-sm font-black text-slate-900">1. Alteration Queue</h3>
+                                </div>
+                                <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-white text-slate-800 border border-slate-300">
+                                  {queued.length}
+                                </span>
+                              </div>
 
-                          <button
-                            onClick={() => handleConfirmRepairFixed(item.id)}
-                            className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow flex items-center justify-center gap-2 transition"
-                          >
-                            <CheckCircle2 className="w-4 h-4" /> Confirm Repair Complete & Return to Stock
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
+                              <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
+                                {queued.length === 0 ? (
+                                  <div className="p-8 text-center bg-white/60 rounded-2xl border border-dashed border-slate-200 text-slate-400 text-xs">
+                                    No pending alteration tasks in queue.
+                                  </div>
+                                ) : (
+                                  queued.map(renderTaskCard)
+                                )}
+                              </div>
+                            </div>
+
+                            {/* COLUMN 2: ON BENCH (IN PROGRESS) */}
+                            <div className="bg-amber-50/50 border border-amber-200 rounded-3xl p-4 space-y-4">
+                              <div className="flex items-center justify-between pb-2 border-b border-amber-200">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-3 h-3 rounded-full bg-amber-500 animate-pulse" />
+                                  <h3 className="text-sm font-black text-amber-950">2. On Tailor Bench</h3>
+                                </div>
+                                <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-500 text-slate-950">
+                                  {bench.length}
+                                </span>
+                              </div>
+
+                              <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
+                                {bench.length === 0 ? (
+                                  <div className="p-8 text-center bg-white/60 rounded-2xl border border-dashed border-amber-200 text-amber-800/60 text-xs">
+                                    Bench is clear. Click "Take to Bench" on any queued task to begin tailoring.
+                                  </div>
+                                ) : (
+                                  bench.map(renderTaskCard)
+                                )}
+                              </div>
+                            </div>
+
+                            {/* COLUMN 3: COMPLETED & READY */}
+                            <div className="bg-emerald-50/50 border border-emerald-200 rounded-3xl p-4 space-y-4">
+                              <div className="flex items-center justify-between pb-2 border-b border-emerald-200">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                                  <h3 className="text-sm font-black text-emerald-950">3. Completed &amp; Ready</h3>
+                                </div>
+                                <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-600 text-white">
+                                  {completed.length}
+                                </span>
+                              </div>
+
+                              <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
+                                {completed.length === 0 ? (
+                                  <div className="p-8 text-center bg-white/60 rounded-2xl border border-dashed border-emerald-200 text-emerald-800/60 text-xs">
+                                    No completed alterations yet today.
+                                  </div>
+                                ) : (
+                                  completed.map(renderTaskCard)
+                                )}
+                              </div>
+                            </div>
+
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {/* ───────────────────────────────────────────────────────────── */}
+                  {/* SUB-VIEW 2: DEFECT REPAIRS QUEUE (PHYSICAL DAMAGE / SEAM TEARS) */}
+                  {/* ───────────────────────────────────────────────────────────── */}
+                  {workshopView === 'DEFECT_REPAIRS' && (
+                    <div className="space-y-6">
+                      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                        <h3 className="text-base font-bold text-rose-800 flex items-center gap-2">
+                          <Wrench className="w-5 h-5 text-rose-600" /> Physical Defect &amp; Garment Damage Queue
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Garments removed from rental rotation awaiting structural repairs, button stitching, lining replacement, or deep stain dry cleaning.
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {items.filter(i => i.status === 'IN_REPAIR').length === 0 ? (
+                          <div className="col-span-2 p-12 bg-white border border-dashed border-slate-200 rounded-3xl text-center text-slate-500 space-y-2">
+                            <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
+                            <h4 className="text-base font-extrabold text-slate-800">Repairs Workshop is Clear!</h4>
+                            <p className="text-xs text-slate-500">All garments in inventory are in good repair or active rental rotation.</p>
+                          </div>
+                        ) : (
+                          items.filter(i => i.status === 'IN_REPAIR').map(item => {
+                            const latestRep = item.repairHistory?.[0];
+                            return (
+                              <div key={item.id} className="bg-white border border-rose-200 rounded-2xl p-5 shadow-sm space-y-3">
+                                <div className="flex items-start justify-between">
+                                  <div>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-mono font-extrabold text-amber-800 text-sm bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                                        {item.id}
+                                      </span>
+                                      <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${item.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900' : 'bg-blue-100 text-blue-900'}`}>
+                                        {item.sizeGroup}
+                                      </span>
+                                    </div>
+                                    <h3 className="text-base font-bold text-slate-900 mt-1">{item.name}</h3>
+                                    <p className="text-xs text-slate-500">{item.tartanOrColour} ({item.size})</p>
+                                  </div>
+                                  <span className="px-2.5 py-1 text-xs font-bold bg-rose-100 text-rose-800 rounded-full border border-rose-300">
+                                    {latestRep?.severity || 'Medium'} Severity
+                                  </span>
+                                </div>
+
+                                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1 text-slate-700">
+                                  <p><span className="text-slate-500">Defect Reason:</span> <strong>{latestRep?.reason || 'Requires repair'}</strong></p>
+                                  <p><span className="text-slate-500">Sent Date:</span> {latestRep?.dateSent}</p>
+                                  <p><span className="text-slate-500">Logged By:</span> {latestRep?.sentByStaff}</p>
+                                </div>
+
+                                <button
+                                  onClick={() => handleConfirmRepairFixed(item.id)}
+                                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow flex items-center justify-center gap-2 transition cursor-pointer"
+                                >
+                                  <CheckCircle2 className="w-4 h-4" /> Confirm Repair Complete &amp; Return to Stock
+                                </button>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                 </div>
               )}
 
@@ -13140,6 +14557,972 @@ export default function KiltHireApp() {
                 </div>
               )}
 
+              {/* TAB: RETAINED SECURITY DEPOSITS & REPAIR EXPENSES LEDGER */}
+              {activeTab === 'deposit_ledger' && (
+                <div className="space-y-6">
+                  {!isMasterAdmin ? (
+                    <div className="bg-white border border-slate-200 rounded-3xl p-12 text-center shadow-sm max-w-xl mx-auto space-y-4">
+                      <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center text-amber-700 mx-auto">
+                        <Lock className="w-8 h-8" />
+                      </div>
+                      <h3 className="text-xl font-bold text-slate-900">Master Admin Ledger Access Restricted</h3>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        Retained security deposits and third-party repair/laundry expense ledgers are restricted exclusively to Allan (Master Admin).
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* HEADER BANNER */}
+                      <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white rounded-3xl p-6 shadow-xl space-y-4">
+                        <div className="flex flex-wrap items-center justify-between gap-4">
+                          <div className="space-y-1">
+                            <span className="px-3 py-1 bg-white/10 backdrop-blur rounded-full text-[11px] font-extrabold uppercase tracking-wider text-amber-300 inline-flex items-center gap-1.5 border border-amber-400/30">
+                              <Wallet className="w-3.5 h-3.5 text-amber-400" /> Financial Security Bond &amp; Expense Accounting
+                            </span>
+                            <h2 className="text-xl font-extrabold tracking-tight">Retained Security Deposits &amp; Repair Expenses Ledger</h2>
+                            <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+                              Reconcile customer security deposit deductions against third-party specialty dry cleaning, seamstress repairs, and garment replacement costs.
+                            </p>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2.5">
+                            <button
+                              type="button"
+                              onClick={() => setShowPrintLedgerStatementModal(true)}
+                              className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white font-extrabold text-xs rounded-xl border border-white/20 shadow transition flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <Printer className="w-4 h-4" /> Reconciliation Statement
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setShowLogExpenseModal(true)}
+                              className="px-4 py-2.5 bg-rose-500 hover:bg-rose-600 text-white font-black text-xs rounded-xl shadow-lg transition flex items-center gap-2 cursor-pointer ring-2 ring-rose-400/60"
+                            >
+                              <Receipt className="w-4 h-4" /> + Log Repair / Cleaning Expense
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 4 TOP FINANCIAL KPI CARDS */}
+                      {(() => {
+                        const totalRetained = depositLedgerEntries
+                          .filter(e => e.entryType === 'DEPOSIT_RETAINED')
+                          .reduce((sum, e) => sum + e.amount, 0);
+
+                        const totalExpenses = depositLedgerEntries
+                          .filter(e => e.entryType.startsWith('EXPENSE_'))
+                          .reduce((sum, e) => sum + e.amount, 0);
+
+                        const netMargin = totalRetained - totalExpenses;
+                        const coverageRatio = totalExpenses > 0 ? (totalRetained / totalExpenses) * 100 : 100;
+
+                        const activeDepositsInEscrow = pos
+                          .filter(p => p.orderStatus !== 'CANCELLED' && p.orderStatus !== 'RETURNED_COMPLETED' && !p.items.every(i => i.returned))
+                          .reduce((sum, p) => sum + (p.totalDepositHeld || 0), 0);
+
+                        const dryCleanExpense = depositLedgerEntries.filter(e => e.entryType === 'EXPENSE_DRY_CLEANING').reduce((s, e) => s + e.amount, 0);
+                        const tailorExpense = depositLedgerEntries.filter(e => e.entryType === 'EXPENSE_TAILOR_REPAIR').reduce((s, e) => s + e.amount, 0);
+                        const replacementExpense = depositLedgerEntries.filter(e => e.entryType === 'EXPENSE_REPLACEMENT').reduce((s, e) => s + e.amount, 0);
+
+                        return (
+                          <div className="space-y-6">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                              
+                              {/* CARD 1: TOTAL DEPOSITS RETAINED */}
+                              <div className="bg-white border border-slate-200 p-5 rounded-3xl shadow-sm space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+                                    Total Deposits Retained
+                                  </span>
+                                  <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
+                                    💰
+                                  </div>
+                                </div>
+                                <div className="text-2xl font-black text-emerald-600">
+                                  +£{totalRetained.toFixed(2)}
+                                </div>
+                                <p className="text-[11px] text-slate-500 font-medium">
+                                  {depositLedgerEntries.filter(e => e.entryType === 'DEPOSIT_RETAINED').length} customer damage deductions
+                                </p>
+                              </div>
+
+                              {/* CARD 2: TOTAL REPAIR & CLEANING COSTS */}
+                              <div className="bg-white border border-slate-200 p-5 rounded-3xl shadow-sm space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+                                    Outbound Repair Costs
+                                  </span>
+                                  <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-800 flex items-center justify-center font-bold">
+                                    🧾
+                                  </div>
+                                </div>
+                                <div className="text-2xl font-black text-rose-600">
+                                  -£{totalExpenses.toFixed(2)}
+                                </div>
+                                <p className="text-[11px] text-slate-500 font-medium">
+                                  Specialty cleaning, tailor bench &amp; parts
+                                </p>
+                              </div>
+
+                              {/* CARD 3: NET DAMAGE FUND MARGIN */}
+                              <div className={`border p-5 rounded-3xl shadow-sm space-y-2 ${
+                                netMargin >= 0 ? 'bg-emerald-50/70 border-emerald-300' : 'bg-rose-50/70 border-rose-300'
+                              }`}>
+                                <div className="flex items-center justify-between">
+                                  <span className={`text-[11px] font-extrabold uppercase tracking-wider ${
+                                    netMargin >= 0 ? 'text-emerald-900' : 'text-rose-900'
+                                  }`}>
+                                    Net Damage Fund Balance
+                                  </span>
+                                  <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
+                                    netMargin >= 0 ? 'bg-emerald-200 text-emerald-900' : 'bg-rose-200 text-rose-900'
+                                  }`}>
+                                    {netMargin >= 0 ? 'Surplus' : 'Deficit'}
+                                  </span>
+                                </div>
+                                <div className={`text-2xl font-black ${
+                                  netMargin >= 0 ? 'text-emerald-950' : 'text-rose-950'
+                                }`}>
+                                  {netMargin >= 0 ? `+£${netMargin.toFixed(2)}` : `-£${Math.abs(netMargin).toFixed(2)}`}
+                                </div>
+                                <p className={`text-[11px] font-bold ${
+                                  netMargin >= 0 ? 'text-emerald-800' : 'text-rose-800'
+                                }`}>
+                                  {coverageRatio.toFixed(0)}% of repair expenses recovered
+                                </p>
+                              </div>
+
+                              {/* CARD 4: ACTIVE DEPOSITS HELD IN ESCROW */}
+                              <div className="bg-white border border-slate-200 p-5 rounded-3xl shadow-sm space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+                                    Active Deposits in Escrow
+                                  </span>
+                                  <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-800 flex items-center justify-center font-bold">
+                                    🛡️
+                                  </div>
+                                </div>
+                                <div className="text-2xl font-black text-slate-900">
+                                  £{activeDepositsInEscrow.toFixed(2)}
+                                </div>
+                                <p className="text-[11px] text-slate-500 font-medium">
+                                  Held securely across active hire orders
+                                </p>
+                              </div>
+
+                            </div>
+
+                            {/* COST BREAKDOWN SUB-STRIP */}
+                            <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs">
+                              <span className="font-extrabold text-slate-600 flex items-center gap-1.5">
+                                <Scale className="w-4 h-4 text-amber-600" /> Expense Breakdown:
+                              </span>
+                              <div className="flex flex-wrap items-center gap-4 text-slate-700 font-bold">
+                                <span>🧼 Dry Cleaners: <strong className="text-slate-900">£{dryCleanExpense.toFixed(2)}</strong></span>
+                                <span className="text-slate-300">•</span>
+                                <span>✂️ Tailoring &amp; Sewing: <strong className="text-slate-900">£{tailorExpense.toFixed(2)}</strong></span>
+                                <span className="text-slate-300">•</span>
+                                <span>🏷️ Asset Replacements: <strong className="text-slate-900">£{replacementExpense.toFixed(2)}</strong></span>
+                                <span className="text-slate-300">•</span>
+                                <span>💰 Retained Deductions: <strong className="text-emerald-700">£{totalRetained.toFixed(2)}</strong></span>
+                              </div>
+                            </div>
+
+                            {/* FILTER & SEARCH CONTROLS */}
+                            <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm flex flex-wrap items-center justify-between gap-3">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-xs font-extrabold text-slate-500 mr-1 flex items-center gap-1">
+                                  <Filter className="w-3.5 h-3.5 text-slate-400" /> Filter:
+                                </span>
+
+                                {[
+                                  { id: 'ALL', label: `All Records (${depositLedgerEntries.length})` },
+                                  { id: 'DEPOSIT_RETAINED', label: '💰 Retained Deposits' },
+                                  { id: 'EXPENSE_DRY_CLEANING', label: '🧼 Dry Clean Invoices' },
+                                  { id: 'EXPENSE_TAILOR_REPAIR', label: '✂️ Tailor Repairs' },
+                                  { id: 'EXPENSE_REPLACEMENT', label: '🏷️ Replacements' }
+                                ].map(f => (
+                                  <button
+                                    key={f.id}
+                                    type="button"
+                                    onClick={() => setDepositLedgerTypeFilter(f.id as any)}
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition cursor-pointer ${
+                                      depositLedgerTypeFilter === f.id
+                                        ? 'bg-slate-900 text-amber-400 shadow-sm'
+                                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                    }`}
+                                  >
+                                    {f.label}
+                                  </button>
+                                ))}
+                              </div>
+
+                              {/* SEARCH INPUT */}
+                              <div className="relative min-w-[260px]">
+                                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                <input
+                                  type="text"
+                                  placeholder="Search customer, PO #, item, invoice..."
+                                  value={depositLedgerSearchQuery}
+                                  onChange={e => setDepositLedgerSearchQuery(e.target.value)}
+                                  className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-amber-500 focus:bg-white shadow-inner"
+                                />
+                              </div>
+                            </div>
+
+                            {/* TRANSACTIONS TABLE */}
+                            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-left text-xs text-slate-700">
+                                  <thead className="bg-slate-50 text-slate-900 font-extrabold border-b border-slate-200 uppercase tracking-wider text-[10px]">
+                                    <tr>
+                                      <th className="py-3 px-4">Date &amp; ID</th>
+                                      <th className="py-3 px-4">Type / Action</th>
+                                      <th className="py-3 px-4">Customer &amp; PO</th>
+                                      <th className="py-3 px-4">Garment / Item</th>
+                                      <th className="py-3 px-4">Reason / Notes</th>
+                                      <th className="py-3 px-4">Vendor / Invoiced By</th>
+                                      <th className="py-3 px-4 text-right">Amount</th>
+                                      <th className="py-3 px-4 text-center">Actions</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100 font-medium">
+                                    {(() => {
+                                      const filtered = depositLedgerEntries.filter(entry => {
+                                        if (depositLedgerTypeFilter !== 'ALL' && entry.entryType !== depositLedgerTypeFilter) return false;
+                                        if (depositLedgerSearchQuery.trim()) {
+                                          const q = depositLedgerSearchQuery.toLowerCase();
+                                          const match =
+                                            entry.id.toLowerCase().includes(q) ||
+                                            (entry.poId && entry.poId.toLowerCase().includes(q)) ||
+                                            (entry.customerName && entry.customerName.toLowerCase().includes(q)) ||
+                                            (entry.itemId && entry.itemId.toLowerCase().includes(q)) ||
+                                            (entry.itemName && entry.itemName.toLowerCase().includes(q)) ||
+                                            (entry.vendorOrPayer && entry.vendorOrPayer.toLowerCase().includes(q)) ||
+                                            (entry.invoiceRef && entry.invoiceRef.toLowerCase().includes(q)) ||
+                                            entry.reason.toLowerCase().includes(q);
+                                          if (!match) return false;
+                                        }
+                                        return true;
+                                      });
+
+                                      if (filtered.length === 0) {
+                                        return (
+                                          <tr>
+                                            <td colSpan={8} className="py-12 text-center text-slate-400">
+                                              No deposit or expense transactions match the current filter.
+                                            </td>
+                                          </tr>
+                                        );
+                                      }
+
+                                      return filtered.map(entry => {
+                                        const isRetained = entry.entryType === 'DEPOSIT_RETAINED';
+                                        return (
+                                          <tr key={entry.id} className="hover:bg-slate-50 transition">
+                                            <td className="py-3 px-4">
+                                              <span className="font-mono font-bold text-slate-900 block">{entry.id}</span>
+                                              <span className="text-[10px] text-slate-400">{entry.date}</span>
+                                            </td>
+
+                                            <td className="py-3 px-4">
+                                              <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold inline-flex items-center gap-1 ${
+                                                isRetained
+                                                  ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                                                  : entry.entryType === 'EXPENSE_DRY_CLEANING'
+                                                  ? 'bg-cyan-100 text-cyan-900 border border-cyan-300'
+                                                  : entry.entryType === 'EXPENSE_TAILOR_REPAIR'
+                                                  ? 'bg-purple-100 text-purple-900 border border-purple-300'
+                                                  : 'bg-rose-100 text-rose-900 border border-rose-300'
+                                              }`}>
+                                                {isRetained ? '+ Retained Deposit' :
+                                                 entry.entryType === 'EXPENSE_DRY_CLEANING' ? '- Dry Clean Bill' :
+                                                 entry.entryType === 'EXPENSE_TAILOR_REPAIR' ? '- Tailor Repair' : '- Replacement Asset'}
+                                              </span>
+                                            </td>
+
+                                            <td className="py-3 px-4">
+                                              {entry.customerName ? (
+                                                <div>
+                                                  <strong className="text-slate-900 block">{entry.customerName}</strong>
+                                                  {entry.poId && <span className="font-mono text-[10px] text-blue-700">{entry.poId}</span>}
+                                                </div>
+                                              ) : (
+                                                <span className="text-slate-400 font-mono">{entry.poId || 'General Shop'}</span>
+                                              )}
+                                            </td>
+
+                                            <td className="py-3 px-4">
+                                              {entry.itemName ? (
+                                                <div>
+                                                  <span className="font-bold text-slate-900 block">{entry.itemName}</span>
+                                                  <span className="font-mono text-[10px] text-amber-800">{entry.itemId}</span>
+                                                </div>
+                                              ) : (
+                                                <span className="text-slate-400">—</span>
+                                              )}
+                                            </td>
+
+                                            <td className="py-3 px-4 max-w-xs">
+                                              <p className="font-medium text-slate-800 leading-snug">{entry.reason}</p>
+                                              {entry.notes && <p className="text-[10px] text-slate-500 mt-0.5 italic">{entry.notes}</p>}
+                                            </td>
+
+                                            <td className="py-3 px-4">
+                                              <span className="font-bold text-slate-800 block">{entry.vendorOrPayer || 'In-House'}</span>
+                                              {entry.invoiceRef && <span className="font-mono text-[10px] text-purple-800">Ref: {entry.invoiceRef}</span>}
+                                            </td>
+
+                                            <td className="py-3 px-4 text-right">
+                                              <span className={`text-sm font-black ${isRetained ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                {isRetained ? `+£${entry.amount.toFixed(2)}` : `-£${entry.amount.toFixed(2)}`}
+                                              </span>
+                                            </td>
+
+                                            <td className="py-3 px-4 text-center">
+                                              <button
+                                                type="button"
+                                                onClick={() => handleDeleteLedgerEntry(entry.id)}
+                                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                                                title="Delete Ledger Entry"
+                                              >
+                                                <Trash2 className="w-4 h-4" />
+                                              </button>
+                                            </td>
+                                          </tr>
+                                        );
+                                      });
+                                    })()}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+
+                          </div>
+                        );
+                      })()}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* TAB: EMAIL TEMPLATES & STORE BRANDING CUSTOMIZER (ADMIN ONLY) */}
+              {activeTab === 'email_settings' && (
+                <div className="space-y-6">
+                  {!isMasterAdmin ? (
+                    <div className="bg-white border border-slate-200 rounded-3xl p-12 text-center max-w-lg mx-auto shadow-sm space-y-4 my-8">
+                      <div className="w-16 h-16 bg-amber-100 rounded-2xl flex items-center justify-center mx-auto text-amber-700">
+                        <Lock className="w-8 h-8" />
+                      </div>
+                      <h3 className="text-xl font-extrabold text-slate-900">Master Admin Access Required</h3>
+                      <p className="text-sm text-slate-600">
+                        Email templates, store sender addresses, and branding settings can only be managed by Master Administrators.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* HEADER BANNER */}
+                      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-wrap items-center justify-between gap-4">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                              <Mail className="w-5 h-5 text-amber-600" /> Email Templates &amp; Store Branding Customizer
+                            </h2>
+                            <span className="px-2.5 py-0.5 text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 rounded-full">
+                              Master Admin Only
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 mt-1">
+                            Customize customer email wording, store contact information, and test delivery directly in your inbox.
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={handleResetEmailSettings}
+                            className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl border border-slate-200 flex items-center gap-1.5 transition cursor-pointer"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" /> Reset Defaults
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSaveEmailSettings()}
+                            disabled={isSavingEmailSettings}
+                            className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-sm flex items-center gap-1.5 transition cursor-pointer"
+                          >
+                            <Check className="w-4 h-4 text-slate-950" />
+                            {isSavingEmailSettings ? 'Saving Settings...' : 'Save Email Settings'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* MAIN 2-COLUMN WORKSPACE: EDITOR & LIVE PREVIEW */}
+                      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                        
+                        {/* LEFT COLUMN: SETTINGS TABS & FORM CONTROLS (7 COLS) */}
+                        <div className="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-5">
+                          
+                          {/* SUB-TABS PILLS */}
+                          <div className="flex flex-wrap gap-1.5 p-1 bg-slate-100 rounded-xl">
+                            <button
+                              type="button"
+                              onClick={() => setActiveEmailTemplateTab('BRANDING')}
+                              className={`px-3 py-1.5 rounded-lg font-extrabold text-xs transition cursor-pointer ${
+                                activeEmailTemplateTab === 'BRANDING' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                              }`}
+                            >
+                              🏪 Store Identity
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setActiveEmailTemplateTab('BOOKING')}
+                              className={`px-3 py-1.5 rounded-lg font-extrabold text-xs transition cursor-pointer ${
+                                activeEmailTemplateTab === 'BOOKING' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                              }`}
+                            >
+                              📜 Booking &amp; Invoice
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setActiveEmailTemplateTab('COLLECTION')}
+                              className={`px-3 py-1.5 rounded-lg font-extrabold text-xs transition cursor-pointer ${
+                                activeEmailTemplateTab === 'COLLECTION' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                              }`}
+                            >
+                              🛍️ Ready for Pickup
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setActiveEmailTemplateTab('REMINDER')}
+                              className={`px-3 py-1.5 rounded-lg font-extrabold text-xs transition cursor-pointer ${
+                                activeEmailTemplateTab === 'REMINDER' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                              }`}
+                            >
+                              ⏰ Return Reminder
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setActiveEmailTemplateTab('OVERDUE')}
+                              className={`px-3 py-1.5 rounded-lg font-extrabold text-xs transition cursor-pointer ${
+                                activeEmailTemplateTab === 'OVERDUE' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                              }`}
+                            >
+                              🚨 Overdue Notice
+                            </button>
+                          </div>
+
+                          {/* FORM TAB 1: STORE IDENTITY & SENDER */}
+                          {activeEmailTemplateTab === 'BRANDING' && (
+                            <div className="space-y-4">
+                              <h3 className="text-sm font-extrabold text-slate-900 border-b border-slate-100 pb-2">
+                                🏪 Store Identity &amp; Sender Details
+                              </h3>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Store Display Name</label>
+                                  <input
+                                    type="text"
+                                    value={emailSettings.storeName}
+                                    onChange={(e) => setEmailSettings(prev => ({ ...prev, storeName: e.target.value }))}
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Verified Sender Email</label>
+                                  <input
+                                    type="email"
+                                    value={emailSettings.senderEmail}
+                                    onChange={(e) => setEmailSettings(prev => ({ ...prev, senderEmail: e.target.value }))}
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Store Telephone</label>
+                                  <input
+                                    type="text"
+                                    value={emailSettings.storePhone}
+                                    onChange={(e) => setEmailSettings(prev => ({ ...prev, storePhone: e.target.value }))}
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Opening Hours</label>
+                                  <input
+                                    type="text"
+                                    value={emailSettings.storeOpeningHours}
+                                    onChange={(e) => setEmailSettings(prev => ({ ...prev, storeOpeningHours: e.target.value }))}
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                  />
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Physical Store Address</label>
+                                <input
+                                  type="text"
+                                  value={emailSettings.storeAddress}
+                                  onChange={(e) => setEmailSettings(prev => ({ ...prev, storeAddress: e.target.value }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1.5">Brand Accent Color</label>
+                                <div className="flex items-center gap-2">
+                                  {[
+                                    { name: 'Highland Amber', color: '#b45309' },
+                                    { name: 'Navy Blue', color: '#1e3a8a' },
+                                    { name: 'Forest Green', color: '#15803d' },
+                                    { name: 'Royal Purple', color: '#6b21a8' },
+                                    { name: 'Tartan Red', color: '#b91c1c' },
+                                    { name: 'Deep Slate', color: '#334155' }
+                                  ].map(swatch => (
+                                    <button
+                                      key={swatch.color}
+                                      type="button"
+                                      onClick={() => setEmailSettings(prev => ({ ...prev, brandColor: swatch.color }))}
+                                      className={`w-7 h-7 rounded-full transition cursor-pointer border-2 ${
+                                        emailSettings.brandColor === swatch.color ? 'border-slate-900 scale-110 shadow-md' : 'border-white hover:scale-105'
+                                      }`}
+                                      style={{ backgroundColor: swatch.color }}
+                                      title={swatch.name}
+                                    />
+                                  ))}
+                                  <input
+                                    type="text"
+                                    value={emailSettings.brandColor}
+                                    onChange={(e) => setEmailSettings(prev => ({ ...prev, brandColor: e.target.value }))}
+                                    className="w-24 px-2 py-1 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono font-bold text-slate-800 ml-2"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* FORM TAB 2: BOOKING CONFIRMATION */}
+                          {activeEmailTemplateTab === 'BOOKING' && (
+                            <div className="space-y-4">
+                              <h3 className="text-sm font-extrabold text-slate-900 border-b border-slate-100 pb-2">
+                                📜 Booking Confirmation &amp; PayPal Invoice Template
+                              </h3>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Email Subject &amp; Headline</label>
+                                <input
+                                  type="text"
+                                  value={emailSettings.bookingConfirmation.headline}
+                                  onChange={(e) => setEmailSettings(prev => ({
+                                    ...prev,
+                                    bookingConfirmation: { ...prev.bookingConfirmation, headline: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Intro Greeting Message</label>
+                                <textarea
+                                  rows={3}
+                                  value={emailSettings.bookingConfirmation.customIntro}
+                                  onChange={(e) => setEmailSettings(prev => ({
+                                    ...prev,
+                                    bookingConfirmation: { ...prev.bookingConfirmation, customIntro: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Store Policy &amp; ID Notice</label>
+                                <input
+                                  type="text"
+                                  value={emailSettings.bookingConfirmation.policyNotice}
+                                  onChange={(e) => setEmailSettings(prev => ({
+                                    ...prev,
+                                    bookingConfirmation: { ...prev.bookingConfirmation, policyNotice: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">PayPal Checkout Subtext</label>
+                                <input
+                                  type="text"
+                                  value={emailSettings.bookingConfirmation.paypalNotice}
+                                  onChange={(e) => setEmailSettings(prev => ({
+                                    ...prev,
+                                    bookingConfirmation: { ...prev.bookingConfirmation, paypalNotice: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* FORM TAB 3: READY FOR COLLECTION */}
+                          {activeEmailTemplateTab === 'COLLECTION' && (
+                            <div className="space-y-4">
+                              <h3 className="text-sm font-extrabold text-slate-900 border-b border-slate-100 pb-2">
+                                🛍️ Ready for Collection Notification Template
+                              </h3>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Email Subject &amp; Headline</label>
+                                <input
+                                  type="text"
+                                  value={emailSettings.collectionReady.headline}
+                                  onChange={(e) => setEmailSettings(prev => ({
+                                    ...prev,
+                                    collectionReady: { ...prev.collectionReady, headline: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Ready Announcement Message</label>
+                                <textarea
+                                  rows={3}
+                                  value={emailSettings.collectionReady.customIntro}
+                                  onChange={(e) => setEmailSettings(prev => ({
+                                    ...prev,
+                                    collectionReady: { ...prev.collectionReady, customIntro: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Photo ID / Counter Requirement</label>
+                                <input
+                                  type="text"
+                                  value={emailSettings.collectionReady.idRequirementNotice}
+                                  onChange={(e) => setEmailSettings(prev => ({
+                                    ...prev,
+                                    collectionReady: { ...prev.collectionReady, idRequirementNotice: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Parking &amp; Collection Advice</label>
+                                <input
+                                  type="text"
+                                  value={emailSettings.collectionReady.parkingOrPickupTips}
+                                  onChange={(e) => setEmailSettings(prev => ({
+                                    ...prev,
+                                    collectionReady: { ...prev.collectionReady, parkingOrPickupTips: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* FORM TAB 4: RETURN REMINDER */}
+                          {activeEmailTemplateTab === 'REMINDER' && (
+                            <div className="space-y-4">
+                              <h3 className="text-sm font-extrabold text-slate-900 border-b border-slate-100 pb-2">
+                                ⏰ Return Reminder Template
+                              </h3>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Email Subject &amp; Headline</label>
+                                <input
+                                  type="text"
+                                  value={emailSettings.returnReminder.headline}
+                                  onChange={(e) => setEmailSettings(prev => ({
+                                    ...prev,
+                                    returnReminder: { ...prev.returnReminder, headline: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Friendly Reminder Message</label>
+                                <textarea
+                                  rows={3}
+                                  value={emailSettings.returnReminder.customIntro}
+                                  onChange={(e) => setEmailSettings(prev => ({
+                                    ...prev,
+                                    returnReminder: { ...prev.returnReminder, customIntro: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Packing Checklist Notice</label>
+                                <input
+                                  type="text"
+                                  value={emailSettings.returnReminder.checklistNotice}
+                                  onChange={(e) => setEmailSettings(prev => ({
+                                    ...prev,
+                                    returnReminder: { ...prev.returnReminder, checklistNotice: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Security Deposit Refund Notice</label>
+                                <input
+                                  type="text"
+                                  value={emailSettings.returnReminder.depositRefundNotice}
+                                  onChange={(e) => setEmailSettings(prev => ({
+                                    ...prev,
+                                    returnReminder: { ...prev.returnReminder, depositRefundNotice: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* FORM TAB 5: OVERDUE ALERT */}
+                          {activeEmailTemplateTab === 'OVERDUE' && (
+                            <div className="space-y-4">
+                              <h3 className="text-sm font-extrabold text-slate-900 border-b border-slate-100 pb-2">
+                                🚨 Overdue Return Warning Template
+                              </h3>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Email Subject &amp; Headline</label>
+                                <input
+                                  type="text"
+                                  value={emailSettings.overdueAlert.headline}
+                                  onChange={(e) => setEmailSettings(prev => ({
+                                    ...prev,
+                                    overdueAlert: { ...prev.overdueAlert, headline: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Overdue Notice Intro</label>
+                                <textarea
+                                  rows={3}
+                                  value={emailSettings.overdueAlert.customIntro}
+                                  onChange={(e) => setEmailSettings(prev => ({
+                                    ...prev,
+                                    overdueAlert: { ...prev.overdueAlert, customIntro: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Urgent Scheduling Disruption Policy</label>
+                                <textarea
+                                  rows={2}
+                                  value={emailSettings.overdueAlert.urgencyStatement}
+                                  onChange={(e) => setEmailSettings(prev => ({
+                                    ...prev,
+                                    overdueAlert: { ...prev.overdueAlert, urgencyStatement: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Deposit Forfeiture Warning Statement</label>
+                                <textarea
+                                  rows={2}
+                                  value={emailSettings.overdueAlert.depositForfeitureNotice}
+                                  onChange={(e) => setEmailSettings(prev => ({
+                                    ...prev,
+                                    overdueAlert: { ...prev.overdueAlert, depositForfeitureNotice: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                        </div>
+
+                        {/* RIGHT COLUMN: LIVE INTERACTIVE PREVIEW & TEST DISPATCH (6 COLS) */}
+                        <div className="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+                          
+                          {/* PREVIEW CONTROLS */}
+                          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                            <div className="flex items-center gap-2">
+                              <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
+                                <Sparkles className="w-4 h-4 text-amber-600" /> Live Simulated Email Preview
+                              </h3>
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setEmailPreviewDevice('DESKTOP')}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer ${
+                                  emailPreviewDevice === 'DESKTOP' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                }`}
+                              >
+                                💻 Desktop
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEmailPreviewDevice('MOBILE')}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer ${
+                                  emailPreviewDevice === 'MOBILE' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                }`}
+                              >
+                                📱 Mobile
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* SIMULATED EMAIL RENDER CONTAINER */}
+                          <div className={`mx-auto transition-all ${
+                            emailPreviewDevice === 'MOBILE' ? 'max-w-[340px]' : 'max-w-full'
+                          }`}>
+                            <div className="bg-slate-100 p-3 sm:p-5 rounded-2xl border border-slate-300 shadow-inner">
+                              
+                              {/* EMAIL CARD */}
+                              <div className="bg-white rounded-xl overflow-hidden shadow-md border border-slate-200 text-slate-800 text-xs">
+                                
+                                {/* EMAIL HEADER */}
+                                <div className="bg-slate-900 p-4 text-white flex items-center justify-between">
+                                  <div>
+                                    <h4 className="font-black text-sm text-white uppercase tracking-wide">
+                                      {emailSettings.storeName}
+                                    </h4>
+                                    <p className="text-[10px] text-slate-300">Traditional Tartan &amp; Formal Highland Outfits</p>
+                                  </div>
+                                  <span 
+                                    className="px-2.5 py-0.5 rounded-full text-[9px] font-extrabold text-white uppercase"
+                                    style={{ backgroundColor: emailSettings.brandColor }}
+                                  >
+                                    {activeEmailTemplateTab === 'BRANDING' || activeEmailTemplateTab === 'BOOKING' ? 'CONFIRMATION' :
+                                     activeEmailTemplateTab === 'COLLECTION' ? 'READY' :
+                                     activeEmailTemplateTab === 'REMINDER' ? 'REMINDER' : 'OVERDUE'}
+                                  </span>
+                                </div>
+
+                                {/* EMAIL BODY */}
+                                <div className="p-4 sm:p-5 space-y-3">
+                                  <h5 className="text-sm font-extrabold text-slate-900">
+                                    {activeEmailTemplateTab === 'BRANDING' || activeEmailTemplateTab === 'BOOKING' ? emailSettings.bookingConfirmation.headline :
+                                     activeEmailTemplateTab === 'COLLECTION' ? emailSettings.collectionReady.headline :
+                                     activeEmailTemplateTab === 'REMINDER' ? emailSettings.returnReminder.headline : emailSettings.overdueAlert.headline}
+                                  </h5>
+
+                                  <p className="text-slate-600 text-xs leading-relaxed">
+                                    {activeEmailTemplateTab === 'BRANDING' || activeEmailTemplateTab === 'BOOKING' ? emailSettings.bookingConfirmation.customIntro :
+                                     activeEmailTemplateTab === 'COLLECTION' ? emailSettings.collectionReady.customIntro :
+                                     activeEmailTemplateTab === 'REMINDER' ? emailSettings.returnReminder.customIntro : emailSettings.overdueAlert.customIntro}
+                                  </p>
+
+                                  {/* ORDER SUMMARY BOX */}
+                                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1.5 text-[11px]">
+                                    <div className="flex justify-between">
+                                      <span className="text-slate-500 font-semibold">Order Reference:</span>
+                                      <span className="font-mono font-extrabold text-amber-800">PO-2026-TEST</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-slate-500 font-semibold">Collection Date:</span>
+                                      <span className="font-extrabold text-slate-900">2026-08-28</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-slate-500 font-semibold">Return Due:</span>
+                                      <span className="font-extrabold text-slate-900">2026-08-31</span>
+                                    </div>
+                                    <div className="flex justify-between border-t border-slate-200 pt-1">
+                                      <span className="text-slate-500 font-semibold">Total Payable:</span>
+                                      <span className="font-black text-slate-900">£160.00 (£110 Hire + £50 Deposit)</span>
+                                    </div>
+                                  </div>
+
+                                  {/* TEMPLATE SPECIFIC CALLOUT */}
+                                  {activeEmailTemplateTab === 'COLLECTION' && (
+                                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-[11px] text-emerald-950 space-y-1">
+                                      <p className="font-bold">🛍️ {emailSettings.collectionReady.idRequirementNotice}</p>
+                                      <p className="text-emerald-800 text-[10px]">🚗 {emailSettings.collectionReady.parkingOrPickupTips}</p>
+                                    </div>
+                                  )}
+
+                                  {activeEmailTemplateTab === 'REMINDER' && (
+                                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-[11px] text-blue-950 space-y-1">
+                                      <p className="font-bold">📦 {emailSettings.returnReminder.checklistNotice}</p>
+                                      <p className="text-blue-800 text-[10px]">🛡️ {emailSettings.returnReminder.depositRefundNotice}</p>
+                                    </div>
+                                  )}
+
+                                  {activeEmailTemplateTab === 'OVERDUE' && (
+                                    <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-[11px] text-rose-950 space-y-1">
+                                      <p className="font-bold">🚨 {emailSettings.overdueAlert.urgencyStatement}</p>
+                                      <p className="text-rose-800 text-[10px]">🛡️ {emailSettings.overdueAlert.depositForfeitureNotice}</p>
+                                    </div>
+                                  )}
+
+                                  {/* ACTION BUTTON */}
+                                  {(activeEmailTemplateTab === 'BRANDING' || activeEmailTemplateTab === 'BOOKING') && (
+                                    <div className="text-center pt-2">
+                                      <div className="inline-block px-5 py-2 bg-[#0070ba] text-white font-extrabold text-xs rounded-xl shadow-sm">
+                                        💳 Pay £160.00 Deposit &amp; Balance via PayPal
+                                      </div>
+                                      <p className="text-[10px] text-slate-400 mt-1">{emailSettings.bookingConfirmation.paypalNotice}</p>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* EMAIL FOOTER */}
+                                <div className="bg-slate-50 p-3 border-t border-slate-200 text-center text-[10px] text-slate-500 space-y-0.5">
+                                  <p className="font-bold text-slate-700">{emailSettings.storeName} Dispatch &amp; Fitting Counter</p>
+                                  <p>📍 {emailSettings.storeAddress} • 📞 {emailSettings.storePhone}</p>
+                                  <p>⏰ {emailSettings.storeOpeningHours}</p>
+                                </div>
+
+                              </div>
+
+                            </div>
+                          </div>
+
+                          {/* DISPATCH LIVE TEMPLATE TEST TO INBOX */}
+                          <div className="p-3.5 bg-amber-50/60 border border-amber-200 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs">
+                            <div>
+                              <p className="font-extrabold text-amber-950">⚡ Test This Exact Template</p>
+                              <p className="text-[11px] text-amber-800">
+                                Send a live preview test of <strong>{activeEmailTemplateTab}</strong> directly to <strong>{brevoTestTargetEmail}</strong>.
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const targetType = activeEmailTemplateTab === 'COLLECTION' ? 'READY_FOR_COLLECTION' :
+                                                   activeEmailTemplateTab === 'REMINDER' ? 'RETURN_REMINDER' :
+                                                   activeEmailTemplateTab === 'OVERDUE' ? 'OVERDUE_ALERT' : 'BOOKING_CONFIRMATION';
+                                handleSendTemplateTestEmail(targetType);
+                              }}
+                              disabled={isSendingTemplateTest}
+                              className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-950 disabled:bg-slate-400 text-white font-extrabold text-xs rounded-xl shadow-sm flex items-center gap-1.5 transition cursor-pointer"
+                            >
+                              <Send className="w-3.5 h-3.5 text-amber-400" />
+                              {isSendingTemplateTest ? 'Sending...' : 'Send Live Test'}
+                            </button>
+                          </div>
+
+                        </div>
+
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
               {/* TAB 8: MASTER ADMIN, STAFF ACCOUNTS & INVITES */}
               {activeTab === 'admin' && (
                 <div className="space-y-6">
@@ -13352,6 +15735,75 @@ export default function KiltHireApp() {
                           )}
                         </tbody>
                       </table>
+                    </div>
+                  </div>
+
+                  {/* BREVO TRANSACTIONAL EMAIL SYSTEM STATUS & TEST CONSOLE */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                      <div>
+                        <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                          <Mail className="w-5 h-5 text-amber-600" /> Brevo Transactional Email System &amp; Live Dispatch
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Automated booking confirmations, separate wearer PayPal invoices, and collection ready notifications.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="px-3 py-1 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-full text-xs font-extrabold flex items-center gap-1.5 shadow-2xs">
+                          <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
+                          Connected &amp; Verified
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <span className="text-slate-400 font-bold uppercase text-[10px] block">Sender Identity</span>
+                        <p className="font-extrabold text-slate-900">Highland Kiltmakers</p>
+                        <p className="text-slate-600 font-mono text-[11px]">sales@scottishhighlandkilthire.co.uk</p>
+                      </div>
+                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <span className="text-slate-400 font-bold uppercase text-[10px] block">DNS &amp; DMARC Status</span>
+                        <p className="font-extrabold text-emerald-700 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> IONOS DMARC Configured
+                        </p>
+                        <p className="text-slate-500 text-[11px]">SPF / DKIM / DMARC Active</p>
+                      </div>
+                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <span className="text-slate-400 font-bold uppercase text-[10px] block">API Protocol</span>
+                        <p className="font-extrabold text-slate-900">Brevo REST API v3</p>
+                        <p className="text-slate-500 text-[11px]">SSL Encrypted Direct Endpoint</p>
+                      </div>
+                    </div>
+
+                    {/* LIVE TEST EMAIL STATION */}
+                    <div className="p-4 bg-amber-50/50 border border-amber-200 rounded-xl space-y-3">
+                      <h4 className="text-xs font-extrabold text-amber-950 flex items-center gap-1.5 uppercase tracking-wider">
+                        ⚡ Send Live Verification Test Email
+                      </h4>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="email"
+                          value={brevoTestTargetEmail}
+                          onChange={(e) => setBrevoTestTargetEmail(e.target.value)}
+                          placeholder="recipient@example.com"
+                          className="flex-1 min-w-[240px] px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-amber-500 outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleSendBrevoTest}
+                          disabled={isSendingBrevoTest}
+                          className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 text-slate-950 font-extrabold text-xs rounded-xl shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Send className="w-3.5 h-3.5 text-slate-950" />
+                          {isSendingBrevoTest ? 'Sending via Brevo...' : 'Send Live Test Email'}
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-amber-900">
+                        Dispatches a live branded test notification from <strong>sales@scottishhighlandkilthire.co.uk</strong> to verify inbox delivery.
+                      </p>
                     </div>
                   </div>
 
@@ -17403,6 +19855,1025 @@ export default function KiltHireApp() {
           </div>
         );
       })()}
+
+      {/* 🖨️ SATURDAY RAPID TURNAROUND BATCH MANIFEST MODAL */}
+      {showZapBatchSummaryModal && (
+        <div className="printable-modal-overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="printable-modal-content bg-white border border-slate-200 rounded-3xl max-w-3xl w-full p-6 space-y-5 shadow-2xl overflow-y-auto max-h-[92vh] my-auto">
+            
+            {/* MODAL CONTROLS */}
+            <div className="flex items-center justify-between border-b border-slate-200 pb-4 print:hidden">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 bg-emerald-100 text-emerald-800 rounded-2xl flex items-center justify-center border border-emerald-300">
+                  <Flame className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">
+                    Saturday Turnaround Batch Manifest
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    {zapSessionLogs.length} Garments Checked In • Ready for Dry Cleaning Handover
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" /> Print Manifest (Ctrl+P)
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setShowZapBatchSummaryModal(false)} 
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* PRINTABLE REPORT SHEET */}
+            <div className="space-y-5 print:p-0">
+              
+              {/* BRAND HEADER */}
+              <div className="flex items-center justify-between border-b-2 border-slate-900 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl overflow-hidden border border-amber-500/40 shrink-0">
+                    <img src="/logo.png" alt="Highland Kilt Hire" className="w-full h-full object-cover" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-black text-slate-950 uppercase tracking-tight">Highland Kilt Hire</h2>
+                    <p className="text-xs text-slate-600 font-semibold">Saturday Rapid Turnaround &amp; Dry Cleaning Handover Manifest</p>
+                  </div>
+                </div>
+
+                <div className="text-right text-xs font-bold text-slate-700 space-y-0.5">
+                  <p>Date: <strong className="text-slate-950">{new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</strong></p>
+                  <p>Time: <strong className="text-slate-950">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong></p>
+                  <p>Staff: <strong className="text-emerald-800">{currentUser?.name || 'Shop Assistant'}</strong></p>
+                </div>
+              </div>
+
+              {/* SUMMARY STATS GRID */}
+              <div className="grid grid-cols-4 gap-3 text-center">
+                <div className="p-3 bg-slate-50 border border-slate-300 rounded-xl">
+                  <span className="text-[10px] font-extrabold uppercase text-slate-500 block">Total Items</span>
+                  <span className="text-xl font-black text-slate-950">{zapSessionLogs.length}</span>
+                </div>
+                <div className="p-3 bg-cyan-50 border border-cyan-300 rounded-xl">
+                  <span className="text-[10px] font-extrabold uppercase text-cyan-800 block">To Cleaners</span>
+                  <span className="text-xl font-black text-cyan-950">
+                    {zapSessionLogs.filter(l => l.actionTaken.includes('Cleaners')).length}
+                  </span>
+                </div>
+                <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl">
+                  <span className="text-[10px] font-extrabold uppercase text-emerald-800 block">Back to Stock</span>
+                  <span className="text-xl font-black text-emerald-950">
+                    {zapSessionLogs.filter(l => l.actionTaken.includes('Shelf')).length}
+                  </span>
+                </div>
+                <div className="p-3 bg-purple-50 border border-purple-300 rounded-xl">
+                  <span className="text-[10px] font-extrabold uppercase text-purple-800 block">Closed Orders</span>
+                  <span className="text-xl font-black text-purple-950">
+                    {zapSessionLogs.filter(l => l.isPoComplete).length}
+                  </span>
+                </div>
+              </div>
+
+              {/* BREAKDOWN BY CATEGORY */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1">
+                  Garment Category Breakdown
+                </h4>
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-xs font-bold">
+                  {['Kilts', 'Jackets', 'Waistcoats', 'Sporrans', 'Ghillie Brogues', 'Shirts'].map(cat => {
+                    const count = zapSessionLogs.filter(l => l.category === cat).length;
+                    return (
+                      <div key={cat} className="bg-slate-50 p-2 rounded-xl border border-slate-200 text-center">
+                        <span className="text-[10px] text-slate-500 block truncate">{cat}</span>
+                        <span className="font-black text-slate-900">{count}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ITEMIZED TABLE OF RETURNED GARMENTS */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1">
+                  Itemized Garment Manifest
+                </h4>
+                <table className="w-full text-left text-xs border border-slate-300">
+                  <thead className="bg-slate-100 border-b border-slate-300 font-extrabold uppercase text-[10px]">
+                    <tr>
+                      <th className="p-2 border-r border-slate-300">Time</th>
+                      <th className="p-2 border-r border-slate-300">QR Tag ID</th>
+                      <th className="p-2 border-r border-slate-300">Garment Description</th>
+                      <th className="p-2 border-r border-slate-300">Category / Size</th>
+                      <th className="p-2 border-r border-slate-300">Customer PO</th>
+                      <th className="p-2 text-center">Routing</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 font-medium">
+                    {zapSessionLogs.map(entry => (
+                      <tr key={entry.id} className="hover:bg-slate-50">
+                        <td className="p-2 border-r border-slate-300 font-mono text-[10px] text-slate-500">{entry.timestamp}</td>
+                        <td className="p-2 border-r border-slate-300 font-mono font-black text-slate-900">{entry.itemId}</td>
+                        <td className="p-2 border-r border-slate-300 font-bold text-slate-900">{entry.itemName}</td>
+                        <td className="p-2 border-r border-slate-300 text-slate-700">{entry.category} ({entry.size})</td>
+                        <td className="p-2 border-r border-slate-300">
+                          {entry.customerName ? (
+                            <div>
+                              <strong className="text-slate-900">{entry.customerName}</strong>
+                              <span className="text-[10px] font-mono text-blue-700 block">({entry.poId})</span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">Direct In-Stock Scan</span>
+                          )}
+                        </td>
+                        <td className="p-2 text-center font-bold text-[11px]">
+                          {entry.actionTaken}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* SIGN OFF BOX FOR DRY CLEANERS DRIVER */}
+              <div className="border-2 border-slate-900 p-4 rounded-2xl space-y-3 bg-slate-50/50 mt-4">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-950">
+                  Laundry Collection &amp; Handover Sign-Off
+                </h4>
+                <div className="grid grid-cols-2 gap-4 text-xs font-bold text-slate-800">
+                  <div className="border border-slate-300 p-3 rounded-xl bg-white space-y-2">
+                    <p>Dispatch Staff Signature: _______________________</p>
+                    <p className="text-[10px] text-slate-500 font-normal">Staff Name: {currentUser?.name || 'Shop Assistant'}</p>
+                  </div>
+                  <div className="border border-slate-300 p-3 rounded-xl bg-white space-y-2">
+                    <p>Dry Cleaners Driver Signature: ___________________</p>
+                    <p className="text-[10px] text-slate-500 font-normal">Driver / Courier Name: _______________________</p>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────────────────── */}
+      {/* ✂️ MODAL 1: CREATE NEW TAILOR ALTERATION / RE-STOCK RESET TASK             */}
+      {/* ─────────────────────────────────────────────────────────────────────────── */}
+      {showCreateAlterationModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-xl w-full p-6 space-y-5 shadow-2xl overflow-y-auto max-h-[92vh] my-auto">
+            
+            <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 bg-purple-100 text-purple-800 rounded-2xl flex items-center justify-center border border-purple-300">
+                  <Scissors className="w-5 h-5 text-purple-700" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">Log New Tailor Workshop Job</h3>
+                  <p className="text-xs text-slate-500">Create pre-hire customer fitting alteration or post-hire re-stock reset.</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowCreateAlterationModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateAlterationTaskSubmit} className="space-y-4 text-xs font-bold text-slate-700">
+              
+              {/* TASK TYPE SELECTION PILLS */}
+              <div className="space-y-1.5">
+                <label className="text-slate-800 font-black">Alteration Job Type *</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewAlterationForm({
+                      ...newAlterationForm,
+                      taskType: 'PRE_HIRE_FITTING',
+                      destination: 'BAG_FOR_CUSTOMER',
+                      adjustmentType: 'WAIST_TAKE_IN',
+                      targetMeasurement: 'Take in waist 2 inches'
+                    })}
+                    className={`p-3 rounded-2xl border-2 text-left transition cursor-pointer ${
+                      newAlterationForm.taskType === 'PRE_HIRE_FITTING'
+                        ? 'bg-indigo-50 border-indigo-500 text-indigo-950 ring-2 ring-indigo-200'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 font-black text-xs">
+                      <ShoppingBag className="w-4 h-4 text-indigo-600" /> Pre-Hire Customer Fit
+                    </div>
+                    <p className="text-[11px] font-normal text-slate-500 mt-1">Alter garment for wearer $\rightarrow$ moves to Ready for Outfit Bagging</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewAlterationForm({
+                      ...newAlterationForm,
+                      taskType: 'POST_HIRE_RESTOCK_RESET',
+                      destination: 'RESTOCK_TO_SHELVES',
+                      adjustmentType: 'RESTOCK_RESET',
+                      targetMeasurement: 'Reset waist back to standard factory size'
+                    })}
+                    className={`p-3 rounded-2xl border-2 text-left transition cursor-pointer ${
+                      newAlterationForm.taskType === 'POST_HIRE_RESTOCK_RESET'
+                        ? 'bg-cyan-50 border-cyan-500 text-cyan-950 ring-2 ring-cyan-200'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 font-black text-xs">
+                      <Package className="w-4 h-4 text-cyan-600" /> Post-Hire Re-Stock Reset
+                    </div>
+                    <p className="text-[11px] font-normal text-slate-500 mt-1">Reset returned garment to standard size $\rightarrow$ returns to Available Stock</p>
+                  </button>
+                </div>
+              </div>
+
+              {/* GARMENT ITEM SELECTOR */}
+              <div className="space-y-1.5">
+                <label className="text-slate-800 font-black">Select Garment to Tailor *</label>
+                <select
+                  value={newAlterationForm.itemId}
+                  onChange={e => {
+                    const sel = items.find(i => i.id === e.target.value);
+                    setNewAlterationForm({
+                      ...newAlterationForm,
+                      itemId: e.target.value,
+                      targetMeasurement: sel ? `Adjust ${sel.category} (${sel.size})` : newAlterationForm.targetMeasurement
+                    });
+                  }}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-purple-500"
+                  required
+                >
+                  <option value="">-- Choose Garment from Inventory --</option>
+                  {items.filter(i => i.status !== 'RETIRED' && !i.isBulkPool).map(it => (
+                    <option key={it.id} value={it.id}>
+                      {it.id} — {it.name} ({it.size}) [{it.status}]
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* IF PRE-HIRE: WEARER & PO INFO */}
+              {newAlterationForm.taskType === 'PRE_HIRE_FITTING' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                  <div className="space-y-1">
+                    <label className="text-slate-700 font-bold">Wearer / Customer Name *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Gordon MacLeod"
+                      value={newAlterationForm.wearerName}
+                      onChange={e => setNewAlterationForm({ ...newAlterationForm, wearerName: e.target.value })}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-purple-500"
+                      required={newAlterationForm.taskType === 'PRE_HIRE_FITTING'}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-slate-700 font-bold">Customer Phone Number</label>
+                    <input
+                      type="text"
+                      placeholder="07700 900123"
+                      value={newAlterationForm.customerPhone}
+                      onChange={e => setNewAlterationForm({ ...newAlterationForm, customerPhone: e.target.value })}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-purple-500"
+                    />
+                  </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="text-slate-700 font-bold">Linked Purchase Order (Optional)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. PO-2026-1042"
+                      value={newAlterationForm.poId}
+                      onChange={e => setNewAlterationForm({ ...newAlterationForm, poId: e.target.value })}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 outline-none focus:border-purple-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* ADJUSTMENT SPECIFICATIONS */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-slate-800 font-black">Adjustment Action *</label>
+                  <select
+                    value={newAlterationForm.adjustmentType}
+                    onChange={e => setNewAlterationForm({ ...newAlterationForm, adjustmentType: e.target.value as any })}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-purple-500"
+                  >
+                    <option value="WAIST_TAKE_IN">Waist Take-In (Tighten Straps/Buckles)</option>
+                    <option value="WAIST_LET_OUT">Waist Let-Out (Extend Straps/Buckles)</option>
+                    <option value="HEM_SHORTEN">Hem Shorten (Take Up)</option>
+                    <option value="HEM_LENGTHEN">Hem Lengthen (Let Down)</option>
+                    <option value="SLEEVE_SHORTEN">Sleeve Shorten (Jacket/Shirt)</option>
+                    <option value="SLEEVE_LENGTHEN">Sleeve Lengthen</option>
+                    <option value="STRAP_BUCKLE">Strap / Buckle Repositioning</option>
+                    <option value="RESTOCK_RESET">Post-Hire Restock Size Reset</option>
+                    <option value="OTHER">Other Custom Tailoring</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-slate-800 font-black">Target Measurement *</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Take in waist 2 inches (36 in -> 34 in)"
+                    value={newAlterationForm.targetMeasurement}
+                    onChange={e => setNewAlterationForm({ ...newAlterationForm, targetMeasurement: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-purple-500"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* INSTRUCTIONS */}
+              <div className="space-y-1">
+                <label className="text-slate-800 font-black">Sewing / Tailoring Instructions</label>
+                <textarea
+                  rows={2}
+                  placeholder="Detailed notes for the seamstress / tailor on the sewing bench..."
+                  value={newAlterationForm.instructions}
+                  onChange={e => setNewAlterationForm({ ...newAlterationForm, instructions: e.target.value })}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-purple-500"
+                />
+              </div>
+
+              {/* DEADLINE & TAILOR ASSIGNMENT */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-slate-800 font-black">Collection / Due Deadline</label>
+                  <input
+                    type="date"
+                    value={newAlterationForm.collectionDate}
+                    onChange={e => setNewAlterationForm({ ...newAlterationForm, collectionDate: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-slate-800 font-black">Assigned Tailor / Seamstress</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Mary (Seamstress)"
+                    value={newAlterationForm.assignedTailor}
+                    onChange={e => setNewAlterationForm({ ...newAlterationForm, assignedTailor: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-purple-500"
+                  />
+                </div>
+              </div>
+
+              {/* SUBMIT BUTTONS */}
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateAlterationModal(false)}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black rounded-xl text-xs transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-black rounded-xl text-xs shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Scissors className="w-4 h-4" /> Queue Tailor Task
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────────────────── */}
+      {/* ✂️ MODAL 2: PRINTABLE TAILOR BENCH JOB SLIP                                 */}
+      {/* ─────────────────────────────────────────────────────────────────────────── */}
+      {showPrintJobCardModal && (
+        <div className="printable-modal-overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="printable-modal-content bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl overflow-y-auto max-h-[92vh] my-auto">
+            
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3 print:hidden">
+              <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                <Printer className="w-4 h-4 text-purple-600" /> Tailor Bench Garment Slip
+              </h3>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-black text-xs rounded-xl shadow transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5" /> Print Tag (Ctrl+P)
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setShowPrintJobCardModal(null)}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* PRINTABLE SLIP */}
+            <div className="border-2 border-dashed border-slate-900 p-5 rounded-2xl space-y-4 bg-slate-50/40">
+              <div className="flex items-center justify-between border-b border-slate-300 pb-3">
+                <div>
+                  <h2 className="text-sm font-black text-slate-950 uppercase tracking-tight">Highland Kilt Hire</h2>
+                  <p className="text-[10px] text-slate-500 font-bold">Tailor Workshop Garment Tag</p>
+                </div>
+                <div className="text-right">
+                  <span className="font-mono font-black text-xs px-2 py-0.5 bg-purple-100 text-purple-950 rounded border border-purple-300 block">
+                    {showPrintJobCardModal.id}
+                  </span>
+                  <span className="text-[9px] text-slate-400 block mt-0.5">{showPrintJobCardModal.createdAt}</span>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">Garment Details:</span>
+                <p className="text-sm font-black text-slate-900">{showPrintJobCardModal.itemName}</p>
+                <p className="text-xs font-mono font-bold text-purple-800">Tag QR: {showPrintJobCardModal.itemId} • {showPrintJobCardModal.originalGarmentSize}</p>
+              </div>
+
+              {/* TARGET ADJUSTMENT BOX */}
+              <div className="bg-white border-2 border-purple-900 p-3 rounded-xl space-y-1">
+                <span className="text-[10px] font-black uppercase text-purple-900 block">Required Tailoring Adjustment:</span>
+                <p className="text-sm font-black text-purple-950">{showPrintJobCardModal.targetMeasurement}</p>
+                <p className="text-xs text-slate-700 font-medium">{showPrintJobCardModal.instructions}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs font-bold text-slate-700 bg-white p-2.5 rounded-xl border border-slate-200">
+                <div>
+                  <span className="text-[9px] uppercase text-slate-400 block">Customer / Destination</span>
+                  <span className="text-slate-900 font-black">{showPrintJobCardModal.wearerName || 'Store Shelf Restock'}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] uppercase text-slate-400 block">Collection Due</span>
+                  <span className="text-rose-700 font-black">{showPrintJobCardModal.collectionDate || 'Flexible'}</span>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-300 flex items-center justify-between text-[11px] font-bold text-slate-600">
+                <span>Assigned: {showPrintJobCardModal.assignedTailor || 'Workshop Bench'}</span>
+                <span>Tailor Signature: ____________</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────────────────── */}
+      {/* ✂️ MODAL 3: PRINTABLE DAILY WORKSHOP MANIFEST                               */}
+      {/* ─────────────────────────────────────────────────────────────────────────── */}
+      {showPrintWorkshopManifestModal && (
+        <div className="printable-modal-overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="printable-modal-content bg-white border border-slate-200 rounded-3xl max-w-3xl w-full p-6 space-y-5 shadow-2xl overflow-y-auto max-h-[92vh] my-auto">
+            
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3 print:hidden">
+              <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                <Printer className="w-4 h-4 text-purple-600" /> Daily Workshop Alterations Manifest
+              </h3>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-black text-xs rounded-xl shadow transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5" /> Print Manifest (Ctrl+P)
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setShowPrintWorkshopManifestModal(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-5 print:p-0">
+              <div className="flex items-center justify-between border-b-2 border-slate-900 pb-3">
+                <div>
+                  <h2 className="text-lg font-black text-slate-950 uppercase tracking-tight">Highland Kilt Hire</h2>
+                  <p className="text-xs text-slate-600 font-semibold">Tailor Workshop Daily Bench &amp; Alteration Manifest</p>
+                </div>
+                <div className="text-right text-xs font-bold text-slate-700">
+                  <p>Date: <strong className="text-slate-950">{new Date().toLocaleDateString('en-GB')}</strong></p>
+                  <p>Active Jobs: <strong className="text-purple-800">{alterationTasks.filter(t => t.stage !== 'COMPLETED').length}</strong></p>
+                </div>
+              </div>
+
+              <table className="w-full text-left text-xs border border-slate-300">
+                <thead className="bg-slate-100 border-b border-slate-300 font-extrabold uppercase text-[10px]">
+                  <tr>
+                    <th className="p-2 border-r border-slate-300">Job ID</th>
+                    <th className="p-2 border-r border-slate-300">Garment &amp; Tag</th>
+                    <th className="p-2 border-r border-slate-300">Required Tailoring</th>
+                    <th className="p-2 border-r border-slate-300">Customer / Due</th>
+                    <th className="p-2 border-r border-slate-300">Stage</th>
+                    <th className="p-2 text-center">Passed</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 font-medium">
+                  {alterationTasks.map(task => (
+                    <tr key={task.id} className="hover:bg-slate-50">
+                      <td className="p-2 border-r border-slate-300 font-mono font-black text-purple-900">{task.id}</td>
+                      <td className="p-2 border-r border-slate-300">
+                        <strong className="text-slate-900">{task.itemName}</strong>
+                        <span className="text-[10px] font-mono text-slate-500 block">{task.itemId} ({task.originalGarmentSize})</span>
+                      </td>
+                      <td className="p-2 border-r border-slate-300 font-bold text-slate-800">
+                        {task.targetMeasurement}
+                      </td>
+                      <td className="p-2 border-r border-slate-300 text-[11px]">
+                        <div>{task.wearerName || 'Re-stock Reset'}</div>
+                        <span className="text-rose-700 font-bold block">{task.collectionDate ? `Due: ${task.collectionDate}` : ''}</span>
+                      </td>
+                      <td className="p-2 border-r border-slate-300 font-bold text-[10px]">
+                        {task.stage}
+                      </td>
+                      <td className="p-2 text-center">[ &nbsp; ]</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <div className="pt-3 border-t border-slate-300 text-xs font-bold text-slate-600 flex justify-between">
+                <span>Head Tailor / Seamstress Sign-Off: _________________________</span>
+                <span>Date: _______________</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────────────────── */}
+      {/* 💰 MODAL 4: LOG REPAIR / SPECIALTY CLEANING EXPENSE                         */}
+      {/* ─────────────────────────────────────────────────────────────────────────── */}
+      {showLogExpenseModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-xl w-full p-6 space-y-5 shadow-2xl overflow-y-auto max-h-[92vh] my-auto">
+            
+            <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 bg-rose-100 text-rose-800 rounded-2xl flex items-center justify-center border border-rose-300">
+                  <Receipt className="w-5 h-5 text-rose-600" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">Log Repair / Cleaning Expense</h3>
+                  <p className="text-xs text-slate-500">Record external third-party invoice or in-house repair expense.</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowLogExpenseModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleLogExpenseSubmit} className="space-y-4 text-xs font-bold text-slate-700">
+              
+              {/* EXPENSE TYPE SELECTION */}
+              <div className="space-y-1.5">
+                <label className="text-slate-800 font-black">Expense Category *</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'EXPENSE_DRY_CLEANING', label: '🧼 Dry Cleaning', desc: 'Stain lifting / deep wash' },
+                    { id: 'EXPENSE_TAILOR_REPAIR', label: '✂️ Tailor Repair', desc: 'Seam, lining, buckles' },
+                    { id: 'EXPENSE_REPLACEMENT', label: '🏷️ Replacement', desc: 'Lost or ruined asset' }
+                  ].map(t => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setNewExpenseForm({ ...newExpenseForm, entryType: t.id as any })}
+                      className={`p-2.5 rounded-2xl border-2 text-left transition cursor-pointer ${
+                        newExpenseForm.entryType === t.id
+                          ? 'bg-rose-50 border-rose-500 text-rose-950 ring-2 ring-rose-200'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="font-black text-xs block">{t.label}</span>
+                      <span className="text-[10px] text-slate-400 block font-normal mt-0.5">{t.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* VENDOR & INVOICE REF */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-slate-800 font-black">Vendor / Service Provider *</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Highland Sparkle Cleaners Ltd"
+                    value={newExpenseForm.vendorOrPayer}
+                    onChange={e => setNewExpenseForm({ ...newExpenseForm, vendorOrPayer: e.target.value })}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-rose-500"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-slate-800 font-black">Invoice / Receipt Reference</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. INV-HSC-9921"
+                    value={newExpenseForm.invoiceRef}
+                    onChange={e => setNewExpenseForm({ ...newExpenseForm, invoiceRef: e.target.value })}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 outline-none focus:border-rose-500"
+                  />
+                </div>
+              </div>
+
+              {/* AMOUNT & LINKED ITEM */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-slate-800 font-black">Invoice Amount (£ GBP) *</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 font-black text-slate-400">£</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      placeholder="25.00"
+                      value={newExpenseForm.amount}
+                      onChange={e => setNewExpenseForm({ ...newExpenseForm, amount: parseFloat(e.target.value) || 0 })}
+                      className="w-full pl-8 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-black text-slate-900 outline-none focus:border-rose-500"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-slate-800 font-black">Linked Garment Item (Optional)</label>
+                  <select
+                    value={newExpenseForm.itemId}
+                    onChange={e => setNewExpenseForm({ ...newExpenseForm, itemId: e.target.value })}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-rose-500"
+                  >
+                    <option value="">-- General Shop Repair --</option>
+                    {items.filter(i => i.status !== 'RETIRED').map(it => (
+                      <option key={it.id} value={it.id}>
+                        {it.id} — {it.name} ({it.size})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* LINKED PO & CUSTOMER */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-slate-800 font-black">Linked Purchase Order (Optional)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. PO-2026-0089"
+                    value={newExpenseForm.poId}
+                    onChange={e => setNewExpenseForm({ ...newExpenseForm, poId: e.target.value })}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 outline-none focus:border-rose-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-slate-800 font-black">Responsible Customer Name (Optional)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Robert Menzies"
+                    value={newExpenseForm.customerName}
+                    onChange={e => setNewExpenseForm({ ...newExpenseForm, customerName: e.target.value })}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-rose-500"
+                  />
+                </div>
+              </div>
+
+              {/* REASON / DAMAGE DESCRIPTION */}
+              <div className="space-y-1">
+                <label className="text-slate-800 font-black">Reason / Repair Description *</label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Red wine spill on front kilt apron requiring specialty organic chemical stain lift."
+                  value={newExpenseForm.reason}
+                  onChange={e => setNewExpenseForm({ ...newExpenseForm, reason: e.target.value })}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-rose-500"
+                  required
+                />
+              </div>
+
+              {/* NOTES */}
+              <div className="space-y-1">
+                <label className="text-slate-800 font-black">Internal Payment Notes</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Paid via shop BACS transfer on receipt."
+                  value={newExpenseForm.notes}
+                  onChange={e => setNewExpenseForm({ ...newExpenseForm, notes: e.target.value })}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-rose-500"
+                />
+              </div>
+
+              {/* SUBMIT BUTTONS */}
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowLogExpenseModal(false)}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black rounded-xl text-xs transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-xs shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Receipt className="w-4 h-4" /> Record Expense in Ledger
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────────────────── */}
+      {/* 💰 MODAL 5: DEDUCT & RETAIN SECURITY DEPOSIT FOR DAMAGE                     */}
+      {/* ─────────────────────────────────────────────────────────────────────────── */}
+      {showDeductDepositModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl overflow-y-auto max-h-[92vh] my-auto">
+            
+            <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 bg-amber-100 text-amber-900 rounded-2xl flex items-center justify-center border border-amber-300">
+                  <Wallet className="w-5 h-5 text-amber-700" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">Retain Security Deposit for Damage</h3>
+                  <p className="text-xs text-slate-500">Record damage penalty against held customer security deposit.</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowDeductDepositModal(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* ORDER INFO SUMMARY */}
+            <div className="bg-amber-50/70 border border-amber-200 p-3.5 rounded-2xl space-y-1 text-xs text-amber-950">
+              <div className="flex items-center justify-between">
+                <span>Customer: <strong>{showDeductDepositModal.po.customerName}</strong></span>
+                <span className="font-mono font-bold text-amber-900">{showDeductDepositModal.po.id}</span>
+              </div>
+              <div className="flex items-center justify-between pt-1 border-t border-amber-200/60">
+                <span>Total Held Deposit:</span>
+                <strong className="text-amber-950 font-black">£{showDeductDepositModal.po.totalDepositHeld.toFixed(2)}</strong>
+              </div>
+              {showDeductDepositModal.item && (
+                <div className="pt-1 text-[11px] text-amber-900">
+                  Damaged Item: <strong>{showDeductDepositModal.item.name}</strong> ({showDeductDepositModal.item.id})
+                </div>
+              )}
+            </div>
+
+            <form onSubmit={handleDeductDepositSubmit} className="space-y-4 text-xs font-bold text-slate-700">
+              
+              <div className="space-y-1">
+                <label className="text-slate-800 font-black">Amount to Retain (£ GBP) *</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 font-black text-slate-400">£</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    max={showDeductDepositModal.po.totalDepositHeld}
+                    value={deductDepositForm.deductAmount}
+                    onChange={e => setDeductDepositForm({ ...deductDepositForm, deductAmount: parseFloat(e.target.value) || 0 })}
+                    className="w-full pl-8 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-black text-slate-900 outline-none focus:border-amber-500"
+                    required
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  Maximum retainable: £{showDeductDepositModal.po.totalDepositHeld.toFixed(2)}. Remaining deposit will be refunded to customer.
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-slate-800 font-black">Damage / Stain Reason *</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Deep red wine stain on kilt front apron"
+                  value={deductDepositForm.reason}
+                  onChange={e => setDeductDepositForm({ ...deductDepositForm, reason: e.target.value })}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-amber-500"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-slate-800 font-black">Inspection &amp; Refund Settlement Notes</label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Agreed with customer at counter. £30 deducted for specialist dry cleaning, remaining £20 refunded to card."
+                  value={deductDepositForm.notes}
+                  onChange={e => setDeductDepositForm({ ...deductDepositForm, notes: e.target.value })}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDeductDepositModal(null)}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black rounded-xl text-xs transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Wallet className="w-4 h-4" /> Confirm &amp; Credit Ledger
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────────────────── */}
+      {/* 💰 MODAL 6: PRINTABLE RECONCILIATION STATEMENT                             */}
+      {/* ─────────────────────────────────────────────────────────────────────────── */}
+      {showPrintLedgerStatementModal && (
+        <div className="printable-modal-overlay fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="printable-modal-content bg-white border border-slate-200 rounded-3xl max-w-4xl w-full p-6 space-y-5 shadow-2xl overflow-y-auto max-h-[92vh] my-auto">
+            
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3 print:hidden">
+              <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                <Printer className="w-4 h-4 text-amber-600" /> Security Deposit &amp; Damage Reconciliation Statement
+              </h3>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl shadow transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5" /> Print Statement (Ctrl+P)
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setShowPrintLedgerStatementModal(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* PRINTABLE STATEMENT BODY */}
+            <div className="space-y-5 print:p-0">
+              
+              {/* HEADER */}
+              <div className="flex items-center justify-between border-b-2 border-slate-900 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl overflow-hidden border border-amber-500/40 shrink-0">
+                    <img src="/logo.png" alt="Highland Kilt Hire" className="w-full h-full object-cover" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-black text-slate-950 uppercase tracking-tight">Highland Kilt Hire</h2>
+                    <p className="text-xs text-slate-600 font-semibold">Security Deposit Retentions &amp; Repair Expense Reconciliation</p>
+                  </div>
+                </div>
+
+                <div className="text-right text-xs font-bold text-slate-700 space-y-0.5">
+                  <p>Statement Date: <strong className="text-slate-950">{new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</strong></p>
+                  <p>Auditor / Manager: <strong className="text-amber-800">{currentUser?.name || 'Allan'}</strong></p>
+                  <p>Accounting Currency: <strong>GBP (£)</strong></p>
+                </div>
+              </div>
+
+              {/* FINANCIAL SUMMARY TABLE */}
+              {(() => {
+                const totalRetained = depositLedgerEntries
+                  .filter(e => e.entryType === 'DEPOSIT_RETAINED')
+                  .reduce((sum, e) => sum + e.amount, 0);
+
+                const totalExpenses = depositLedgerEntries
+                  .filter(e => e.entryType.startsWith('EXPENSE_'))
+                  .reduce((sum, e) => sum + e.amount, 0);
+
+                const netMargin = totalRetained - totalExpenses;
+
+                return (
+                  <div className="grid grid-cols-3 gap-3 text-center border-2 border-slate-900 p-3 rounded-xl bg-slate-50/50">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-slate-500 block">Total Retained Deposits</span>
+                      <span className="text-base font-black text-emerald-700">+£{totalRetained.toFixed(2)}</span>
+                    </div>
+                    <div className="border-x border-slate-300">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 block">Total Repair Expenses</span>
+                      <span className="text-base font-black text-rose-700">-£{totalExpenses.toFixed(2)}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-slate-500 block">Net Fund Balance</span>
+                      <span className={`text-base font-black ${netMargin >= 0 ? 'text-emerald-800' : 'text-rose-800'}`}>
+                        {netMargin >= 0 ? `+£${netMargin.toFixed(2)} (Surplus)` : `-£${Math.abs(netMargin).toFixed(2)} (Deficit)`}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* ITEMISED TRANSACTIONS */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-950">
+                  Itemized Deposit Deductions &amp; Expense Transactions ({depositLedgerEntries.length} Records)
+                </h4>
+                <table className="w-full text-left text-xs border border-slate-300">
+                  <thead className="bg-slate-100 border-b border-slate-300 font-extrabold uppercase text-[10px]">
+                    <tr>
+                      <th className="p-2 border-r border-slate-300">Date / ID</th>
+                      <th className="p-2 border-r border-slate-300">Transaction Type</th>
+                      <th className="p-2 border-r border-slate-300">Customer &amp; PO</th>
+                      <th className="p-2 border-r border-slate-300">Garment / Vendor</th>
+                      <th className="p-2 border-r border-slate-300">Reason &amp; Reference</th>
+                      <th className="p-2 text-right">Amount (£)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 font-medium">
+                    {depositLedgerEntries.map(entry => {
+                      const isRetained = entry.entryType === 'DEPOSIT_RETAINED';
+                      return (
+                        <tr key={entry.id} className="hover:bg-slate-50">
+                          <td className="p-2 border-r border-slate-300 font-mono text-[10px]">
+                            <strong className="block">{entry.id}</strong>
+                            <span className="text-slate-500">{entry.date.slice(0, 10)}</span>
+                          </td>
+                          <td className="p-2 border-r border-slate-300 font-bold text-[11px]">
+                            {isRetained ? '💰 Deposit Retained' :
+                             entry.entryType === 'EXPENSE_DRY_CLEANING' ? '🧼 Dry Cleaning' :
+                             entry.entryType === 'EXPENSE_TAILOR_REPAIR' ? '✂️ Tailor Repair' : '🏷️ Asset Replacement'}
+                          </td>
+                          <td className="p-2 border-r border-slate-300 text-[11px]">
+                            <div>{entry.customerName || '—'}</div>
+                            {entry.poId && <span className="font-mono text-[10px] text-blue-800">{entry.poId}</span>}
+                          </td>
+                          <td className="p-2 border-r border-slate-300 text-[11px]">
+                            <div>{entry.itemName || entry.vendorOrPayer || 'In-House'}</div>
+                            {entry.itemId && <span className="font-mono text-[10px] text-amber-800">{entry.itemId}</span>}
+                          </td>
+                          <td className="p-2 border-r border-slate-300 text-[11px]">
+                            <div>{entry.reason}</div>
+                            {entry.invoiceRef && <span className="font-mono text-[10px] text-purple-800">Inv: {entry.invoiceRef}</span>}
+                          </td>
+                          <td className="p-2 text-right font-black text-xs">
+                            <span className={isRetained ? 'text-emerald-700' : 'text-rose-700'}>
+                              {isRetained ? `+£${entry.amount.toFixed(2)}` : `-£${entry.amount.toFixed(2)}`}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* AUDIT SIGN OFF */}
+              <div className="border-2 border-slate-900 p-4 rounded-xl space-y-3 bg-slate-50/50 mt-4">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-950">
+                  Store Owner &amp; Financial Controller Sign-Off
+                </h4>
+                <div className="grid grid-cols-2 gap-4 text-xs font-bold text-slate-800">
+                  <div className="border border-slate-300 p-3 rounded-lg bg-white space-y-2">
+                    <p>Master Admin / Owner Signature: _______________________</p>
+                    <p className="text-[10px] text-slate-500 font-normal">Audited By: {currentUser?.name || 'Allan (Master Admin)'}</p>
+                  </div>
+                  <div className="border border-slate-300 p-3 rounded-lg bg-white space-y-2">
+                    <p>Accounts Verified Date: ___________________</p>
+                    <p className="text-[10px] text-slate-500 font-normal">Next Monthly Audit Cycle: End of Month</p>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }

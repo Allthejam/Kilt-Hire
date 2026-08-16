@@ -10,58 +10,74 @@ body {
 /* A4 PAPER IRON-ON FABRIC QR LABEL PRINT STYLING (210mm x 297mm)             */
 /* Exactly 4 Columns Across x 7 Rows Down = 28 Labels per Page              */
 /* ========================================================================== */
+/* ========================================================================== */
+/* A4 PAPER IRON-ON FABRIC QR LABEL & MODAL ONLY PRINT STYLING                */
+/* ========================================================================== */
 @media print {
   @page {
     size: A4 portrait;
     margin: 8mm;
   }
 
-  /* Force all HTML/Body scroll containers to overflow: visible so multi-page print flows naturally */
-  html, body, main, div, section {
+  /* 1. Reset root styles cleanly */
+  html, body {
     background: #ffffff !important;
     color: #000000 !important;
     margin: 0 !important;
     padding: 0 !important;
-    overflow: visible !important;
-    max-height: none !important;
     height: auto !important;
-    position: static !important;
+    overflow: visible !important;
   }
 
-  /* Hide explicit .no-print elements completely */
-  .no-print, .no-print *, header, nav, footer, button, aside {
+  /* 2. Hide entire page shell: header, navigation, sidebar, background main page, footers, buttons */
+  header, nav, aside, main, footer, button, .no-print {
     display: none !important;
     visibility: hidden !important;
   }
 
-  /* Strip away fixed backdrop modal constraints in print mode */
-  .print-modal-overlay {
+  /* 3. Strip overlay styling so only the active modal card prints */
+  .printable-modal-overlay {
     position: static !important;
     display: block !important;
+    visibility: visible !important;
     background: transparent !important;
     padding: 0 !important;
     margin: 0 !important;
     overflow: visible !important;
     height: auto !important;
     max-height: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
     inset: auto !important;
     box-shadow: none !important;
     border: none !important;
   }
 
-  .print-modal-content {
+  .printable-modal-content {
     position: static !important;
     display: block !important;
+    visibility: visible !important;
     border: none !important;
     box-shadow: none !important;
     width: 100% !important;
     max-width: 100% !important;
     padding: 0 !important;
-    margin: 0 !important;
-    background: transparent !important;
+    margin: 0 auto !important;
+    background: #ffffff !important;
     overflow: visible !important;
     height: auto !important;
     max-height: none !important;
+  }
+
+  .printable-modal-content * {
+    visibility: visible !important;
+  }
+
+  /* Hide elements with print:hidden */
+  .print\:hidden,
+  .print\:hidden * {
+    display: none !important;
+    visibility: hidden !important;
   }
 
   /* Printable QR Sheet Container (Flows static across multiple A4 pages) */
@@ -70,7 +86,7 @@ body {
     visibility: visible !important;
     position: static !important;
     width: 194mm !important;
-    margin: 0 !important;
+    margin: 0 auto !important;
     padding: 0 !important;
     background: #ffffff !important;
     border: none !important;
@@ -78,6 +94,10 @@ body {
     overflow: visible !important;
     max-height: none !important;
     height: auto !important;
+  }
+
+  .print-qr-container * {
+    visibility: visible !important;
   }
 
   /* 4 Columns Across Grid for A4 Paper */
@@ -126,5 +146,10 @@ body {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
     display: block !important;
+    visibility: visible !important;
+  }
+
+  .bulk-box-label-print * {
+    visibility: visible !important;
   }
 }
