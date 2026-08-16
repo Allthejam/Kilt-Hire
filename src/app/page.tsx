@@ -17268,41 +17268,57 @@ export default function KiltHireApp() {
                                 <table className="w-full text-left text-xs text-slate-700">
                                   <thead className="bg-slate-100 text-slate-900 font-extrabold border-b border-slate-200 uppercase tracking-wider text-[10px]">
                                     <tr>
-                                      <th className="py-3 px-4">Garment Category</th>
-                                      <th className="py-3 px-4 text-center">
-                                        <div className="inline-flex items-center gap-1 group relative cursor-help">
+                                      <th className="py-3.5 px-4">Garment Category</th>
+                                      <th className="py-3.5 px-4 text-center">
+                                        <div 
+                                          title="Total number of physical garments in this category currently in store stock."
+                                          className="inline-flex items-center gap-1.5 group relative cursor-pointer"
+                                        >
                                           <span>Unit Count</span>
-                                          <span className="w-3.5 h-3.5 rounded-full bg-slate-300 text-slate-800 text-[9px] font-black flex items-center justify-center shadow-xs">?</span>
-                                          <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 hidden group-hover:block w-48 p-2.5 bg-slate-900 text-white font-medium normal-case text-[11px] rounded-xl shadow-xl z-30 pointer-events-none text-center">
+                                          <span className="w-4 h-4 rounded-full bg-slate-200 text-slate-800 text-[10px] font-black flex items-center justify-center border border-slate-400/50 shadow-xs hover:bg-amber-400 hover:text-slate-950 transition">?</span>
+                                          <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 hidden group-hover:block w-52 p-3 bg-slate-950 text-white font-medium normal-case text-[11px] rounded-2xl shadow-2xl z-50 pointer-events-none text-center border border-slate-700">
+                                            <strong className="block text-amber-400 font-bold mb-0.5">Unit Count:</strong>
                                             Total number of physical garments in this category currently in store stock.
                                           </div>
                                         </div>
                                       </th>
-                                      <th className="py-3 px-4 text-right">
-                                        <div className="inline-flex items-center gap-1 group relative cursor-help">
+                                      <th className="py-3.5 px-4 text-right">
+                                        <div 
+                                          title="Original total wholesale purchase cost paid to buy these garments when brand new."
+                                          className="inline-flex items-center gap-1.5 group relative cursor-pointer"
+                                        >
                                           <span>Historic Acquisition Cost (£)</span>
-                                          <span className="w-3.5 h-3.5 rounded-full bg-slate-300 text-slate-800 text-[9px] font-black flex items-center justify-center shadow-xs">?</span>
-                                          <div className="absolute right-0 bottom-full mb-1.5 hidden group-hover:block w-56 p-2.5 bg-slate-900 text-white font-medium normal-case text-[11px] rounded-xl shadow-xl z-30 pointer-events-none text-left">
+                                          <span className="w-4 h-4 rounded-full bg-slate-200 text-slate-800 text-[10px] font-black flex items-center justify-center border border-slate-400/50 shadow-xs hover:bg-amber-400 hover:text-slate-950 transition">?</span>
+                                          <div className="absolute right-0 top-full mt-2 hidden group-hover:block w-64 p-3 bg-slate-950 text-white font-medium normal-case text-[11px] rounded-2xl shadow-2xl z-50 pointer-events-none text-left border border-slate-700">
+                                            <strong className="block text-amber-400 font-bold mb-0.5">Historic Cost:</strong>
                                             Original total wholesale purchase cost paid to buy these garments when brand new.
                                           </div>
                                         </div>
                                       </th>
-                                      <th className="py-3 px-4 text-right">
-                                        <div className="inline-flex items-center gap-1 group relative cursor-help">
+                                      <th className="py-3.5 px-4 text-right">
+                                        <div 
+                                          title="The current estimated market resale or balance sheet replacement value of these garments today."
+                                          className="inline-flex items-center gap-1.5 group relative cursor-pointer"
+                                        >
                                           <span>Current Asset Valuation (£)</span>
-                                          <span className="w-3.5 h-3.5 rounded-full bg-purple-300 text-purple-950 text-[9px] font-black flex items-center justify-center shadow-xs">?</span>
-                                          <div className="absolute right-0 bottom-full mb-1.5 hidden group-hover:block w-56 p-2.5 bg-purple-950 text-white font-medium normal-case text-[11px] rounded-xl shadow-xl z-30 pointer-events-none text-left">
+                                          <span className="w-4 h-4 rounded-full bg-purple-200 text-purple-950 text-[10px] font-black flex items-center justify-center border border-purple-400/50 shadow-xs hover:bg-amber-400 hover:text-slate-950 transition">?</span>
+                                          <div className="absolute right-0 top-full mt-2 hidden group-hover:block w-64 p-3 bg-purple-950 text-white font-medium normal-case text-[11px] rounded-2xl shadow-2xl z-50 pointer-events-none text-left border border-purple-600">
+                                            <strong className="block text-amber-300 font-bold mb-0.5">Current Asset Valuation:</strong>
                                             The current estimated market resale or balance sheet replacement value of these garments today.
                                           </div>
                                         </div>
                                       </th>
-                                      <th className="py-3 px-4 text-right">
-                                        <div className="inline-flex items-center gap-1 group relative cursor-help">
+                                      <th className="py-3.5 px-4 text-right">
+                                        <div 
+                                          title="What percentage (%) of your total store stock wealth is tied up in this category."
+                                          className="inline-flex items-center gap-1.5 group relative cursor-pointer"
+                                        >
                                           <span>Asset Share %</span>
-                                          <span className="w-3.5 h-3.5 rounded-full bg-amber-400 text-slate-950 text-[9px] font-black flex items-center justify-center shadow-xs">?</span>
-                                          <div className="absolute right-0 bottom-full mb-1.5 hidden group-hover:block w-64 p-3 bg-slate-900 text-amber-200 font-medium normal-case text-[11px] rounded-xl shadow-2xl z-30 pointer-events-none text-left leading-relaxed border border-amber-500/40">
-                                            <strong className="text-white block font-bold mb-1">What is Asset Share %?</strong>
-                                            What percentage (%) of your total store stock wealth is tied up in this category. (e.g. If total stock is £10,000 and Kilts are worth £6,000, Kilts make up a 60% Asset Share).
+                                          <span className="w-4 h-4 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black flex items-center justify-center border border-amber-600/50 shadow-xs ring-2 ring-amber-200 transition">?</span>
+                                          <div className="absolute right-0 top-full mt-2 hidden group-hover:block w-72 p-3.5 bg-slate-950 text-amber-100 font-medium normal-case text-[11px] rounded-2xl shadow-2xl z-50 pointer-events-none text-left leading-relaxed border-2 border-amber-400">
+                                            <strong className="text-white block font-bold text-xs mb-1">What is Asset Share %?</strong>
+                                            What percentage (%) of your total store stock wealth is tied up in this category.<br/><br/>
+                                            <em>Example: If your total stock is £10,000 and Kilts are worth £6,000, Kilts make up a 60% Asset Share.</em>
                                           </div>
                                         </div>
                                       </th>
