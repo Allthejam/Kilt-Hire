@@ -17270,10 +17270,7 @@ export default function KiltHireApp() {
                                     <tr>
                                       <th className="py-3.5 px-4">Garment Category</th>
                                       <th className="py-3.5 px-4 text-center">
-                                        <div 
-                                          title="Total number of physical garments in this category currently in store stock."
-                                          className="inline-flex items-center gap-1.5 group relative cursor-pointer"
-                                        >
+                                        <div className="inline-flex items-center gap-1.5 group relative cursor-pointer">
                                           <span>Unit Count</span>
                                           <span className="w-4 h-4 rounded-full bg-slate-200 text-slate-800 text-[10px] font-black flex items-center justify-center border border-slate-400/50 shadow-xs hover:bg-amber-400 hover:text-slate-950 transition">?</span>
                                           <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 hidden group-hover:block w-52 p-3 bg-slate-950 text-white font-medium normal-case text-[11px] rounded-2xl shadow-2xl z-50 pointer-events-none text-center border border-slate-700">
@@ -17283,10 +17280,7 @@ export default function KiltHireApp() {
                                         </div>
                                       </th>
                                       <th className="py-3.5 px-4 text-right">
-                                        <div 
-                                          title="Original total wholesale purchase cost paid to buy these garments when brand new."
-                                          className="inline-flex items-center gap-1.5 group relative cursor-pointer"
-                                        >
+                                        <div className="inline-flex items-center gap-1.5 group relative cursor-pointer">
                                           <span>Historic Acquisition Cost (£)</span>
                                           <span className="w-4 h-4 rounded-full bg-slate-200 text-slate-800 text-[10px] font-black flex items-center justify-center border border-slate-400/50 shadow-xs hover:bg-amber-400 hover:text-slate-950 transition">?</span>
                                           <div className="absolute right-0 top-full mt-2 hidden group-hover:block w-64 p-3 bg-slate-950 text-white font-medium normal-case text-[11px] rounded-2xl shadow-2xl z-50 pointer-events-none text-left border border-slate-700">
@@ -17296,10 +17290,7 @@ export default function KiltHireApp() {
                                         </div>
                                       </th>
                                       <th className="py-3.5 px-4 text-right">
-                                        <div 
-                                          title="The current estimated market resale or balance sheet replacement value of these garments today."
-                                          className="inline-flex items-center gap-1.5 group relative cursor-pointer"
-                                        >
+                                        <div className="inline-flex items-center gap-1.5 group relative cursor-pointer">
                                           <span>Current Asset Valuation (£)</span>
                                           <span className="w-4 h-4 rounded-full bg-purple-200 text-purple-950 text-[10px] font-black flex items-center justify-center border border-purple-400/50 shadow-xs hover:bg-amber-400 hover:text-slate-950 transition">?</span>
                                           <div className="absolute right-0 top-full mt-2 hidden group-hover:block w-64 p-3 bg-purple-950 text-white font-medium normal-case text-[11px] rounded-2xl shadow-2xl z-50 pointer-events-none text-left border border-purple-600">
@@ -17309,10 +17300,7 @@ export default function KiltHireApp() {
                                         </div>
                                       </th>
                                       <th className="py-3.5 px-4 text-right">
-                                        <div 
-                                          title="What percentage (%) of your total store stock wealth is tied up in this category."
-                                          className="inline-flex items-center gap-1.5 group relative cursor-pointer"
-                                        >
+                                        <div className="inline-flex items-center gap-1.5 group relative cursor-pointer">
                                           <span>Asset Share %</span>
                                           <span className="w-4 h-4 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black flex items-center justify-center border border-amber-600/50 shadow-xs ring-2 ring-amber-200 transition">?</span>
                                           <div className="absolute right-0 top-full mt-2 hidden group-hover:block w-72 p-3.5 bg-slate-950 text-amber-100 font-medium normal-case text-[11px] rounded-2xl shadow-2xl z-50 pointer-events-none text-left leading-relaxed border-2 border-amber-400">
