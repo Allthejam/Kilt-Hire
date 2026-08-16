@@ -772,9 +772,9 @@ export default function KiltHireApp() {
     customerEmail: '',
     customerPhone: '',
     eventType: 'Wedding Party' as 'Wedding Party' | 'Funeral / Memorial' | 'Hogmanay / New Year' | 'Party / Celebration' | 'Ceilidh / Formal' | 'Graduation / Prom' | 'Highland Games' | 'Fashion / Personal' | 'General Hire',
-    eventDate: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
-    collectionDate: new Date(Date.now() + 12 * 86400000).toISOString().slice(0, 10),
-    returnDate: new Date(Date.now() + 16 * 86400000).toISOString().slice(0, 10),
+    eventDate: '',
+    collectionDate: '',
+    returnDate: '',
     billingMode: 'SINGLE_PRINCIPLE' as 'SINGLE_PRINCIPLE' | 'SPLIT_INDIVIDUAL',
     depositMethod: 'PAYPAL_ONLINE' as 'PAYPAL_ONLINE' | 'IN_STORE_CASH' | 'IN_STORE_CARD' | 'PAPER_DIARY_LEGACY',
     notes: '',
@@ -1718,9 +1718,9 @@ export default function KiltHireApp() {
       customerEmail: '',
       customerPhone: '',
       eventType: 'Wedding Party',
-      eventDate: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
-      collectionDate: new Date(Date.now() + 12 * 86400000).toISOString().slice(0, 10),
-      returnDate: new Date(Date.now() + 16 * 86400000).toISOString().slice(0, 10),
+      eventDate: '',
+      collectionDate: '',
+      returnDate: '',
       billingMode: 'SINGLE_PRINCIPLE',
       depositMethod: 'PAYPAL_ONLINE',
       notes: '',
@@ -1804,6 +1804,10 @@ export default function KiltHireApp() {
     e.preventDefault();
     if (!fittingForm.customerName || !fittingForm.customerEmail) {
       showToast('Lead Customer Name and Email are required for fitting orders.', 'warning');
+      return;
+    }
+    if (!fittingForm.collectionDate || !fittingForm.eventDate || !fittingForm.returnDate) {
+      showToast('⚠️ Collection Date, Event Date, and Return Date are all mandatory (*). Please select dates.', 'warning');
       return;
     }
 
@@ -2168,9 +2172,9 @@ export default function KiltHireApp() {
         customerEmail: '',
         customerPhone: '',
         eventType: 'Wedding Party',
-        eventDate: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
-        collectionDate: new Date(Date.now() + 12 * 86400000).toISOString().slice(0, 10),
-        returnDate: new Date(Date.now() + 16 * 86400000).toISOString().slice(0, 10),
+        eventDate: '',
+        collectionDate: '',
+        returnDate: '',
         billingMode: 'SINGLE_PRINCIPLE',
         depositMethod: 'PAYPAL_ONLINE',
         notes: '',
@@ -6923,20 +6927,10 @@ export default function KiltHireApp() {
                             type="date" 
                             required
                             min={fittingForm.depositMethod === 'PAPER_DIARY_LEGACY' ? undefined : new Date().toISOString().slice(0, 10)}
-                            max={fittingForm.eventDate || undefined}
                             value={fittingForm.collectionDate}
                             onChange={e => {
                               const newCol = e.target.value;
-                              let newEv = fittingForm.eventDate;
-                              let newRet = fittingForm.returnDate;
-
-                              // If collection is pushed past current event date, auto-bump event & return dates
-                              if (newEv && newCol > newEv) {
-                                newEv = newCol;
-                                newRet = new Date(new Date(newCol).getTime() + 2 * 86400000).toISOString().slice(0, 10);
-                              }
-
-                              setFittingForm({ ...fittingForm, collectionDate: newCol, eventDate: newEv, returnDate: newRet });
+                              setFittingForm(prev => ({ ...prev, collectionDate: newCol }));
                             }}
                             className={`w-full bg-white border rounded-xl p-2.5 text-slate-900 font-bold outline-none shadow-sm text-xs ${
                               (fittingForm.depositMethod !== 'PAPER_DIARY_LEGACY' && fittingForm.collectionDate && fittingForm.collectionDate < new Date().toISOString().slice(0, 10)) ||
@@ -6951,16 +6945,11 @@ export default function KiltHireApp() {
                           <input 
                             type="date" 
                             required
-                            min={fittingForm.collectionDate || new Date().toISOString().slice(0, 10)}
+                            min={fittingForm.collectionDate || (fittingForm.depositMethod === 'PAPER_DIARY_LEGACY' ? undefined : new Date().toISOString().slice(0, 10))}
                             value={fittingForm.eventDate}
                             onChange={e => {
                               const newEv = e.target.value;
-                              let autoRet = fittingForm.returnDate;
-                              // Auto-calculate return date as 2 days after event date if missing or invalid
-                              if (!autoRet || autoRet <= newEv) {
-                                autoRet = new Date(new Date(newEv).getTime() + 2 * 86400000).toISOString().slice(0, 10);
-                              }
-                              setFittingForm({ ...fittingForm, eventDate: newEv, returnDate: autoRet });
+                              setFittingForm(prev => ({ ...prev, eventDate: newEv }));
                             }}
                             className={`w-full bg-white border rounded-xl p-2.5 text-slate-900 font-bold outline-none shadow-sm text-xs ${
                               fittingForm.collectionDate && fittingForm.eventDate && fittingForm.collectionDate > fittingForm.eventDate 
@@ -6974,9 +6963,9 @@ export default function KiltHireApp() {
                           <input 
                             type="date" 
                             required
-                            min={fittingForm.eventDate || fittingForm.collectionDate || new Date().toISOString().slice(0, 10)}
+                            min={fittingForm.eventDate || fittingForm.collectionDate || (fittingForm.depositMethod === 'PAPER_DIARY_LEGACY' ? undefined : new Date().toISOString().slice(0, 10))}
                             value={fittingForm.returnDate}
-                            onChange={e => setFittingForm({ ...fittingForm, returnDate: e.target.value })}
+                            onChange={e => setFittingForm(prev => ({ ...prev, returnDate: e.target.value }))}
                             className={`w-full bg-white border rounded-xl p-2.5 font-bold outline-none shadow-sm text-xs ${
                               (fittingForm.eventDate && fittingForm.returnDate && fittingForm.eventDate > fittingForm.returnDate) ||
                               (fittingForm.collectionDate && fittingForm.returnDate && fittingForm.collectionDate >= fittingForm.returnDate)
