@@ -142,7 +142,11 @@ export async function POST(request: Request) {
 
       const totalFee = orderData?.totalHireFee ?? 110;
       const depositHeld = orderData?.totalDepositHeld ?? 50;
-      const paypalLink = orderData?.paypalPaymentLink || `https://www.paypal.com/checkout?po=${orderData?.poId || 'PO-1001'}&amount=${totalFee + depositHeld}`;
+      const paymentStatus = orderData?.paymentStatus || 'UNPAID';
+      const isFullyPaid = paymentStatus === 'FULL_BALANCE_PAID' || paymentStatus === 'PAID_WITH_DEPOSIT';
+      const isDepositPaid = paymentStatus === 'PARTIAL_DEPOSIT';
+      const outstandingAmount = isFullyPaid ? 0 : isDepositPaid ? totalFee : (totalFee + depositHeld);
+      const paypalLink = orderData?.paypalPaymentLink || `http://localhost:3006/pay?po=${orderData?.poId || 'PO-1001'}&amount=${outstandingAmount}&name=${encodeURIComponent(toName || 'Customer')}`;
 
       htmlContent = emailShell(headline, 'CONFIRMATION', `
         <h2 style="margin:0 0 12px 0;font-size:18px;font-weight:800;color:#0f172a;">
@@ -152,7 +156,7 @@ export async function POST(request: Request) {
           ${customIntro}
         </p>
 
-        <!-- SCHEDULE SUMMARY -->
+        <!-- SCHEDULE & PAYMENT SUMMARY -->
         <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:20px;">
           <tr>
             <td style="padding:4px 8px;font-size:12px;color:#64748b;font-weight:600;">📅 Collection Date:</td>
@@ -170,6 +174,12 @@ export async function POST(request: Request) {
             <td style="padding:4px 8px;font-size:12px;color:#64748b;font-weight:600;">🛡️ Security Deposit:</td>
             <td style="padding:4px 8px;font-size:13px;color:#059669;font-weight:800;text-align:right;">£${depositHeld.toFixed(2)} (Refundable upon safe return)</td>
           </tr>
+          <tr style="border-top:1px solid #e2e8f0;">
+            <td style="padding:8px 8px 4px 8px;font-size:12px;color:#334155;font-weight:800;">💳 Balance Outstanding:</td>
+            <td style="padding:8px 8px 4px 8px;font-size:14px;color:${isFullyPaid ? '#059669' : '#b45309'};font-weight:900;text-align:right;">
+              ${isFullyPaid ? '£0.00 (Paid in Full ✓)' : `£${outstandingAmount.toFixed(2)}`}
+            </td>
+          </tr>
         </table>
 
         <!-- ITEMS INCLUDED -->
@@ -184,12 +194,23 @@ export async function POST(request: Request) {
           <strong>📋 Store Policy:</strong> ${policyNotice}
         </div>
 
-        <div style="text-align:center;margin:28px 0 16px 0;">
-          <a href="${paypalLink}" style="background-color:#0070ba;color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:12px;font-size:14px;font-weight:900;display:inline-block;box-shadow:0 2px 8px rgba(0,112,186,0.3);">
-            💳 Pay £${(totalFee + depositHeld).toFixed(2)} Deposit &amp; Balance via PayPal
-          </a>
-          <p style="margin:8px 0 0 0;font-size:11px;color:#64748b;">${paypalNotice}</p>
-        </div>
+        ${isFullyPaid ? `
+          <div style="background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px;text-align:center;margin:20px 0;">
+            <p style="margin:0;font-size:14px;font-weight:900;color:#166534;">
+              ✅ Payment Received in Full (£${(totalFee + depositHeld).toFixed(2)})
+            </p>
+            <p style="margin:4px 0 0 0;font-size:11px;color:#15803d;">
+              Your booking is 100% confirmed with zero balance remaining. We look forward to seeing you at collection!
+            </p>
+          </div>
+        ` : `
+          <div style="text-align:center;margin:28px 0 16px 0;">
+            <a href="${paypalLink}" style="background-color:#0070ba;color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:12px;font-size:14px;font-weight:900;display:inline-block;box-shadow:0 2px 8px rgba(0,112,186,0.3);">
+              💳 Pay £${outstandingAmount.toFixed(2)} ${isDepositPaid ? 'Remaining Balance' : 'Deposit & Balance'} via PayPal
+            </a>
+            <p style="margin:8px 0 0 0;font-size:11px;color:#64748b;">${paypalNotice}</p>
+          </div>
+        `}
       `);
 
     } else if (emailType === 'READY_FOR_COLLECTION') {
@@ -200,6 +221,14 @@ export async function POST(request: Request) {
 
       subject = body.subject || `🛍️ ${headline} - PO #${orderData?.poId || 'HIRE'}`;
 
+      const totalFee = orderData?.totalHireFee ?? 110;
+      const depositHeld = orderData?.totalDepositHeld ?? 50;
+      const paymentStatus = orderData?.paymentStatus || 'UNPAID';
+      const isFullyPaid = paymentStatus === 'FULL_BALANCE_PAID' || paymentStatus === 'PAID_WITH_DEPOSIT';
+      const isDepositPaid = paymentStatus === 'PARTIAL_DEPOSIT';
+      const outstandingAmount = isFullyPaid ? 0 : isDepositPaid ? totalFee : (totalFee + depositHeld);
+      const paypalLink = orderData?.paypalPaymentLink || `http://localhost:3006/pay?po=${orderData?.poId || 'PO-1001'}&amount=${outstandingAmount}&name=${encodeURIComponent(toName || 'Customer')}`;
+
       htmlContent = emailShell(headline, 'READY FOR PICKUP', `
         <h2 style="margin:0 0 12px 0;font-size:18px;font-weight:800;color:#059669;">
           Good News, ${toName || orderData?.customerName || 'Customer'}!
@@ -208,14 +237,43 @@ export async function POST(request: Request) {
           ${customIntro}
         </p>
 
-        <div style="background-color:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:16px;margin-bottom:20px;">
-          <p style="margin:0;font-size:13px;font-weight:800;color:#065f46;">
+        <!-- COLLECTION DETAILS BOX -->
+        <div style="background-color:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:16px;margin-bottom:16px;">
+          <p style="margin:0;font-size:14px;font-weight:800;color:#065f46;">
             🛍️ Collection Date: <strong>${orderData?.hireStartDate || 'Today'}</strong>
           </p>
           <p style="margin:6px 0 0 0;font-size:12px;color:#047857;">
             ${idRequirement}
           </p>
         </div>
+
+        <!-- PAYMENT STATUS ACCORDING TO ACTUAL BALANCE -->
+        ${isFullyPaid ? `
+          <div style="background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:14px;margin-bottom:20px;font-size:12px;color:#166534;">
+            <strong>✅ Payment Status: Fully Paid (£0.00 Balance Outstanding)</strong><br>
+            Your hire outfit and refundable security deposit are fully settled in advance. No counter payment needed!
+          </div>
+        ` : isDepositPaid ? `
+          <div style="background-color:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:14px;margin-bottom:16px;font-size:12px;color:#1e40af;">
+            <strong>💳 Deposit Paid: £${depositHeld.toFixed(2)} | Remaining Hire Balance: £${totalFee.toFixed(2)}</strong><br>
+            You can pay the remaining £${totalFee.toFixed(2)} balance online below, or tap your card at our counter upon collection.
+          </div>
+          <div style="text-align:center;margin:16px 0 20px 0;">
+            <a href="${paypalLink}" style="background-color:#0070ba;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:10px;font-size:13px;font-weight:800;display:inline-block;">
+              💳 Settle Remaining £${totalFee.toFixed(2)} Balance via PayPal
+            </a>
+          </div>
+        ` : `
+          <div style="background-color:#fffbe6;border:1px solid #ffe58f;border-radius:12px;padding:14px;margin-bottom:16px;font-size:12px;color:#78350f;">
+            <strong>⚠️ Outstanding Balance: £${(totalFee + depositHeld).toFixed(2)}</strong><br>
+            Total Hire Fee & Security Deposit: <strong>£${(totalFee + depositHeld).toFixed(2)}</strong>. You can settle online below or pay at our shop counter upon pickup.
+          </div>
+          <div style="text-align:center;margin:16px 0 20px 0;">
+            <a href="${paypalLink}" style="background-color:#0070ba;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:10px;font-size:13px;font-weight:800;display:inline-block;">
+              💳 Pay £${(totalFee + depositHeld).toFixed(2)} Deposit & Balance Online
+            </a>
+          </div>
+        `}
 
         <div style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:20px;font-size:12px;color:#475569;">
           <strong>🚗 Store Visit &amp; Parking Tips:</strong> ${parkingTips}

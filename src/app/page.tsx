@@ -823,6 +823,7 @@ export default function KiltHireApp() {
   const [emailSettings, setEmailSettings] = useState<StoreEmailSettings>(DEFAULT_STORE_EMAIL_SETTINGS);
   const [activeEmailTemplateTab, setActiveEmailTemplateTab] = useState<'BRANDING' | 'BOOKING' | 'COLLECTION' | 'REMINDER' | 'OVERDUE'>('BRANDING');
   const [emailPreviewDevice, setEmailPreviewDevice] = useState<'DESKTOP' | 'MOBILE'>('DESKTOP');
+  const [simulatedPaymentStatus, setSimulatedPaymentStatus] = useState<'FULL_BALANCE_PAID' | 'PARTIAL_DEPOSIT' | 'UNPAID'>('FULL_BALANCE_PAID');
   const [isSavingEmailSettings, setIsSavingEmailSettings] = useState<boolean>(false);
   const [isSendingTemplateTest, setIsSendingTemplateTest] = useState<boolean>(false);
 
@@ -2417,8 +2418,8 @@ export default function KiltHireApp() {
             ],
             totalHireFee: 110.00,
             totalDepositHeld: 50.00,
-            paymentStatus: 'DEPOSIT_PAID_CONFIRMED',
-            paypalPaymentLink: `https://www.paypal.com/checkout?po=PO-2026-TEST&amount=160.00`
+            paymentStatus: simulatedPaymentStatus,
+            paypalPaymentLink: `http://localhost:3006/pay?po=PO-2026-TEST&amount=${simulatedPaymentStatus === 'FULL_BALANCE_PAID' ? 0 : simulatedPaymentStatus === 'PARTIAL_DEPOSIT' ? 110 : 160}&name=Allan`
           }
         })
       });
@@ -15356,31 +15357,65 @@ export default function KiltHireApp() {
                         <div className="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
                           
                           {/* PREVIEW CONTROLS */}
-                          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
-                            <div className="flex items-center gap-2">
-                              <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
-                                <Sparkles className="w-4 h-4 text-amber-600" /> Live Simulated Email Preview
-                              </h3>
+                          <div className="space-y-2.5 border-b border-slate-100 pb-3">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
+                                  <Sparkles className="w-4 h-4 text-amber-600" /> Live Simulated Email Preview
+                                </h3>
+                              </div>
+
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setEmailPreviewDevice('DESKTOP')}
+                                  className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer ${
+                                    emailPreviewDevice === 'DESKTOP' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                  }`}
+                                >
+                                  💻 Desktop
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEmailPreviewDevice('MOBILE')}
+                                  className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer ${
+                                    emailPreviewDevice === 'MOBILE' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                  }`}
+                                >
+                                  📱 Mobile
+                                </button>
+                              </div>
                             </div>
 
-                            <div className="flex items-center gap-1.5">
+                            {/* SIMULATE PAYMENT STATUS TOGGLE */}
+                            <div className="flex flex-wrap items-center gap-1.5 bg-slate-50 p-1.5 rounded-xl border border-slate-200 text-xs">
+                              <span className="text-[10px] font-bold text-slate-500 uppercase px-1">Simulate Status:</span>
                               <button
                                 type="button"
-                                onClick={() => setEmailPreviewDevice('DESKTOP')}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer ${
-                                  emailPreviewDevice === 'DESKTOP' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                onClick={() => setSimulatedPaymentStatus('FULL_BALANCE_PAID')}
+                                className={`px-2 py-0.5 rounded-lg text-[11px] font-extrabold transition cursor-pointer ${
+                                  simulatedPaymentStatus === 'FULL_BALANCE_PAID' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
                                 }`}
                               >
-                                💻 Desktop
+                                ✅ Paid in Full (£0 Due)
                               </button>
                               <button
                                 type="button"
-                                onClick={() => setEmailPreviewDevice('MOBILE')}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer ${
-                                  emailPreviewDevice === 'MOBILE' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                onClick={() => setSimulatedPaymentStatus('PARTIAL_DEPOSIT')}
+                                className={`px-2 py-0.5 rounded-lg text-[11px] font-extrabold transition cursor-pointer ${
+                                  simulatedPaymentStatus === 'PARTIAL_DEPOSIT' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
                                 }`}
                               >
-                                📱 Mobile
+                                💳 Deposit Paid (£110 Due)
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSimulatedPaymentStatus('UNPAID')}
+                                className={`px-2 py-0.5 rounded-lg text-[11px] font-extrabold transition cursor-pointer ${
+                                  simulatedPaymentStatus === 'UNPAID' ? 'bg-amber-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                              >
+                                ⚠️ Unpaid (£160 Due)
                               </button>
                             </div>
                           </div>
@@ -15441,16 +15476,44 @@ export default function KiltHireApp() {
                                       <span className="font-extrabold text-slate-900">2026-08-31</span>
                                     </div>
                                     <div className="flex justify-between border-t border-slate-200 pt-1">
-                                      <span className="text-slate-500 font-semibold">Total Payable:</span>
-                                      <span className="font-black text-slate-900">£160.00 (£110 Hire + £50 Deposit)</span>
+                                      <span className="text-slate-500 font-semibold">Balance Outstanding:</span>
+                                      <span className={`font-black ${
+                                        simulatedPaymentStatus === 'FULL_BALANCE_PAID' ? 'text-emerald-700' : 'text-amber-800'
+                                      }`}>
+                                        {simulatedPaymentStatus === 'FULL_BALANCE_PAID' ? '£0.00 (Paid in Full ✓)' :
+                                         simulatedPaymentStatus === 'PARTIAL_DEPOSIT' ? '£110.00 (£50 Deposit Paid)' : '£160.00 (Unpaid)'}
+                                      </span>
                                     </div>
                                   </div>
 
                                   {/* TEMPLATE SPECIFIC CALLOUT */}
                                   {activeEmailTemplateTab === 'COLLECTION' && (
-                                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-[11px] text-emerald-950 space-y-1">
-                                      <p className="font-bold">🛍️ {emailSettings.collectionReady.idRequirementNotice}</p>
-                                      <p className="text-emerald-800 text-[10px]">🚗 {emailSettings.collectionReady.parkingOrPickupTips}</p>
+                                    <div className="space-y-2">
+                                      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-[11px] text-emerald-950 space-y-1">
+                                        <p className="font-bold">🛍️ {emailSettings.collectionReady.idRequirementNotice}</p>
+                                        <p className="text-emerald-800 text-[10px]">🚗 {emailSettings.collectionReady.parkingOrPickupTips}</p>
+                                      </div>
+
+                                      {/* DYNAMIC PAYMENT STATE IN COLLECTION EMAIL */}
+                                      {simulatedPaymentStatus === 'FULL_BALANCE_PAID' ? (
+                                        <div className="bg-emerald-100/70 border border-emerald-300 rounded-xl p-2.5 text-[11px] text-emerald-950 text-center font-extrabold">
+                                          ✅ Payment Status: Fully Paid (£0.00 Outstanding). Just present ID at the counter to collect!
+                                        </div>
+                                      ) : simulatedPaymentStatus === 'PARTIAL_DEPOSIT' ? (
+                                        <div className="bg-blue-50 border border-blue-200 rounded-xl p-2.5 text-[11px] text-blue-950 text-center space-y-1.5">
+                                          <p className="font-bold">💳 Deposit Paid (£50.00) • Remaining Hire Balance: £110.00</p>
+                                          <div className="inline-block px-3.5 py-1.5 bg-[#0070ba] text-white font-extrabold text-[11px] rounded-lg shadow-xs">
+                                            💳 Settle Remaining £110.00 via PayPal
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-[11px] text-amber-950 text-center space-y-1.5">
+                                          <p className="font-bold">⚠️ Balance Due: £160.00 (£110 Hire + £50 Deposit)</p>
+                                          <div className="inline-block px-3.5 py-1.5 bg-[#0070ba] text-white font-extrabold text-[11px] rounded-lg shadow-xs">
+                                            💳 Pay £160.00 via PayPal
+                                          </div>
+                                        </div>
+                                      )}
                                     </div>
                                   )}
 
@@ -15468,13 +15531,21 @@ export default function KiltHireApp() {
                                     </div>
                                   )}
 
-                                  {/* ACTION BUTTON */}
+                                  {/* ACTION BUTTON FOR BOOKING */}
                                   {(activeEmailTemplateTab === 'BRANDING' || activeEmailTemplateTab === 'BOOKING') && (
                                     <div className="text-center pt-2">
-                                      <div className="inline-block px-5 py-2 bg-[#0070ba] text-white font-extrabold text-xs rounded-xl shadow-sm">
-                                        💳 Pay £160.00 Deposit &amp; Balance via PayPal
-                                      </div>
-                                      <p className="text-[10px] text-slate-400 mt-1">{emailSettings.bookingConfirmation.paypalNotice}</p>
+                                      {simulatedPaymentStatus === 'FULL_BALANCE_PAID' ? (
+                                        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-[11px] text-emerald-950 font-extrabold">
+                                          ✅ Payment Received in Full (£160.00) — Zero Balance Remaining
+                                        </div>
+                                      ) : (
+                                        <>
+                                          <div className="inline-block px-5 py-2 bg-[#0070ba] text-white font-extrabold text-xs rounded-xl shadow-sm">
+                                            💳 Pay £{simulatedPaymentStatus === 'PARTIAL_DEPOSIT' ? '110.00 Remaining Balance' : '160.00 Deposit & Balance'} via PayPal
+                                          </div>
+                                          <p className="text-[10px] text-slate-400 mt-1">{emailSettings.bookingConfirmation.paypalNotice}</p>
+                                        </>
+                                      )}
                                     </div>
                                   )}
                                 </div>
