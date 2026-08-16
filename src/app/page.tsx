@@ -4459,6 +4459,138 @@ export default function KiltHireApp() {
     showToast(`📦 Created ${boxLabel} QR (${binId}) for ${qty} ${rawName}! Ready to print box label.`, 'success');
   };
 
+  const handlePrintBatchQRs = (batch: QRBatch, selectedCodes: string[] = [], isReprintOnly: boolean = false) => {
+    const codesToPrint = (isReprintOnly && selectedCodes.length > 0)
+      ? batch.qrCodes.filter(c => selectedCodes.includes(c))
+      : batch.qrCodes;
+
+    const cardsHtml = codesToPrint.map((code, index) => {
+      const matrix = generateQrMatrix(code);
+      const labelViewBox = getQrViewBoxSize(matrix, 4);
+      const pathD = renderQrSvgPath(matrix, 4);
+      const isReg = items.some(i => i.id === code && i.status !== 'RETIRED');
+      const isSelected = selectedCodes.includes(code);
+      const isPageBreak = (index + 1) % 28 === 0 && (index + 1) < codesToPrint.length;
+
+      return `
+        <div class="qr-label-card ${isPageBreak ? 'page-break' : ''}">
+          <div class="category">${batch.category} (${batch.sizeGroup})</div>
+          <svg viewBox="0 0 ${labelViewBox} ${labelViewBox}" class="qr-svg">
+            <rect width="${labelViewBox}" height="${labelViewBox}" fill="#ffffff" />
+            <path d="${pathD}" fill="#000000" />
+          </svg>
+          <div class="code-id">${code}</div>
+          <div class="status">${isReg ? 'REGISTERED' : 'UNREGISTERED'}${isSelected ? ' &bull; REPRINT' : ''}</div>
+        </div>
+      `;
+    }).join('');
+
+    const printHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>QR Sheet - ${batch.id}</title>
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 8mm;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    body {
+      background: #ffffff;
+      width: 194mm;
+      margin: 0 auto;
+      padding: 0;
+    }
+    .qr-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 3mm;
+      width: 100%;
+    }
+    .qr-label-card {
+      width: 45mm;
+      height: 36mm;
+      border: 1px dashed #475569;
+      border-radius: 4px;
+      padding: 1.5mm 1mm;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      text-align: center;
+      background: #ffffff;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .page-break {
+      page-break-after: always;
+      break-after: always;
+    }
+    .category {
+      font-size: 7.5pt;
+      font-weight: 800;
+      text-transform: uppercase;
+      color: #0f172a;
+      letter-spacing: -0.2px;
+      line-height: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 43mm;
+    }
+    .qr-svg {
+      width: 18mm;
+      height: 18mm;
+      display: block;
+      margin: 0.5mm 0;
+    }
+    .code-id {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 8.5pt;
+      font-weight: 900;
+      color: #000000;
+      line-height: 1;
+      letter-spacing: -0.3px;
+    }
+    .status {
+      font-size: 6pt;
+      font-weight: 700;
+      color: #64748b;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+  <div class="qr-grid">
+    ${cardsHtml}
+  </div>
+  <script>
+    window.onload = function() {
+      window.print();
+    };
+  </script>
+</body>
+</html>`;
+
+    const printWin = window.open('', '_blank', 'width=900,height=800');
+    if (printWin) {
+      printWin.document.open();
+      printWin.document.write(printHtml);
+      printWin.document.close();
+    } else {
+      showToast('Pop-up blocked. Please allow pop-ups for this site to print QR tags.', 'warning');
+    }
+  };
+
   // ONE-TIME BATCH SHEET INITIAL PRINT HANDLER (MASTER ADMIN ONLY)
   const handleInitialBatchPrint = (batch: QRBatch) => {
     if (!currentUser || currentUser.role !== 'Master Admin') {
@@ -4487,7 +4619,7 @@ export default function KiltHireApp() {
 
     showToast(`🖨️ Initial Sheet Print authorized for ${batch.id}! Sheet is now locked against duplicate full-prints.`, 'success');
     setTimeout(() => {
-      window.print();
+      handlePrintBatchQRs(updatedBatch);
     }, 300);
   };
 
@@ -4536,7 +4668,7 @@ export default function KiltHireApp() {
     showToast(`🛡️ Admin PIN Verified! Replacement reprint authorized for ${selectedCodesForReprint.length} tag(s): ${selectedCodesForReprint.join(', ')}`, 'success');
 
     setTimeout(() => {
-      window.print();
+      handlePrintBatchQRs(updatedBatch, selectedCodesForReprint, true);
     }, 300);
   };
 
@@ -12375,7 +12507,7 @@ export default function KiltHireApp() {
 
                                 <button
                                   type="button"
-                                  onClick={() => selectedBatchForPrint.isPrinted ? window.print() : handleInitialBatchPrint(selectedBatchForPrint)}
+                                  onClick={() => selectedBatchForPrint.isPrinted ? handlePrintBatchQRs(selectedBatchForPrint, selectedCodesForReprint, reprintPrintMode) : handleInitialBatchPrint(selectedBatchForPrint)}
                                   className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
                                 >
                                   <Printer className="w-4 h-4" /> Send Sheet to Printer
@@ -12442,7 +12574,7 @@ export default function KiltHireApp() {
 
                                     <button
                                       type="button"
-                                      onClick={() => window.print()}
+                                      onClick={() => handlePrintBatchQRs(selectedBatchForPrint, selectedCodesForReprint, reprintPrintMode)}
                                       className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5"
                                     >
                                       <Printer className="w-4 h-4" /> Send Sheet to Printer
