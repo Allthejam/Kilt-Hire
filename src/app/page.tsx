@@ -5766,24 +5766,24 @@ export default function KiltHireApp() {
                 setManualWakeLock(next);
                 showToast(
                   next 
-                    ? '💡 Screen Keep-Awake forced ON across all camera & order operations!' 
-                    : '💡 Screen Keep-Awake returned to Auto mode.',
+                    ? '💡 Screen Keep-Awake: ON (Screen will stay awake)' 
+                    : '💡 Screen Keep-Awake: OFF (Screen will use normal device sleep)',
                   'info'
                 );
               }}
               className={`px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-extrabold flex items-center gap-1.5 transition border shadow-2xs cursor-pointer ${
                 wakeLockActive || shouldKeepAwake
                   ? 'bg-amber-400 text-slate-950 border-amber-500 shadow-sm animate-pulse'
-                  : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
+                  : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
               }`}
-              title="Screen Keep-Awake prevents your phone or tablet screen from dimming or locking during camera scanning, order creation, and returns."
+              title={wakeLockActive || shouldKeepAwake ? "Screen Keep-Awake is currently ON. Click to turn OFF." : "Screen Keep-Awake is currently OFF. Click to turn ON."}
             >
-              <Zap className={`w-3.5 h-3.5 ${wakeLockActive || shouldKeepAwake ? 'text-slate-950 fill-slate-950' : 'text-slate-500'}`} />
+              <Zap className={`w-3.5 h-3.5 ${wakeLockActive || shouldKeepAwake ? 'text-slate-950 fill-slate-950' : 'text-slate-400'}`} />
               <span className="hidden md:inline">
-                {wakeLockActive || shouldKeepAwake ? 'Screen Awake: ON' : 'Screen Awake: Auto'}
+                {wakeLockActive || shouldKeepAwake ? 'Screen Awake: ON' : 'Screen Awake: OFF'}
               </span>
               <span className="md:hidden text-[10px]">
-                {wakeLockActive || shouldKeepAwake ? 'Awake ON' : 'Awake'}
+                {wakeLockActive || shouldKeepAwake ? 'Awake: ON' : 'Awake: OFF'}
               </span>
             </button>
             {!isStandalone && (
