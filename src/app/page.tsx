@@ -17269,10 +17269,43 @@ export default function KiltHireApp() {
                                   <thead className="bg-slate-100 text-slate-900 font-extrabold border-b border-slate-200 uppercase tracking-wider text-[10px]">
                                     <tr>
                                       <th className="py-3 px-4">Garment Category</th>
-                                      <th className="py-3 px-4 text-center">Unit Count</th>
-                                      <th className="py-3 px-4 text-right">Historic Acquisition Cost (£)</th>
-                                      <th className="py-3 px-4 text-right">Current Asset Valuation (£)</th>
-                                      <th className="py-3 px-4 text-right">Asset Share %</th>
+                                      <th className="py-3 px-4 text-center">
+                                        <div className="inline-flex items-center gap-1 group relative cursor-help">
+                                          <span>Unit Count</span>
+                                          <span className="w-3.5 h-3.5 rounded-full bg-slate-300 text-slate-800 text-[9px] font-black flex items-center justify-center shadow-xs">?</span>
+                                          <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 hidden group-hover:block w-48 p-2.5 bg-slate-900 text-white font-medium normal-case text-[11px] rounded-xl shadow-xl z-30 pointer-events-none text-center">
+                                            Total number of physical garments in this category currently in store stock.
+                                          </div>
+                                        </div>
+                                      </th>
+                                      <th className="py-3 px-4 text-right">
+                                        <div className="inline-flex items-center gap-1 group relative cursor-help">
+                                          <span>Historic Acquisition Cost (£)</span>
+                                          <span className="w-3.5 h-3.5 rounded-full bg-slate-300 text-slate-800 text-[9px] font-black flex items-center justify-center shadow-xs">?</span>
+                                          <div className="absolute right-0 bottom-full mb-1.5 hidden group-hover:block w-56 p-2.5 bg-slate-900 text-white font-medium normal-case text-[11px] rounded-xl shadow-xl z-30 pointer-events-none text-left">
+                                            Original total wholesale purchase cost paid to buy these garments when brand new.
+                                          </div>
+                                        </div>
+                                      </th>
+                                      <th className="py-3 px-4 text-right">
+                                        <div className="inline-flex items-center gap-1 group relative cursor-help">
+                                          <span>Current Asset Valuation (£)</span>
+                                          <span className="w-3.5 h-3.5 rounded-full bg-purple-300 text-purple-950 text-[9px] font-black flex items-center justify-center shadow-xs">?</span>
+                                          <div className="absolute right-0 bottom-full mb-1.5 hidden group-hover:block w-56 p-2.5 bg-purple-950 text-white font-medium normal-case text-[11px] rounded-xl shadow-xl z-30 pointer-events-none text-left">
+                                            The current estimated market resale or balance sheet replacement value of these garments today.
+                                          </div>
+                                        </div>
+                                      </th>
+                                      <th className="py-3 px-4 text-right">
+                                        <div className="inline-flex items-center gap-1 group relative cursor-help">
+                                          <span>Asset Share %</span>
+                                          <span className="w-3.5 h-3.5 rounded-full bg-amber-400 text-slate-950 text-[9px] font-black flex items-center justify-center shadow-xs">?</span>
+                                          <div className="absolute right-0 bottom-full mb-1.5 hidden group-hover:block w-64 p-3 bg-slate-900 text-amber-200 font-medium normal-case text-[11px] rounded-xl shadow-2xl z-30 pointer-events-none text-left leading-relaxed border border-amber-500/40">
+                                            <strong className="text-white block font-bold mb-1">What is Asset Share %?</strong>
+                                            What percentage (%) of your total store stock wealth is tied up in this category. (e.g. If total stock is £10,000 and Kilts are worth £6,000, Kilts make up a 60% Asset Share).
+                                          </div>
+                                        </div>
+                                      </th>
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-slate-100 font-semibold bg-white">
