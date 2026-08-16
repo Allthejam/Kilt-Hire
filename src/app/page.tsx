@@ -12375,8 +12375,8 @@ export default function KiltHireApp() {
 
                                 <button
                                   type="button"
-                                  onClick={handlePrintTaxReport}
-                                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5"
+                                  onClick={() => selectedBatchForPrint.isPrinted ? window.print() : handleInitialBatchPrint(selectedBatchForPrint)}
+                                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
                                 >
                                   <Printer className="w-4 h-4" /> Send Sheet to Printer
                                 </button>
@@ -16824,7 +16824,7 @@ export default function KiltHireApp() {
                             {/* PRINT P&L REPORT */}
                             <button
                               type="button"
-                              onClick={() => window.print()}
+                              onClick={handlePrintTaxReport}
                               className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-xs rounded-xl border border-slate-700 shadow transition flex items-center gap-2 cursor-pointer"
                             >
                               <Printer className="w-4 h-4 text-amber-400" /> Print Summary (PDF)

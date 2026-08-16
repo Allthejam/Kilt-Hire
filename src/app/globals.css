@@ -29,13 +29,27 @@ body {
     overflow: visible !important;
   }
 
-  /* 2. Hide entire page shell: header, navigation, sidebar, background main page, footers, buttons */
-  header, nav, aside, main, footer, button, .no-print {
+  /* 2. Hide entire page shell: header, navigation, sidebar, footers, buttons, and .no-print elements */
+  header, nav, aside, footer, button, .no-print {
     display: none !important;
     visibility: hidden !important;
   }
 
+  main {
+    display: block !important;
+    visibility: visible !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+
   /* 3. Strip overlay styling so only the active modal card prints */
+  .print-modal-overlay,
   .printable-modal-overlay {
     position: static !important;
     display: block !important;
@@ -53,6 +67,7 @@ body {
     border: none !important;
   }
 
+  .print-modal-content,
   .printable-modal-content {
     position: static !important;
     display: block !important;
