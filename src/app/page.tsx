@@ -4623,32 +4623,28 @@ export default function KiltHireApp() {
     }, 300);
   };
 
-  // ADMIN PIN PROTECTED SINGLE / MULTI QR REPRINT SUBMIT
+  // ADMIN PIN PROTECTED SINGLE / MULTI / FULL SHEET QR REPRINT SUBMIT
   const handleConfirmAdminReprintSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedBatchForPrint || !currentUser || currentUser.role !== 'Master Admin') {
-      alert('Permission Denied: Only Master Admin Allan can reprint replacement tags.');
-      return;
-    }
-
-    if (selectedCodesForReprint.length === 0) {
-      alert('Please select at least 1 QR code tag for replacement reprint.');
+      alert('Permission Denied: Only Master Admin Allan can reprint tags.');
       return;
     }
 
     // Verify Master Admin Password / PIN (Master Admin PIN is '1234' or currentUser.pin)
     if (reprintPinInput.trim() !== currentUser.pin && reprintPinInput.trim() !== '1234') {
-      alert('❌ Permission Denied: Incorrect Master Admin PIN. Replacement reprint canceled.');
+      alert('❌ Permission Denied: Incorrect Master Admin PIN. Reprint canceled.');
       return;
     }
 
+    const isFullSheet = selectedCodesForReprint.length === 0;
     const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
     const newReprintLog: QRReprintLog = {
       id: `REPRINT-${Date.now().toString().slice(-4)}`,
       reprintedAt: now,
       reprintedByStaff: currentUser.name,
-      reprintedCodes: selectedCodesForReprint,
-      reason: reprintReason.trim() || 'Damaged / replacement tag requested'
+      reprintedCodes: isFullSheet ? selectedBatchForPrint.qrCodes : selectedCodesForReprint,
+      reason: reprintReason.trim() || (isFullSheet ? 'Full batch sheet re-print authorized by Master Admin' : 'Damaged / replacement tag requested')
     };
 
     const updatedBatch: QRBatch = {
@@ -4660,15 +4656,25 @@ export default function KiltHireApp() {
     upsertBatch(updatedBatch).catch(err => console.warn('Failed to update reprint history in Firestore:', err));
     setSelectedBatchForPrint(updatedBatch);
 
-    addAuditLog('REPRINTED_REPLACEMENT_QR_TAGS', `Master Admin ${currentUser.name} authorized PIN-protected replacement reprint of ${selectedCodesForReprint.length} tag(s): [${selectedCodesForReprint.join(', ')}]. Reason: ${newReprintLog.reason}`, selectedBatchForPrint.id);
+    const logMsg = isFullSheet 
+      ? `Master Admin ${currentUser.name} authorized PIN-protected full sheet reprint of batch ${selectedBatchForPrint.id} (${selectedBatchForPrint.count} tags). Reason: ${newReprintLog.reason}`
+      : `Master Admin ${currentUser.name} authorized PIN-protected replacement reprint of ${selectedCodesForReprint.length} tag(s): [${selectedCodesForReprint.join(', ')}]. Reason: ${newReprintLog.reason}`;
+    
+    addAuditLog('REPRINTED_REPLACEMENT_QR_TAGS', logMsg, selectedBatchForPrint.id);
 
     setShowReprintPinModal(false);
     setReprintPinInput('');
-    setReprintPrintMode(true);
-    showToast(`🛡️ Admin PIN Verified! Replacement reprint authorized for ${selectedCodesForReprint.length} tag(s): ${selectedCodesForReprint.join(', ')}`, 'success');
+    setReprintPrintMode(!isFullSheet);
+    
+    showToast(
+      isFullSheet 
+        ? `🛡️ Admin PIN Verified! Full sheet re-print authorized for batch ${selectedBatchForPrint.id} (${selectedBatchForPrint.count} tags)`
+        : `🛡️ Admin PIN Verified! Replacement reprint authorized for ${selectedCodesForReprint.length} tag(s)`,
+      'success'
+    );
 
     setTimeout(() => {
-      handlePrintBatchQRs(updatedBatch, selectedCodesForReprint, true);
+      handlePrintBatchQRs(updatedBatch, selectedCodesForReprint, !isFullSheet);
     }, 300);
   };
 
@@ -12507,7 +12513,7 @@ export default function KiltHireApp() {
 
                                 <button
                                   type="button"
-                                  onClick={() => selectedBatchForPrint.isPrinted ? handlePrintBatchQRs(selectedBatchForPrint, selectedCodesForReprint, reprintPrintMode) : handleInitialBatchPrint(selectedBatchForPrint)}
+                                  onClick={() => selectedBatchForPrint.isPrinted ? setShowReprintPinModal(true) : handleInitialBatchPrint(selectedBatchForPrint)}
                                   className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
                                 >
                                   <Printer className="w-4 h-4" /> Send Sheet to Printer
@@ -12574,7 +12580,7 @@ export default function KiltHireApp() {
 
                                     <button
                                       type="button"
-                                      onClick={() => handlePrintBatchQRs(selectedBatchForPrint, selectedCodesForReprint, reprintPrintMode)}
+                                      onClick={() => setShowReprintPinModal(true)}
                                       className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5"
                                     >
                                       <Printer className="w-4 h-4" /> Send Sheet to Printer
@@ -12827,7 +12833,11 @@ export default function KiltHireApp() {
 
                             <form onSubmit={handleConfirmAdminReprintSubmit} className="space-y-4 text-xs">
                               <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl text-amber-900">
-                                <strong>Security Check:</strong> Authorizing reprint of <strong>{selectedCodesForReprint.length} replacement tag(s)</strong>: [{selectedCodesForReprint.join(', ')}]. Enter Master Admin Allan's PIN to proceed.
+                                <strong>Security Check:</strong> {selectedCodesForReprint.length > 0 ? (
+                                  <>Authorizing reprint of <strong>{selectedCodesForReprint.length} replacement tag(s)</strong>: [{selectedCodesForReprint.join(', ')}].</>
+                                ) : (
+                                  <>Authorizing <strong>Full Sheet Re-Print</strong> for locked batch <strong>{selectedBatchForPrint.title}</strong> ({selectedBatchForPrint.count} tags).</>
+                                )} Enter Master Admin Allan's PIN to proceed.
                               </div>
 
                               <div>
