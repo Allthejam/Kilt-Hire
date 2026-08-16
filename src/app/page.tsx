@@ -2103,28 +2103,37 @@ export default function KiltHireApp() {
       // Asynchronously dispatch Brevo confirmation & PayPal deposit invoices to all wearers/customers
       createdPos.forEach((createdPo) => {
         if (createdPo.customerEmail && createdPo.depositPaymentMethod !== 'PAPER_DIARY_LEGACY') {
-          const itemsSummary = createdPo.items.map(it => `${it.itemName} (${it.size})`).join(', ');
-          const htmlContent = generateBookingDepositInvoiceEmailHtml({
-            customerName: createdPo.customerName,
-            poId: createdPo.id,
-            eventDate: createdPo.eventDate,
-            collectionDate: createdPo.hireStartDate,
-            returnDate: createdPo.hireEndDate,
-            totalHireFee: createdPo.totalHireFee,
-            totalDepositHeld: createdPo.totalDepositHeld,
-            itemsList: itemsSummary,
-            isPaidOnline: createdPo.depositPaymentMethod === 'PAYPAL_ONLINE',
-            leadCustomerName: isSplitBilling && createdPo.customerName !== fittingForm.customerName ? fittingForm.customerName : undefined
-          });
+          const originUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3006';
+          const totalPayable = createdPo.totalHireFee + createdPo.totalDepositHeld;
+          const outstandingDue = createdPo.paymentStatus === 'FULL_BALANCE_PAID' || createdPo.paymentStatus === 'PAID_WITH_DEPOSIT' 
+            ? 0 
+            : createdPo.paymentStatus === 'PARTIAL_DEPOSIT' 
+            ? createdPo.totalHireFee 
+            : totalPayable;
+
+          const paypalLink = `${originUrl}/pay?po=${createdPo.id}&amount=${outstandingDue}&name=${encodeURIComponent(createdPo.customerName)}`;
 
           sendBrevoEmail({
             toEmail: createdPo.customerEmail,
             toName: createdPo.customerName,
-            subject: `🏴󠁧󠁢󠁳󠁣󠁴󠁿 Highland Kilt Hire: Order ${createdPo.id} Booking Confirmation & PayPal Invoice`,
-            htmlContent
+            emailType: 'BOOKING_CONFIRMATION',
+            emailSettings: emailSettings,
+            orderData: {
+              poId: createdPo.id,
+              customerName: createdPo.customerName,
+              customerPhone: createdPo.customerPhone,
+              hireStartDate: createdPo.hireStartDate,
+              hireEndDate: createdPo.hireEndDate,
+              eventDate: createdPo.eventDate,
+              items: createdPo.items.map(li => ({ itemName: li.itemName, category: li.category })),
+              totalHireFee: createdPo.totalHireFee,
+              totalDepositHeld: createdPo.totalDepositHeld,
+              paymentStatus: createdPo.paymentStatus,
+              paypalPaymentLink: paypalLink
+            }
           }).then(res => {
             if (res.success) {
-              addAuditLog('SENT_BREVO_BOOKING_EMAIL', `Dispatched booking & invoice email to ${createdPo.customerEmail} for ${createdPo.id}`, createdPo.id);
+              addAuditLog('SENT_BREVO_BOOKING_EMAIL', `Dispatched booking & PayPal invoice email to ${createdPo.customerEmail} for ${createdPo.id}`, createdPo.id);
             }
           }).catch(err => console.warn('Brevo booking email error:', err));
         }
@@ -2313,21 +2322,47 @@ export default function KiltHireApp() {
     if (!brevoEmailData) return;
     setBrevoEmailData(prev => prev ? { ...prev, isSending: true } : null);
 
+    const targetPo = pos.find(p => p.id === brevoEmailData.poId);
+    const originUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3006';
+    const totalPayable = targetPo ? (targetPo.totalHireFee + targetPo.totalDepositHeld) : 160;
+    const outstandingDue = targetPo && (targetPo.paymentStatus === 'FULL_BALANCE_PAID' || targetPo.paymentStatus === 'PAID_WITH_DEPOSIT')
+      ? 0
+      : targetPo && targetPo.paymentStatus === 'PARTIAL_DEPOSIT'
+      ? targetPo.totalHireFee
+      : totalPayable;
+
+    const paypalLink = `${originUrl}/pay?po=${brevoEmailData.poId}&amount=${outstandingDue}&name=${encodeURIComponent(brevoEmailData.toName)}`;
+    const isOverdue = brevoEmailData.subject.includes('URGENT') || brevoEmailData.subject.includes('Overdue');
+    const emailType = isOverdue ? 'OVERDUE_ALERT' : 'READY_FOR_COLLECTION';
+
     const result = await sendBrevoEmail({
       toEmail: brevoEmailData.toEmail,
       toName: brevoEmailData.toName,
       subject: brevoEmailData.subject,
-      htmlContent: brevoEmailData.htmlContent
+      emailType: emailType,
+      emailSettings: emailSettings,
+      orderData: targetPo ? {
+        poId: targetPo.id,
+        customerName: targetPo.customerName,
+        customerPhone: targetPo.customerPhone,
+        hireStartDate: targetPo.hireStartDate,
+        hireEndDate: targetPo.hireEndDate,
+        eventDate: targetPo.eventDate,
+        items: targetPo.items.map(li => ({ itemName: li.itemName, category: li.category })),
+        totalHireFee: targetPo.totalHireFee,
+        totalDepositHeld: targetPo.totalDepositHeld,
+        paymentStatus: targetPo.paymentStatus,
+        paypalPaymentLink: paypalLink
+      } : undefined
     });
 
     if (result.success) {
-      const targetPo = pos.find(p => p.id === brevoEmailData.poId);
       if (targetPo) {
         const updatedPo = { ...targetPo, readyNotificationSentAt: new Date().toISOString().replace('T', ' ').slice(0, 16) };
         await upsertPurchaseOrder(updatedPo);
         setPos(prev => prev.map(p => p.id === targetPo.id ? updatedPo : p));
       }
-      addAuditLog('SENT_BREVO_CUSTOMER_EMAIL', `Dispatched Brevo customer notification to ${brevoEmailData.toEmail} for ${brevoEmailData.poId}`, brevoEmailData.poId);
+      addAuditLog('SENT_BREVO_CUSTOMER_EMAIL', `Dispatched Brevo customer notification (${emailType}) to ${brevoEmailData.toEmail} for ${brevoEmailData.poId}`, brevoEmailData.poId);
       showToast(`✉️ Customer notification email dispatched via Brevo! (${result.messageId || 'sent'})`, 'success');
       setShowBrevoEmailModal(false);
     } else {

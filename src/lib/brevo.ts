@@ -3,8 +3,12 @@
 export interface BrevoEmailPayload {
   toEmail: string;
   toName: string;
-  subject: string;
-  htmlContent: string;
+  subject?: string;
+  emailType?: 'BOOKING_CONFIRMATION' | 'READY_FOR_COLLECTION' | 'RETURN_REMINDER' | 'OVERDUE_ALERT' | 'TEST_EMAIL' | 'CUSTOM';
+  orderData?: any;
+  emailSettings?: any;
+  customMessage?: string;
+  htmlContent?: string;
   senderName?: string;
   senderEmail?: string;
 }
@@ -13,6 +17,10 @@ export async function sendBrevoEmail({
   toEmail,
   toName,
   subject,
+  emailType = 'BOOKING_CONFIRMATION',
+  orderData,
+  emailSettings,
+  customMessage,
   htmlContent,
   senderName = 'Highland Kiltmakers',
   senderEmail = 'sales@scottishhighlandkilthire.co.uk'
@@ -28,8 +36,11 @@ export async function sendBrevoEmail({
         toEmail,
         toName,
         subject,
-        htmlContent,
-        emailType: 'CUSTOM'
+        emailType,
+        orderData,
+        emailSettings,
+        customMessage,
+        htmlContent
       })
     });
 
