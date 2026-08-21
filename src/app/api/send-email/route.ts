@@ -4,7 +4,7 @@ import { StoreEmailSettings } from '@/app/types';
 interface EmailPayload {
   toEmail: string;
   toName: string;
-  emailType: 'BOOKING_CONFIRMATION' | 'READY_FOR_COLLECTION' | 'RETURN_REMINDER' | 'OVERDUE_ALERT' | 'DAMAGE_RECONCILIATION' | 'TEST_EMAIL' | 'CUSTOM';
+  emailType: 'BOOKING_CONFIRMATION' | 'PAYMENT_RECEIPT_INVOICE' | 'ORDER_CANCELLATION' | 'READY_FOR_COLLECTION' | 'RETURN_REMINDER' | 'OVERDUE_ALERT' | 'DAMAGE_RECONCILIATION' | 'TEST_EMAIL' | 'CUSTOM';
   subject?: string;
   emailSettings?: Partial<StoreEmailSettings>;
   orderData?: {
@@ -23,6 +23,13 @@ interface EmailPayload {
       chestInches: number;
       shoeSize: string;
     };
+    amountPaid?: number;
+    paymentMethod?: string;
+    paymentDate?: string;
+    cancellationReason?: string;
+    depositRetainedAmount?: number;
+    netRefundAmount?: number;
+    cancelledBy?: string;
     deductedAmount?: number;
     refundedAmount?: number;
     reconciliationReason?: string;
@@ -58,7 +65,7 @@ export async function POST(request: Request) {
     let subject = body.subject || `${senderName} Notification`;
     let htmlContent = '';
 
-    const emailShell = (title: string, badgeLabel: string, innerHtml: string) => `
+    const emailShell = (title: string, badgeLabel: string, innerHtml: string, badgeBg?: string) => `
       <!DOCTYPE html>
       <html>
       <head>
@@ -86,7 +93,7 @@ export async function POST(request: Request) {
                           </p>
                         </td>
                         <td align="right">
-                          <span style="background-color:${brandColor};color:#ffffff;font-size:11px;font-weight:800;padding:4px 10px;border-radius:20px;display:inline-block;text-transform:uppercase;">
+                          <span style="background-color:${badgeBg || brandColor};color:#ffffff;font-size:11px;font-weight:800;padding:4px 10px;border-radius:20px;display:inline-block;text-transform:uppercase;">
                             ${badgeLabel}
                           </span>
                         </td>
@@ -120,29 +127,28 @@ export async function POST(request: Request) {
       </html>
     `;
 
+    const totalFee = typeof orderData?.totalHireFee === 'number' ? orderData.totalHireFee : 110;
+    const depositHeld = typeof orderData?.totalDepositHeld === 'number' ? orderData.totalDepositHeld : 50;
+    const itemsListHtml = orderData?.items?.map(it => `
+      <tr style="border-bottom:1px solid #f1f5f9;">
+        <td style="padding:10px 0;font-size:13px;font-weight:700;color:#1e293b;">${it.itemName}</td>
+        <td style="padding:10px 0;font-size:12px;color:#64748b;text-align:right;">${it.category || 'Garment'}</td>
+      </tr>
+    `).join('') || `
+      <tr style="border-bottom:1px solid #f1f5f9;">
+        <td style="padding:10px 0;font-size:13px;font-weight:700;color:#1e293b;">Full Highland 8-Yard Rigout Package</td>
+        <td style="padding:10px 0;font-size:12px;color:#64748b;text-align:right;">Complete Outfit</td>
+      </tr>
+    `;
+
     if (emailType === 'BOOKING_CONFIRMATION') {
-      const headline = emailSettings?.bookingConfirmation?.headline || 'Booking Confirmation & PayPal Invoice';
+      const headline = emailSettings?.bookingConfirmation?.headline || 'Booking Confirmation & Reservation Summary';
       const customIntro = emailSettings?.bookingConfirmation?.customIntro || `Thank you for choosing ${senderName}! Your hire order has been successfully booked and scheduled in our store reservation system.`;
       const policyNotice = emailSettings?.bookingConfirmation?.policyNotice || 'Please bring photo ID when collecting your hire outfit from our shop.';
       const paypalNotice = emailSettings?.bookingConfirmation?.paypalNotice || 'Instant secure settlement via PayPal or Debit/Credit Card';
 
       subject = body.subject || `${headline} - PO #${orderData?.poId || 'RESERVATION'}`;
 
-      const itemsListHtml = orderData?.items?.map(it => `
-        <tr style="border-bottom:1px solid #f1f5f9;">
-          <td style="padding:10px 0;font-size:13px;font-weight:700;color:#1e293b;">${it.itemName}</td>
-          <td style="padding:10px 0;font-size:12px;color:#64748b;text-align:right;">${it.category || 'Garment'}</td>
-        </tr>
-      `).join('') || `
-        <tr style="border-bottom:1px solid #f1f5f9;">
-          <td style="padding:10px 0;font-size:13px;font-weight:700;color:#1e293b;">Full Highland 8-Yard Rigout Package</td>
-          <td style="padding:10px 0;font-size:12px;color:#64748b;text-align:right;">Complete Outfit</td>
-        </tr>
-      `;
-
-      const totalFee = typeof orderData?.totalHireFee === 'number' ? orderData.totalHireFee : 0;
-      const depositHeld = typeof orderData?.totalDepositHeld === 'number' ? orderData.totalDepositHeld : 0;
-      const hasHireFee = totalFee > 0;
       const paymentStatus = orderData?.paymentStatus || 'UNPAID';
       const isFullyPaid = paymentStatus === 'FULL_BALANCE_PAID' || paymentStatus === 'PAID_WITH_DEPOSIT';
       const isDepositPaid = paymentStatus === 'PARTIAL_DEPOSIT';
@@ -169,9 +175,7 @@ export async function POST(request: Request) {
           </tr>
           <tr>
             <td style="padding:4px 8px;font-size:12px;color:#64748b;font-weight:600;">👔 Garment Hire Fee:</td>
-            <td style="padding:4px 8px;font-size:13px;color:#0f172a;font-weight:800;text-align:right;">
-              ${hasHireFee ? `£${totalFee.toFixed(2)}` : '£0.00 (Free of charge)'}
-            </td>
+            <td style="padding:4px 8px;font-size:13px;color:#0f172a;font-weight:800;text-align:right;">£${totalFee.toFixed(2)}</td>
           </tr>
           <tr>
             <td style="padding:4px 8px;font-size:12px;color:#64748b;font-weight:600;">🛡️ Security Deposit (Refundable):</td>
@@ -183,14 +187,12 @@ export async function POST(request: Request) {
               ${isDepositPaid || isFullyPaid ? `£${depositHeld.toFixed(2)} (Paid ✓)` : `£${depositHeld.toFixed(2)}`}
             </td>
           </tr>
-          {hasHireFee && (
-            <tr>
-              <td style="padding:4px 8px 8px 8px;font-size:12px;color:#64748b;font-weight:600;">💳 Hire Balance Due at Collection:</td>
-              <td style="padding:4px 8px 8px 8px;font-size:13px;color:${isFullyPaid ? '#059669' : '#334155'};font-weight:800;text-align:right;">
-                ${isFullyPaid ? '£0.00 (Paid in Advance ✓)' : `£${totalFee.toFixed(2)}`}
-              </td>
-            </tr>
-          )}
+          <tr>
+            <td style="padding:4px 8px 8px 8px;font-size:12px;color:#64748b;font-weight:600;">💳 Hire Balance Due at Collection:</td>
+            <td style="padding:4px 8px 8px 8px;font-size:13px;color:${isFullyPaid ? '#059669' : '#334155'};font-weight:800;text-align:right;">
+              ${isFullyPaid ? '£0.00 (Paid in Advance ✓)' : `£${totalFee.toFixed(2)}`}
+            </td>
+          </tr>
         </table>
 
         <!-- ITEMS INCLUDED -->
@@ -202,55 +204,163 @@ export async function POST(request: Request) {
         </table>
 
         <div style="background-color:#fffbe6;border:1px solid #ffe58f;border-radius:12px;padding:14px;margin-bottom:20px;font-size:12px;color:#78350f;">
-          <strong>📋 Booking Policy:</strong> Security deposit is held to confirm booking. Deposit will be promptly refunded upon return of garments in safe condition.
+          <strong>📋 Store Policy:</strong> ${policyNotice}
+        </div>
+      `);
+
+    } else if (emailType === 'PAYMENT_RECEIPT_INVOICE') {
+      const headline = emailSettings?.paymentReceiptInvoice?.headline || 'Official Payment Receipt & Security Deposit Invoice';
+      const customIntro = emailSettings?.paymentReceiptInvoice?.customIntro || 'Thank you for your payment! We confirm that your payment has been successfully received and credited towards your hire reservation.';
+      const taxNotice = emailSettings?.paymentReceiptInvoice?.taxOrVatNotice || 'Official small business hire invoice & security bond receipt. Please retain this document for your financial records.';
+      const depositStatement = emailSettings?.paymentReceiptInvoice?.depositPolicyStatement || 'Your refundable security deposit is held safely in escrow and will be returned to your original payment method upon safe garment check-in.';
+
+      subject = body.subject || `🧾 ${headline} - PO #${orderData?.poId || 'INVOICE'}`;
+
+      const paidAmount = typeof orderData?.amountPaid === 'number' ? orderData.amountPaid : (totalFee + depositHeld);
+      const remainingBalance = Math.max(0, (totalFee + depositHeld) - paidAmount);
+
+      htmlContent = emailShell(headline, 'PAID INVOICE', `
+        <div style="text-align:center;margin-bottom:24px;">
+          <div style="display:inline-block;width:52px;height:52px;line-height:52px;background-color:#dcfce7;border-radius:50%;color:#166534;font-size:24px;font-weight:bold;margin-bottom:8px;">
+            ✓
+          </div>
+          <h2 style="margin:0;font-size:20px;font-weight:900;color:#0f172a;">
+            Payment Received &amp; Verified
+          </h2>
+          <p style="margin:4px 0 0 0;font-size:13px;color:#059669;font-weight:700;">
+            Receipt Ref: ${orderData?.poId ? `REC-${orderData.poId}` : 'REC-ONLINE'} • ${orderData?.paymentDate || new Date().toLocaleDateString('en-GB')}
+          </p>
         </div>
 
-        ${isFullyPaid ? `
-          <div style="background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px;text-align:center;margin:20px 0;">
-            <p style="margin:0;font-size:14px;font-weight:900;color:#166534;">
-              ✅ Payment Received in Full (£${(totalFee + depositHeld).toFixed(2)})
-            </p>
-            <p style="margin:4px 0 0 0;font-size:11px;color:#15803d;">
-              Your booking is 100% confirmed. We look forward to seeing you at collection!
-            </p>
+        <p style="margin:0 0 20px 0;font-size:14px;color:#475569;line-height:1.5;">
+          ${customIntro}
+        </p>
+
+        <!-- OFFICIAL INVOICE BREAKDOWN TABLE -->
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-bottom:20px;">
+          <tr style="background-color:#f8fafc;border-bottom:1px solid #e2e8f0;">
+            <th align="left" style="padding:10px 14px;font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;">Description</th>
+            <th align="right" style="padding:10px 14px;font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;">Amount (£)</th>
+          </tr>
+          <tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:12px 14px;font-size:13px;font-weight:700;color:#1e293b;">
+              Highland Garment Hire Fee (${orderData?.items?.length || 1} Outfits/Items)
+              <span style="display:block;font-size:11px;color:#64748b;font-weight:500;">Hire Dates: ${orderData?.hireStartDate || ''} to ${orderData?.hireEndDate || ''}</span>
+            </td>
+            <td align="right" style="padding:12px 14px;font-size:13px;font-weight:800;color:#0f172a;">
+              £${totalFee.toFixed(2)}
+            </td>
+          </tr>
+          <tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:12px 14px;font-size:13px;font-weight:700;color:#059669;">
+              🛡️ Refundable Security Deposit
+              <span style="display:block;font-size:11px;color:#64748b;font-weight:500;">Held in escrow against damage/loss • Fully refundable</span>
+            </td>
+            <td align="right" style="padding:12px 14px;font-size:13px;font-weight:800;color:#059669;">
+              £${depositHeld.toFixed(2)}
+            </td>
+          </tr>
+          <tr style="background-color:#f8fafc;border-top:2px solid #cbd5e1;">
+            <td style="padding:12px 14px;font-size:13px;font-weight:900;color:#0f172a;">TOTAL TRANSACTION VALUE:</td>
+            <td align="right" style="padding:12px 14px;font-size:14px;font-weight:900;color:#0f172a;">£${(totalFee + depositHeld).toFixed(2)}</td>
+          </tr>
+          <tr style="background-color:#ecfdf5;">
+            <td style="padding:12px 14px;font-size:13px;font-weight:900;color:#166534;">💳 AMOUNT RECEIVED &amp; CREDITED:</td>
+            <td align="right" style="padding:12px 14px;font-size:15px;font-weight:900;color:#166534;">-£${paidAmount.toFixed(2)}</td>
+          </tr>
+          <tr style="background-color:#ffffff;border-top:1px solid #e2e8f0;">
+            <td style="padding:12px 14px;font-size:13px;font-weight:800;color:#334155;">OUTSTANDING BALANCE DUE:</td>
+            <td align="right" style="padding:12px 14px;font-size:14px;font-weight:900;color:${remainingBalance > 0 ? '#b45309' : '#059669'};">
+              ${remainingBalance > 0 ? `£${remainingBalance.toFixed(2)} (Due at pickup)` : '£0.00 (PAID IN FULL ✓)'}
+            </td>
+          </tr>
+        </table>
+
+        <!-- ESCROW & SECURITY DEPOSIT ADVICE -->
+        <div style="background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:14px;margin-bottom:16px;font-size:12px;color:#166534;">
+          <strong>🛡️ Security Deposit Escrow:</strong> ${depositStatement}
+        </div>
+
+        <div style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:20px;font-size:11px;color:#64748b;line-height:1.5;">
+          <strong>📑 Tax / Invoice Notice:</strong> ${taxNotice}
+        </div>
+      `, '#059669');
+
+    } else if (emailType === 'ORDER_CANCELLATION') {
+      const headline = emailSettings?.orderCancellation?.headline || 'Order Cancellation Notice & Deposit Settlement';
+      const customIntro = emailSettings?.orderCancellation?.customIntro || 'We confirm that your Highland kilt hire booking has been cancelled in our store management schedule.';
+      const retentionPolicy = emailSettings?.orderCancellation?.depositRetentionPolicy || 'In accordance with our booking terms, any applicable administrative retention from the deposit held has been recorded.';
+      const refundNotice = emailSettings?.orderCancellation?.refundProcessingNotice || 'Any net refundable amount has been initiated back to your original payment method and typically settles in 2-5 business days.';
+      const supportPrompt = emailSettings?.orderCancellation?.supportContactPrompt || 'If you have questions regarding this cancellation or wish to reschedule for a future date, please contact our team.';
+
+      subject = body.subject || `❌ ${headline} - PO #${orderData?.poId || 'CANCELLED'}`;
+
+      const retainedAmt = typeof orderData?.depositRetainedAmount === 'number' ? orderData.depositRetainedAmount : 0;
+      const netRefund = typeof orderData?.netRefundAmount === 'number' ? orderData.netRefundAmount : Math.max(0, depositHeld - retainedAmt);
+
+      htmlContent = emailShell(headline, 'CANCELLED', `
+        <div style="text-align:center;margin-bottom:20px;">
+          <div style="display:inline-block;width:52px;height:52px;line-height:52px;background-color:#fee2e2;border-radius:50%;color:#991b1b;font-size:24px;font-weight:bold;margin-bottom:8px;">
+            ✕
           </div>
-        ` : isDepositPaid ? `
-          <div style="background-color:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:16px;text-align:center;margin:20px 0;">
-            <p style="margin:0;font-size:13px;font-weight:900;color:#1e40af;">
-              ✅ Security Deposit Paid (£${depositHeld.toFixed(2)}) — Booking Confirmed!
-            </p>
-            ${hasHireFee ? `
-              <p style="margin:4px 0 12px 0;font-size:11px;color:#1e3a8a;">
-                Remaining Hire Balance Due at Collection: <strong>£${totalFee.toFixed(2)}</strong>
-              </p>
-              <a href="${paypalLink}" style="background-color:#0070ba;color:#ffffff;text-decoration:none;padding:10px 22px;border-radius:10px;font-size:12px;font-weight:800;display:inline-block;">
-                💳 Settle Remaining £${totalFee.toFixed(2)} Online Ahead of Time
-              </a>
-            ` : ''}
+          <h2 style="margin:0;font-size:20px;font-weight:900;color:#7f1d1d;">
+            Order Cancellation Confirmed
+          </h2>
+          <p style="margin:4px 0 0 0;font-size:12px;color:#64748b;">
+            Order Reference: <strong>${orderData?.poId || 'PO-2026-CANCELLED'}</strong> • Customer: <strong>${toName || orderData?.customerName || 'Customer'}</strong>
+          </p>
+        </div>
+
+        <p style="margin:0 0 20px 0;font-size:14px;color:#475569;line-height:1.5;">
+          ${customIntro}
+        </p>
+
+        <!-- CANCELLATION & DEPOSIT SETTLEMENT SUMMARY -->
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color:#ffffff;border:1px solid #fecaca;border-radius:12px;overflow:hidden;margin-bottom:20px;">
+          <tr style="background-color:#fef2f2;border-bottom:1px solid #fecaca;">
+            <th align="left" style="padding:10px 14px;font-size:11px;font-weight:800;color:#991b1b;text-transform:uppercase;">Settlement Summary</th>
+            <th align="right" style="padding:10px 14px;font-size:11px;font-weight:800;color:#991b1b;text-transform:uppercase;">Amount (£)</th>
+          </tr>
+          <tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:10px 14px;font-size:13px;color:#475569;">Security Deposit Initially Held:</td>
+            <td align="right" style="padding:10px 14px;font-size:13px;font-weight:700;color:#0f172a;">£${depositHeld.toFixed(2)}</td>
+          </tr>
+          <tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:10px 14px;font-size:13px;color:#991b1b;font-weight:700;">
+              Administrative / Late Cancellation Retention:
+            </td>
+            <td align="right" style="padding:10px 14px;font-size:13px;font-weight:800;color:#b91c1c;">
+              -£${retainedAmt.toFixed(2)}
+            </td>
+          </tr>
+          <tr style="background-color:#f0fdf4;border-top:2px solid #bbf7d0;">
+            <td style="padding:12px 14px;font-size:13px;font-weight:900;color:#166534;">
+              💰 NET REFUND RETURNED TO YOU:
+            </td>
+            <td align="right" style="padding:12px 14px;font-size:15px;font-weight:900;color:#166534;">
+              £${netRefund.toFixed(2)}
+            </td>
+          </tr>
+        </table>
+
+        ${orderData?.cancellationReason ? `
+          <div style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px 16px;margin-bottom:16px;font-size:12px;color:#475569;">
+            <strong>Recorded Reason:</strong> "${orderData.cancellationReason}"
           </div>
-        ` : (() => {
-          const depositLink = `${paypalLink}${paypalLink.includes('?') ? '&' : '?'}type=DEPOSIT&deposit=${depositHeld}&hire=${totalFee}`;
-          const fullLink = `${paypalLink}${paypalLink.includes('?') ? '&' : '?'}type=FULL&deposit=${depositHeld}&hire=${totalFee}`;
-          return `
-            <!-- PAYMENT OPTIONS: PAY DEPOSIT NOW OR PAY IN FULL -->
-            <div style="text-align:center;margin:24px 0 16px 0;">
-              <div style="margin-bottom:12px;">
-                <a href="${depositLink}" style="background-color:#0070ba;color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:12px;font-size:14px;font-weight:900;display:inline-block;box-shadow:0 2px 8px rgba(0,112,186,0.3);">
-                  🔒 Pay £${depositHeld.toFixed(2)} Security Deposit
-                </a>
-              </div>
-              ${hasHireFee ? `
-                <div>
-                  <a href="${fullLink}" style="color:#0070ba;text-decoration:underline;font-size:12px;font-weight:700;">
-                    Or pay full £${(totalFee + depositHeld).toFixed(2)} (Deposit + Hire Balance in Advance)
-                  </a>
-                </div>
-              ` : ''}
-              <p style="margin:10px 0 0 0;font-size:11px;color:#64748b;">${paypalNotice}</p>
-            </div>
-          `;
-        })()}
-      `);
+        ` : ''}
+
+        <div style="background-color:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:14px;margin-bottom:16px;font-size:12px;color:#1e40af;">
+          <strong>💳 Refund Settlement:</strong> ${refundNotice}
+        </div>
+
+        <div style="background-color:#fffbe6;border:1px solid #ffe58f;border-radius:12px;padding:14px;margin-bottom:20px;font-size:12px;color:#78350f;">
+          <strong>📋 Cancellation Terms:</strong> ${retentionPolicy}
+        </div>
+
+        <p style="font-size:12px;color:#64748b;margin:0;line-height:1.5;">
+          ${supportPrompt}
+        </p>
+      `, '#dc2626');
 
     } else if (emailType === 'READY_FOR_COLLECTION') {
       const headline = emailSettings?.collectionReady?.headline || 'Your Highland Kilt Outfit is Ready for Collection!';
@@ -260,8 +370,6 @@ export async function POST(request: Request) {
 
       subject = body.subject || `🛍️ ${headline} - PO #${orderData?.poId || 'HIRE'}`;
 
-      const totalFee = orderData?.totalHireFee ?? 110;
-      const depositHeld = orderData?.totalDepositHeld ?? 50;
       const paymentStatus = orderData?.paymentStatus || 'UNPAID';
       const isFullyPaid = paymentStatus === 'FULL_BALANCE_PAID' || paymentStatus === 'PAID_WITH_DEPOSIT';
       const isDepositPaid = paymentStatus === 'PARTIAL_DEPOSIT';
@@ -276,7 +384,6 @@ export async function POST(request: Request) {
           ${customIntro}
         </p>
 
-        <!-- COLLECTION DETAILS BOX -->
         <div style="background-color:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:16px;margin-bottom:16px;">
           <p style="margin:0;font-size:14px;font-weight:800;color:#065f46;">
             🛍️ Collection Date: <strong>${orderData?.hireStartDate || 'Today'}</strong>
@@ -286,7 +393,6 @@ export async function POST(request: Request) {
           </p>
         </div>
 
-        <!-- PAYMENT STATUS ACCORDING TO ACTUAL BALANCE -->
         ${isFullyPaid ? `
           <div style="background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:14px;margin-bottom:20px;font-size:12px;color:#166534;">
             <strong>✅ Payment Status: Fully Paid (£0.00 Balance Outstanding)</strong><br>
@@ -305,7 +411,7 @@ export async function POST(request: Request) {
         ` : `
           <div style="background-color:#fffbe6;border:1px solid #ffe58f;border-radius:12px;padding:14px;margin-bottom:16px;font-size:12px;color:#78350f;">
             <strong>⚠️ Outstanding Balance: £${(totalFee + depositHeld).toFixed(2)}</strong><br>
-            Total Hire Fee & Security Deposit: <strong>£${(totalFee + depositHeld).toFixed(2)}</strong>. You can settle online below or pay at our shop counter upon pickup.
+            Total Hire Fee & Security Deposit: <strong>£${(totalFee + depositHeld).toFixed(2)}</strong>. Settle online below or tap your card at pickup.
           </div>
           <div style="text-align:center;margin:16px 0 20px 0;">
             <a href="${paypalLink}" style="background-color:#0070ba;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:10px;font-size:13px;font-weight:800;display:inline-block;">

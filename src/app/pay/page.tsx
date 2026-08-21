@@ -92,11 +92,16 @@ function PaymentContent() {
         },
         onApprove: async (data: any) => {
           try {
+            const paypalOrderId = data?.orderID || data?.orderId || data?.id;
+            if (!paypalOrderId) {
+              throw new Error('PayPal did not return a valid Order ID.');
+            }
+
             const res = await fetch('/api/paypal/capture-order', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                orderId: data.orderId,
+                orderId: paypalOrderId,
                 poId: poId
               })
             });
@@ -118,7 +123,7 @@ function PaymentContent() {
                   depositPaidAt: nowStr,
                   balancePaidAt: isPaidFull ? nowStr : undefined,
                   orderStatus: 'DEPOSIT_PAID_CONFIRMED',
-                  paypalTransactionId: data.orderId,
+                  paypalTransactionId: paypalOrderId,
                   paypalCaptureId: captureData.captureId,
                   paypalPayerEmail: captureData.payerEmail
                 } as any);
@@ -127,9 +132,37 @@ function PaymentContent() {
               }
             }
 
+            // Automatically send "Deposit Received & Confirmed" email with direct remainder payment link
+            const targetEmail = captureData.payerEmail || searchParams.get('email');
+            if (targetEmail) {
+              const isPaidFull = selectedMode === 'FULL' || amountToPay >= totalOrderValue;
+              fetch('/api/send-email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  toEmail: targetEmail,
+                  toName: customerName,
+                  emailType: 'BOOKING_CONFIRMATION',
+                  subject: isPaidFull 
+                    ? `✓ Full Payment Received & Confirmed - Order #${poId}` 
+                    : `💳 Deposit Received & Booking Confirmed - Order #${poId}`,
+                  orderData: {
+                    poId: poId,
+                    customerName: customerName,
+                    hireStartDate: searchParams.get('start') || 'Scheduled Pick-up',
+                    hireEndDate: searchParams.get('end') || 'Scheduled Return',
+                    totalHireFee: hireFee,
+                    totalDepositHeld: deposit,
+                    paymentStatus: isPaidFull ? 'FULL_BALANCE_PAID' : 'PARTIAL_DEPOSIT',
+                    paypalPaymentLink: typeof window !== 'undefined' ? `${window.location.origin}/pay?po=${poId}&hire=${hireFee}&deposit=${deposit}&amount=${hireFee}&name=${encodeURIComponent(customerName)}` : ''
+                  }
+                })
+              }).catch(e => console.warn('Automatic email dispatch note:', e));
+            }
+
             setPaymentSuccess(true);
             setPaymentDetails({
-              orderId: data.orderId,
+              orderId: paypalOrderId,
               captureId: captureData.captureId,
               payerName: captureData.payerName || customerName,
               payerEmail: captureData.payerEmail,

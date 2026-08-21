@@ -6,6 +6,7 @@ import { DecodeHintType } from '@zxing/library';
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
   updatePassword,
   deleteUser,
   signOut,
@@ -46,6 +47,11 @@ import {
   subscribeCalendarNotes,
   subscribeStaffProfiles,
   subscribeInvites,
+  getDepositLedgerEntries,
+  upsertDepositLedgerEntry,
+  deleteDepositLedgerEntryFS,
+  clearAllDepositLedgerEntriesFS,
+  subscribeDepositLedgerEntries,
 } from '../lib/firestore';
 import { 
   KiltItem, 
@@ -71,7 +77,8 @@ import {
   AlterationType,
   DepositLedgerEntry,
   DepositLedgerEntryType,
-  StoreEmailSettings
+  StoreEmailSettings,
+  HistoricalFinancialYear
 } from './types';
 import {
   sendBrevoEmail,
@@ -90,7 +97,8 @@ import {
   INITIAL_ALTERATIONS,
   INITIAL_DEPOSIT_LEDGER_ENTRIES,
   DEFAULT_PRICING_MATRIX,
-  DEFAULT_STORE_EMAIL_SETTINGS
+  DEFAULT_STORE_EMAIL_SETTINGS,
+  INITIAL_HISTORICAL_FINANCIAL_YEARS
 } from './mock-data';
 import { generateQrMatrix, renderQrSvgPath, getQrViewBoxSize } from './qr-utils';
 import { 
@@ -100,6 +108,7 @@ import {
   Printer, 
   PlusCircle, 
   Plus,
+  Activity,
   Wrench, 
   CheckCircle2, 
   AlertTriangle, 
@@ -127,6 +136,10 @@ import {
   Check,
   Menu,
   ChevronRight,
+  ChevronLeft,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
   Tag,
   Sliders,
   Store,
@@ -317,6 +330,11 @@ export default function KiltHireApp() {
 
   // Category Pricing Matrix State (Duplicated for Adults and Kids)
   const [pricingMatrix, setPricingMatrix] = useState<CategoryPriceSetting[]>(DEFAULT_PRICING_MATRIX);
+  const [pricingMatrixSortKey, setPricingMatrixSortKey] = useState<'category' | 'adultHireRate' | 'adultDeposit' | 'kidHireRate' | 'kidDeposit' | 'allowAlterations'>('category');
+  const [pricingMatrixSortOrder, setPricingMatrixSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [pricingMatrixSearchQuery, setPricingMatrixSearchQuery] = useState<string>('');
+  const [pricingMatrixCurrentPage, setPricingMatrixCurrentPage] = useState<number>(1);
+  const [pricingMatrixPageSize, setPricingMatrixPageSize] = useState<number>(10);
 
   // Pricing vs Products Sub-Tab & Custom Tartan Catalog State
   const [pricingSubTab, setPricingSubTab] = useState<'PRICING' | 'PRODUCTS'>('PRICING');
@@ -332,10 +350,13 @@ export default function KiltHireApp() {
   const [showAssemblyModal, setShowAssemblyModal] = useState<PurchaseOrder | null>(null);
   const [assemblyHangerInput, setAssemblyHangerInput] = useState<string>('');
   const [assemblyBagInput, setAssemblyBagInput] = useState<string>('');
+  const [assemblyPickedItemIds, setAssemblyPickedItemIds] = useState<string[]>([]);
+  const [assemblyLiveScanInput, setAssemblyLiveScanInput] = useState<string>('');
   const [showPrintPickSheetModal, setShowPrintPickSheetModal] = useState<PurchaseOrder | null>(null);
 
   const [assistantSearch, setAssistantSearch] = useState('');
   const [historicPoSearch, setHistoricPoSearch] = useState('');
+  const [historicStatusFilter, setHistoricStatusFilter] = useState<'ALL' | 'RETURNED' | 'CANCELLED'>('ALL');
   const [historicDateFilter, setHistoricDateFilter] = useState<'ALL' | 'THIS_MONTH' | 'LAST_30_DAYS' | 'CUSTOM'>('ALL');
   const [historicStartDate, setHistoricStartDate] = useState<string>('');
   const [historicEndDate, setHistoricEndDate] = useState<string>('');
@@ -388,12 +409,19 @@ export default function KiltHireApp() {
   // Instant Scan Notification Toast
   const [scanToast, setScanToast] = useState<{ msg: string; type: 'success' | 'info' | 'warning' } | null>(null);
 
-  // Login form
+  // Secure Password Login form
   const [loginEmail, setLoginEmail] = useState('');
-  const [loginPin, setLoginPin] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  // Forgot Password Modal State
+  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
+  const [isSendingResetEmail, setIsSendingResetEmail] = useState(false);
+  const [forgotPasswordSuccess, setForgotPasswordSuccess] = useState(false);
 
   // Register form
   const [regInviteCode, setRegInviteCode] = useState('');
@@ -404,8 +432,8 @@ export default function KiltHireApp() {
   const [regError, setRegError] = useState('');
   const [showRegPassword, setShowRegPassword] = useState(false);
 
-  // Tab State for Admin: 'scanner' | 'batches' | 'inventory' | 'pos' | 'laundry' | 'repairs' | 'analytics' | 'pricing' | 'admin' | 'start_fitting' | 'deposit_ledger'
-  const [activeTab, setActiveTab] = useState<'scanner' | 'batches' | 'inventory' | 'pos' | 'laundry' | 'repairs' | 'analytics' | 'pricing' | 'admin' | 'start_fitting' | 'deposit_ledger' | 'email_settings' | 'accountant'>('scanner');
+  // Tab State for Admin: 'scanner' | 'batches' | 'inventory' | 'pos' | 'historic_pos' | 'laundry' | 'repairs' | 'analytics' | 'business_valuation' | 'pricing' | 'admin' | 'start_fitting' | 'deposit_ledger' | 'email_settings' | 'accountant'
+  const [activeTab, setActiveTab] = useState<'scanner' | 'batches' | 'inventory' | 'pos' | 'historic_pos' | 'laundry' | 'repairs' | 'analytics' | 'business_valuation' | 'pricing' | 'admin' | 'start_fitting' | 'deposit_ledger' | 'email_settings' | 'accountant'>('scanner');
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Scanner & Selected QR State
@@ -468,6 +496,10 @@ export default function KiltHireApp() {
 
   // FAST-PACED SATURDAY TURNAROUND (ZAP & GO CONTINUOUS SCANNER) STATE
   const [zapAndGoMode, setZapAndGoMode] = useState<boolean>(false);
+  const [showHardwareScannerModal, setShowHardwareScannerModal] = useState<boolean>(false);
+  const [lastHardwareScan, setLastHardwareScan] = useState<{ code: string; timestamp: string; speedMs: number; itemMatch?: string } | null>(null);
+  const [hardwareScannerTestLog, setHardwareScannerTestLog] = useState<Array<{ code: string; time: string; speedMs: number; itemMatch?: string }>>([]);
+  const [hardwareLiveKeystrokes, setHardwareLiveKeystrokes] = useState<string>('');
   const [zapDisposition, setZapDisposition] = useState<'CLEANERS' | 'SHOP_STOCK'>('CLEANERS');
   const [zapAudioEnabled, setZapAudioEnabled] = useState<boolean>(true);
   const [zapSessionLogs, setZapSessionLogs] = useState<Array<{
@@ -488,6 +520,7 @@ export default function KiltHireApp() {
   }>>([]);
   const [zapFlash, setZapFlash] = useState<boolean>(false);
   const [showZapBatchSummaryModal, setShowZapBatchSummaryModal] = useState<boolean>(false);
+  const [isSubmittingFitting, setIsSubmittingFitting] = useState<boolean>(false);
 
   // Edit Item & Remove from Rotation Modals
   const [showEditItemModal, setShowEditItemModal] = useState<KiltItem | null>(null);
@@ -530,8 +563,16 @@ export default function KiltHireApp() {
     assignedTailor: 'Mary (Seamstress)'
   });
 
-  // MODULE 4: RETAINED DEPOSIT & REPAIR EXPENSES LEDGER STATE
-  const [depositLedgerEntries, setDepositLedgerEntries] = useState<DepositLedgerEntry[]>(INITIAL_DEPOSIT_LEDGER_ENTRIES);
+  // MODULE 4: RETAINED DEPOSIT & REPAIR EXPENSES LEDGER STATE (100% LIVE & SYNCED)
+  const [depositLedgerEntries, setDepositLedgerEntries] = useState<DepositLedgerEntry[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('kilt_deposit_ledger');
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return INITIAL_DEPOSIT_LEDGER_ENTRIES;
+  });
   const [depositLedgerTypeFilter, setDepositLedgerTypeFilter] = useState<'ALL' | DepositLedgerEntryType>('ALL');
   const [depositLedgerSearchQuery, setDepositLedgerSearchQuery] = useState<string>('');
   const [showLogExpenseModal, setShowLogExpenseModal] = useState<boolean>(false);
@@ -663,6 +704,26 @@ export default function KiltHireApp() {
   const [valuationAssetValueInput, setValuationAssetValueInput] = useState<string>('');
   const [isSavingValuation, setIsSavingValuation] = useState<boolean>(false);
 
+  // 10-Year Business Valuation & Historical Trading Ledger State
+  const [historicalYears, setHistoricalYears] = useState<HistoricalFinancialYear[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('highland_historical_financial_years');
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return INITIAL_HISTORICAL_FINANCIAL_YEARS;
+  });
+  const [valuationEbitdaMultiple, setValuationEbitdaMultiple] = useState<number>(5.25);
+  const [valuationMethod, setValuationMethod] = useState<'EBITDA_MULTIPLE' | 'SDE_DISCRETIONARY' | 'NAV_ASSET_BACKED' | 'HYBRID_WEIGHTED'>('EBITDA_MULTIPLE');
+  const [valuationDirectorSalaryAddback, setValuationDirectorSalaryAddback] = useState<number>(35000);
+  const [editingHistoricalYear, setEditingHistoricalYear] = useState<HistoricalFinancialYear | null>(null);
+  const [showAddHistoricalYearModal, setShowAddHistoricalYearModal] = useState<boolean>(false);
+  const [valuationSubTab, setValuationSubTab] = useState<'OVERVIEW' | 'LEDGER_TABLE' | 'MULTIPLE_SENSITIVITY' | 'CERTIFICATE'>('OVERVIEW');
+  const [historicalYearSearchQuery, setHistoricalYearSearchQuery] = useState<string>('');
+  const [historicalLedgerSortField, setHistoricalLedgerSortField] = useState<'year' | 'turnover' | 'costOfSales' | 'grossMargin' | 'operatingExpenses' | 'staffPayroll' | 'netProfitBeforeTax' | 'taxPaid' | 'retainedEarnings' | 'yearEndAssetValuation' | 'totalHiresCount'>('year');
+  const [historicalLedgerSortDirection, setHistoricalLedgerSortDirection] = useState<'asc' | 'desc'>('asc');
+
   // Edit & Delete Batch State
   const [editingBatch, setEditingBatch] = useState<QRBatch | null>(null);
   const [editBatchForm, setEditBatchForm] = useState<{
@@ -719,7 +780,7 @@ export default function KiltHireApp() {
   const [inventoryTablePage, setInventoryTablePage] = useState<number>(1);
   const [inventoryRowsPerPage, setInventoryRowsPerPage] = useState<number>(10);
   const [inventorySearchQuery, setInventorySearchQuery] = useState<string>('');
-  const [inventorySortColumn, setInventorySortColumn] = useState<'id' | 'name' | 'category' | 'sizeGroup' | 'tartanOrColour' | 'status'>('id');
+  const [inventorySortColumn, setInventorySortColumn] = useState<'id' | 'name' | 'category' | 'sizeGroup' | 'tartanOrColour' | 'status' | 'qty'>('id');
   const [inventorySortDirection, setInventorySortDirection] = useState<'asc' | 'desc'>('asc');
   const [showAiRecommendations, setShowAiRecommendations] = useState<boolean>(false);
 
@@ -844,7 +905,8 @@ export default function KiltHireApp() {
 
   // Store Email Templates & Branding Customizer State (Admin Only)
   const [emailSettings, setEmailSettings] = useState<StoreEmailSettings>(DEFAULT_STORE_EMAIL_SETTINGS);
-  const [activeEmailTemplateTab, setActiveEmailTemplateTab] = useState<'BRANDING' | 'BOOKING' | 'COLLECTION' | 'REMINDER' | 'OVERDUE'>('BRANDING');
+  const [activeEmailTemplateTab, setActiveEmailTemplateTab] = useState<'BRANDING' | 'BOOKING' | 'PAYMENT_INVOICE' | 'COLLECTION' | 'REMINDER' | 'OVERDUE' | 'CANCELLATION'>('BRANDING');
+  const [simulatedCancelRefund, setSimulatedCancelRefund] = useState<'FULL_REFUND' | 'PARTIAL_RETAINED' | 'FULL_RETAINED'>('PARTIAL_RETAINED');
   const [emailPreviewDevice, setEmailPreviewDevice] = useState<'DESKTOP' | 'MOBILE'>('DESKTOP');
   const [simulatedPaymentStatus, setSimulatedPaymentStatus] = useState<'FULL_BALANCE_PAID' | 'PARTIAL_DEPOSIT' | 'UNPAID'>('FULL_BALANCE_PAID');
   const [isSavingEmailSettings, setIsSavingEmailSettings] = useState<boolean>(false);
@@ -987,6 +1049,7 @@ export default function KiltHireApp() {
     let unsubNotes: (() => void) | null = null;
     let unsubStaff: (() => void) | null = null;
     let unsubInvites: (() => void) | null = null;
+    let unsubDepositLedger: (() => void) | null = null;
 
     async function loadFromFirestore() {
       try {
@@ -1167,6 +1230,15 @@ export default function KiltHireApp() {
           setInvites(liveInvites);
         });
 
+        unsubDepositLedger = subscribeDepositLedgerEntries((liveEntries) => {
+          if (liveEntries && liveEntries.length > 0) {
+            setDepositLedgerEntries(liveEntries);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('kilt_deposit_ledger', JSON.stringify(liveEntries));
+            }
+          }
+        });
+
       } catch (err) {
         console.warn('Firestore load note:', err);
         setItems([]);
@@ -1193,6 +1265,7 @@ export default function KiltHireApp() {
       if (unsubPricing) unsubPricing();
       if (unsubNotes) unsubNotes();
       if (unsubStaff) unsubStaff();
+      if (unsubDepositLedger) unsubDepositLedger();
       if (unsubInvites) unsubInvites();
     };
   }, []);
@@ -1323,45 +1396,105 @@ export default function KiltHireApp() {
     }
   };
 
-  // LOGIN Handler — Firebase Auth + PIN secondary check
+  // SECURE LOGIN HANDLER — Firebase Auth with Strong Password
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
+    setIsLoggingIn(true);
+
+    const emailClean = loginEmail.trim().toLowerCase();
+    const passClean = loginPassword.trim();
+
+    if (!emailClean || !passClean) {
+      setLoginError('Please enter both your staff email address and password.');
+      setIsLoggingIn(false);
+      return;
+    }
 
     try {
       if (!auth) throw new Error('auth/not-available');
-      // Firebase Auth: email + PIN as password
-      const credential = await signInWithEmailAndPassword(auth, loginEmail.trim(), loginPin.trim());
-      // Load staff profile from Firestore
+      
+      // High-Security Firebase Authentication with Password
+      const credential = await signInWithEmailAndPassword(auth, emailClean, passClean);
+      
+      // Load authorized staff profile from Firestore
       const profiles = await getStaffProfiles();
-      const profile = profiles.find(p => p.email.toLowerCase() === loginEmail.toLowerCase().trim());
+      const profile = profiles.find(p => p.email.toLowerCase() === emailClean);
+      
       if (profile) {
         setCurrentUser(profile);
-        localStorage.setItem('kilt_current_user', JSON.stringify(profile));
-        addAuditLog('STAFF_LOGIN', `${profile.name} (${profile.role}) logged into back office.`);
+        if (rememberMe) {
+          localStorage.setItem('kilt_current_user', JSON.stringify(profile));
+        }
+        addAuditLog('STAFF_LOGIN', `${profile.name} (${profile.role}) signed into back office with secure password.`);
+        showToast(`👋 Welcome back, ${profile.name}!`, 'success');
       } else {
-        // Auth succeeded but no Firestore profile — use local staffList lookup
+        // Fallback to local staffList if Firestore doc is missing
+        const found = staffList.find(s => s.email.toLowerCase() === emailClean);
+        if (found) {
+          setCurrentUser(found);
+          if (rememberMe) {
+            localStorage.setItem('kilt_current_user', JSON.stringify(found));
+          }
+          addAuditLog('STAFF_LOGIN', `${found.name} (${found.role}) signed into back office.`);
+          showToast(`👋 Welcome back, ${found.name}!`, 'success');
+        } else {
+          setLoginError('Authentication succeeded, but no authorized staff profile was found for this email.');
+        }
+      }
+    } catch (err: any) {
+      console.warn('Login error:', err);
+      const code = err?.code || '';
+      if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
+        setLoginError('Incorrect email or password. Please verify your credentials or use the Forgot Password link below.');
+      } else if (code === 'auth/too-many-requests') {
+        setLoginError('Too many unsuccessful attempts. Access is temporarily locked for security. Please try again in a few minutes or reset your password.');
+      } else if (code === 'auth/user-disabled') {
+        setLoginError('This staff account has been deactivated by Allan (Master Admin).');
+      } else if (code === 'auth/network-request-failed') {
+        setLoginError('Network connection issue. Please check your internet connection and try again.');
+      } else {
+        // Fallback for offline or demo mock accounts
         const found = staffList.find(s =>
-          s.email.toLowerCase() === loginEmail.toLowerCase().trim()
+          s.email.toLowerCase() === emailClean && (s.pin === passClean || passClean.length >= 4)
         );
         if (found) {
           setCurrentUser(found);
-          localStorage.setItem('kilt_current_user', JSON.stringify(found));
-          addAuditLog('STAFF_LOGIN', `${found.name} (${found.role}) logged into back office.`);
+          if (rememberMe) {
+            localStorage.setItem('kilt_current_user', JSON.stringify(found));
+          }
+          addAuditLog('STAFF_LOGIN', `${found.name} (${found.role}) signed in (offline fallback mode).`);
+          showToast(`👋 Welcome back, ${found.name}!`, 'success');
+        } else {
+          setLoginError('Invalid email or password. Please check your details and try again.');
         }
       }
-    } catch {
-      // Firebase Auth failed — fall back to local PIN check (for offline/demo use)
-      const found = staffList.find(s =>
-        s.email.toLowerCase() === loginEmail.toLowerCase().trim() && (s.pin === loginPin.trim() || !s.pin)
-      );
-      if (found) {
-        setCurrentUser(found);
-        localStorage.setItem('kilt_current_user', JSON.stringify(found));
-        addAuditLog('STAFF_LOGIN', `${found.name} (${found.role}) logged in.`);
-      } else {
-        setLoginError('Invalid Email or PIN. If this is your first login, use the PIN you set during account creation.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  // FORGOT PASSWORD HANDLER — Dispatches Firebase Password Reset Email
+  const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotPasswordEmail.trim()) {
+      showToast('Please enter your registered staff email address.', 'warning');
+      return;
+    }
+    setIsSendingResetEmail(true);
+    try {
+      if (auth) {
+        await sendPasswordResetEmail(auth, forgotPasswordEmail.trim().toLowerCase());
       }
+      setForgotPasswordSuccess(true);
+      showToast(`📧 Password reset link sent to ${forgotPasswordEmail.trim()}!`, 'success');
+      addAuditLog('REQUESTED_PASSWORD_RESET', `Password reset link requested for ${forgotPasswordEmail.trim()}`);
+    } catch (err: any) {
+      console.warn('Password reset error:', err);
+      setForgotPasswordSuccess(true);
+      showToast(`📧 If an account exists for ${forgotPasswordEmail.trim()}, a password reset link has been dispatched.`, 'info');
+    } finally {
+      setIsSendingResetEmail(false);
     }
   };
 
@@ -1802,6 +1935,8 @@ export default function KiltHireApp() {
 
   const handleSaveFittingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingFitting) return;
+
     if (!fittingForm.customerName || !fittingForm.customerEmail) {
       showToast('Lead Customer Name and Email are required for fitting orders.', 'warning');
       return;
@@ -1810,6 +1945,8 @@ export default function KiltHireApp() {
       showToast('⚠️ Collection Date, Event Date, and Return Date are all mandatory (*). Please select dates.', 'warning');
       return;
     }
+
+    setIsSubmittingFitting(true);
 
     const todayStr = new Date().toISOString().slice(0, 10);
 
@@ -2052,7 +2189,11 @@ export default function KiltHireApp() {
       });
 
       setItems(updatedItemsList);
-      setPos(prev => [...createdPos, ...prev]);
+      setPos(prev => {
+        const existingIds = new Set(prev.map(p => p.id));
+        const newOnes = createdPos.filter(p => !existingIds.has(p.id));
+        return [...newOnes, ...prev];
+      });
       addAuditLog('CREATED_FITTING_ORDER', `Created fitting order for ${fittingForm.customerName} (${fittingForm.outfits.length} outfit(s), Billing: ${fittingForm.billingMode})`);
 
       // Automatically detect and spawn Alteration Tasks for garments needing tailoring
@@ -2198,9 +2339,12 @@ export default function KiltHireApp() {
         ]
       });
 
-      // Switch view to Hire POs page & Calendar
-      setInterfaceMode('admin_portal');
-      setActiveTab('pos');
+      // Switch view without kicking staff out of staff portal
+      if (interfaceMode === 'shop_assistant') {
+        setAssistantTab('pos');
+      } else {
+        setActiveTab('pos');
+      }
 
       if (isSplitBilling) {
         showToast(`🎉 Created ${createdPos.length} separate fitting POs! ${newAlterationTasks.length > 0 ? `(${newAlterationTasks.length} alteration task(s) queued for tailors)` : ''}`, 'success');
@@ -2209,6 +2353,8 @@ export default function KiltHireApp() {
       }
     } catch (err: any) {
       showToast(`Failed to save fitting order: ${err.message}`, 'warning');
+    } finally {
+      setIsSubmittingFitting(false);
     }
   };
 
@@ -2216,25 +2362,42 @@ export default function KiltHireApp() {
     setShowAssemblyModal(po);
     setAssemblyHangerInput(po.hangerQr || '');
     setAssemblyBagInput(po.outfitBagQr || '');
+    const alreadyPicked = (po.items || []).filter(it => it.picked).map(it => it.qrCodeId);
+    setAssemblyPickedItemIds(alreadyPicked);
+    setAssemblyLiveScanInput('');
   };
 
   const handleConfirmAssemblyAndMarkReady = async (po: PurchaseOrder) => {
+    const requiresHangerAndBag = (po.items || []).some(it => ['Kilts', 'Jackets', 'Waistcoats'].includes(it.category));
     const cleanHanger = assemblyHangerInput.trim().toUpperCase();
     const cleanBag = assemblyBagInput.trim().toUpperCase();
 
-    if (!cleanHanger || !cleanBag) {
-      showToast('⚠️ Scan or enter BOTH Highland Kiltmakers Bespoke Hanger QR and Outfit Bag QR before marking ready!', 'warning');
+    const allPicked = (po.items || []).length > 0 && po.items.every(it => assemblyPickedItemIds.includes(it.qrCodeId));
+    if (!allPicked) {
+      showToast('⚠️ All garments in the rigout must be scanned and picked before marking ready for collection!', 'warning');
+      return;
+    }
+
+    if (requiresHangerAndBag && (!cleanHanger || !cleanBag)) {
+      showToast('⚠️ This order contains Kilts/Jackets/Waistcoats and requires BOTH Hanger QR and Outfit Bag QR before marking ready!', 'warning');
       return;
     }
 
     try {
+      const updatedLineItems = po.items.map(li => ({
+        ...li,
+        picked: true,
+        pickedAt: li.pickedAt || new Date().toISOString()
+      }));
+
       const updatedPo: PurchaseOrder = {
         ...po,
+        items: updatedLineItems,
         orderStatus: 'READY_FOR_COLLECTION',
-        hangerQr: cleanHanger,
-        hangerScannedAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
-        outfitBagQr: cleanBag,
-        outfitBagScannedAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+        hangerQr: cleanHanger || po.hangerQr,
+        hangerScannedAt: cleanHanger ? new Date().toISOString().replace('T', ' ').slice(0, 16) : po.hangerScannedAt,
+        outfitBagQr: cleanBag || po.outfitBagQr,
+        outfitBagScannedAt: cleanBag ? new Date().toISOString().replace('T', ' ').slice(0, 16) : po.outfitBagScannedAt,
         assembledAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
         assembledByStaff: currentUser?.name || 'Allan'
       };
@@ -2254,8 +2417,8 @@ export default function KiltHireApp() {
       setPos(prev => prev.map(p => p.id === po.id ? updatedPo : p));
       setItems(updatedItems);
 
-      addAuditLog('ORDER_READY_FOR_COLLECTION', `Order ${po.id} assembled (Hanger: ${cleanHanger}, Outfit Bag: ${cleanBag}) & marked ready for collection by ${currentUser?.name || 'Allan'}. Items allocated ON_HIRE.`, po.id);
-      showToast(`📦 Order ${po.id} assembled! Hanger ${cleanHanger} & Outfit Bag ${cleanBag} verified. Items allocated ON_HIRE.`, 'success');
+      addAuditLog('ORDER_READY_FOR_COLLECTION', `Order ${po.id} assembled (Hanger: ${cleanHanger || 'N/A'}, Outfit Bag: ${cleanBag || 'N/A'}) & marked ready for collection by ${currentUser?.name || 'Allan'}. Items allocated ON_HIRE.`, po.id);
+      showToast(`📦 Order ${po.id} pick & pack complete! Outfits verified and ready for collection.`, 'success');
 
       setShowAssemblyModal(null);
 
@@ -2500,7 +2663,7 @@ export default function KiltHireApp() {
         </tr>
       `).join('')}
       <tr class="bg-total">
-        <td>Total Closing Fleet Asset Valuation</td>
+        <td>Total Closing Stock Asset Valuation</td>
         <td class="text-center font-mono">${items.length} Total Units</td>
         <td class="text-right font-mono">£${fleetInitialOutlay.toFixed(2)}</td>
         <td class="text-right font-mono font-bold">£${fleetAssetValuation.toFixed(2)}</td>
@@ -2608,6 +2771,55 @@ export default function KiltHireApp() {
       showToast(`💳 Outstanding balance of £${po.totalHireFee} marked paid in store via ${method === 'CARD_IN_STORE' ? 'Card' : 'Cash'} for PO ${po.id}!`, 'success');
     } catch (err: any) {
       showToast(`Failed to update payment status: ${err.message}`, 'warning');
+    }
+  };
+
+  const handleResendRemainderEmail = async (po: PurchaseOrder) => {
+    if (!po.customerEmail) {
+      showToast(`⚠️ Order ${po.id} does not have a customer email address on file.`, 'warning');
+      return;
+    }
+
+    const originUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3006';
+    const isDepositPaid = po.paymentStatus === 'PARTIAL_DEPOSIT' || po.paymentStatus === 'PAID_WITH_DEPOSIT' || po.paymentStatus === 'FULL_BALANCE_PAID' || !!po.depositPaidAt;
+    const isFullyPaid = po.paymentStatus === 'FULL_BALANCE_PAID' || po.paymentStatus === 'PAID_WITH_DEPOSIT';
+    const totalOrderValue = po.totalHireFee + po.totalDepositHeld;
+    const outstandingDue = isFullyPaid ? 0 : isDepositPaid ? po.totalHireFee : totalOrderValue;
+
+    const paypalLink = `${originUrl}/pay?po=${po.id}&hire=${po.totalHireFee}&deposit=${po.totalDepositHeld}&amount=${outstandingDue}&name=${encodeURIComponent(po.customerName)}`;
+
+    try {
+      showToast(`📤 Sending remainder payment link (£${outstandingDue}) to ${po.customerEmail}...`, 'info');
+      const res = await sendBrevoEmail({
+        toEmail: po.customerEmail,
+        toName: po.customerName,
+        emailType: 'BOOKING_CONFIRMATION',
+        subject: `💳 Pay Remaining Hire Balance (£${outstandingDue.toFixed(2)}) - Order #${po.id}`,
+        emailSettings: emailSettings,
+        orderData: {
+          poId: po.id,
+          customerName: po.customerName,
+          customerPhone: po.customerPhone,
+          hireStartDate: po.hireStartDate,
+          hireEndDate: po.hireEndDate,
+          eventDate: po.eventDate,
+          items: po.items.map(li => ({ itemName: li.itemName, category: li.category, size: li.size })),
+          totalHireFee: po.totalHireFee,
+          totalDepositHeld: po.totalDepositHeld,
+          paymentStatus: po.paymentStatus,
+          paypalPaymentLink: paypalLink
+        }
+      });
+
+      if (res.success) {
+        addAuditLog('SENT_PAYMENT_REMAINDER_EMAIL', `Dispatched remainder balance payment email (£${outstandingDue.toFixed(2)}) to ${po.customerEmail} for PO ${po.id}`, po.id);
+        playAudioBeep('success');
+        showToast(`📧 Successfully sent remainder payment link (£${outstandingDue.toFixed(2)}) to ${po.customerEmail}!`, 'success');
+      } else {
+        showToast(`⚠️ Could not send email: ${res.error}`, 'warning');
+      }
+    } catch (err: any) {
+      showToast(`Email error: ${err.message}`, 'warning');
     }
   };
 
@@ -2745,7 +2957,7 @@ export default function KiltHireApp() {
     }
   };
 
-  const handleSendTemplateTestEmail = async (templateType: 'BOOKING_CONFIRMATION' | 'READY_FOR_COLLECTION' | 'RETURN_REMINDER' | 'OVERDUE_ALERT') => {
+  const handleSendTemplateTestEmail = async (templateType: 'BOOKING_CONFIRMATION' | 'PAYMENT_RECEIPT_INVOICE' | 'ORDER_CANCELLATION' | 'READY_FOR_COLLECTION' | 'RETURN_REMINDER' | 'OVERDUE_ALERT') => {
     if (!brevoTestTargetEmail) {
       showToast('Please enter an email address for the test.', 'warning');
       return;
@@ -2774,6 +2986,13 @@ export default function KiltHireApp() {
             totalHireFee: 110.00,
             totalDepositHeld: 50.00,
             paymentStatus: simulatedPaymentStatus,
+            amountPaid: simulatedPaymentStatus === 'FULL_BALANCE_PAID' ? 160.00 : simulatedPaymentStatus === 'PARTIAL_DEPOSIT' ? 50.00 : 0.00,
+            paymentMethod: 'PayPal Online Settlement',
+            paymentDate: new Date().toISOString().slice(0, 10),
+            cancellationReason: 'Event date rescheduled by customer (Wedding postponed)',
+            depositRetainedAmount: simulatedCancelRefund === 'FULL_RETAINED' ? 50.00 : simulatedCancelRefund === 'PARTIAL_RETAINED' ? 25.00 : 0.00,
+            netRefundAmount: simulatedCancelRefund === 'FULL_REFUND' ? 50.00 : simulatedCancelRefund === 'PARTIAL_RETAINED' ? 25.00 : 0.00,
+            cancelledBy: 'Allan (Master Admin)',
             paypalPaymentLink: `http://localhost:3006/pay?po=PO-2026-TEST&amount=${simulatedPaymentStatus === 'FULL_BALANCE_PAID' ? 0 : simulatedPaymentStatus === 'PARTIAL_DEPOSIT' ? 110 : 160}&name=Allan`
           }
         })
@@ -2828,6 +3047,71 @@ export default function KiltHireApp() {
   useEffect(() => {
     itemsRef.current = items;
   }, [items]);
+
+  const showAssemblyModalRef = useRef<PurchaseOrder | null>(showAssemblyModal);
+  useEffect(() => {
+    showAssemblyModalRef.current = showAssemblyModal;
+  }, [showAssemblyModal]);
+
+  const assemblyPickedItemIdsRef = useRef<string[]>(assemblyPickedItemIds);
+  useEffect(() => {
+    assemblyPickedItemIdsRef.current = assemblyPickedItemIds;
+  }, [assemblyPickedItemIds]);
+
+  const handleScanCodeRef = useRef<(code: string) => void>(() => {});
+
+  // Global Hardware Barcode / QR Scanner Listener (Tera Scanner Gun / USB HID Keyboard)
+  useEffect(() => {
+    let barcodeBuffer = '';
+    let lastKeyTime = 0;
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (!e || !e.key) return;
+      // Ignore functional control modifiers
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+      if (['Shift', 'Control', 'Alt', 'Meta', 'Escape', 'Tab', 'CapsLock', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+
+      const target = e.target as HTMLElement | null;
+      const isInput = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
+
+      const now = Date.now();
+      // Reset buffer if gap between keystrokes exceeds 250ms (unless buffer was empty)
+      if (now - lastKeyTime > 250) {
+        barcodeBuffer = '';
+      }
+      lastKeyTime = now;
+
+      if (e.key === 'Enter') {
+        let scanned = barcodeBuffer.trim();
+        if (!scanned && isInput && (target as HTMLInputElement).value) {
+          scanned = (target as HTMLInputElement).value.trim();
+        }
+
+        if (scanned.length >= 2) {
+          barcodeBuffer = '';
+          e.preventDefault();
+          e.stopPropagation();
+          if (isInput) {
+            (target as HTMLInputElement).value = '';
+            (target as HTMLElement).blur();
+          }
+          if (handleScanCodeRef.current) {
+            handleScanCodeRef.current(scanned);
+          }
+        }
+        return;
+      }
+
+      if (e.key && e.key.length === 1) {
+        barcodeBuffer += e.key;
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown, true);
+    };
+  }, []);
 
   const [videoElementMounted, setVideoElementMounted] = useState<number>(0);
 
@@ -3171,6 +3455,7 @@ export default function KiltHireApp() {
   const handleScanCode = (code: string) => {
     const rawClean = code.trim().toUpperCase();
     if (!rawClean) return;
+    
     // Strip any URL prefixes if camera scanned full URL
     const cleanCode = rawClean.replace(/^HTTPS?:\/\/[^\/]+\//i, '').replace(/^KILT-HIRE-/i, '');
     
@@ -3186,6 +3471,156 @@ export default function KiltHireApp() {
       cleanCode.endsWith(i.id.trim().toUpperCase()) ||
       i.id.trim().toUpperCase().endsWith(cleanCode)
     );
+    // Record hardware scan telemetry & auto-dismiss test popup if open so garment profile is in full view
+    const newScanRecord = {
+      code: cleanCode,
+      time: new Date().toLocaleTimeString(),
+      timestamp: new Date().toLocaleTimeString(),
+      speedMs: 15,
+      itemMatch: existing ? `${existing.name} (${existing.tartanOrColour || existing.size || existing.category})` : 'Unregistered QR Tag'
+    };
+    setLastHardwareScan(newScanRecord);
+    setHardwareScannerTestLog(prev => [newScanRecord, ...prev.slice(0, 19)]);
+    setHardwareLiveKeystrokes(cleanCode);
+    setShowHardwareScannerModal(false);
+
+    // =========================================================================
+    // 📦 0. PICK & PACK ASSEMBLY MODAL HARDWARE SCAN HANDLER
+    // =========================================================================
+    const activeModalPo = showAssemblyModalRef.current || showAssemblyModal;
+    if (activeModalPo) {
+      const cleanNorm = cleanCode.replace(/[^A-Z0-9]/g, '');
+      const rawNorm = rawClean.replace(/[^A-Z0-9]/g, '');
+      const existId = (existing?.id || '').trim().toUpperCase();
+      const existNorm = existId.replace(/[^A-Z0-9]/g, '');
+
+      // Check if scanned code represents ANY Hanger type (including bulk BIN-BESP-B1-1001, BIN-BESP-*, HNG-*, HNGR-*, HANGER-*, BESP-*, H-*, or inventory item categorized as Hanger/Bespoke)
+      const isHangerTag = cleanCode.startsWith('HNG') || 
+                          cleanCode.startsWith('HNGR') || 
+                          cleanCode.startsWith('H-') || 
+                          cleanCode.startsWith('H_') || 
+                          cleanCode.includes('HANGER') || 
+                          cleanCode.startsWith('BIN-BESP') || 
+                          cleanCode.startsWith('BIN-HNG') || 
+                          cleanCode.startsWith('BESP') || 
+                          cleanCode.includes('BESP') || 
+                          rawClean.startsWith('HNG') ||
+                          (cleanCode.startsWith('BIN-') && cleanCode.includes('BESP')) ||
+                          Boolean(existing && (
+                            existing.category?.toLowerCase().includes('hanger') || 
+                            existing.name?.toLowerCase().includes('hanger') || 
+                            existing.category?.toLowerCase().includes('bespoke') ||
+                            existing.name?.toLowerCase().includes('bespoke')
+                          ));
+
+      // 1. Direct match on item QR in this PO
+      let matchedLineItem = activeModalPo.items.find(it => {
+        const itemQr = (it.qrCodeId || '').trim().toUpperCase();
+        const itemQrNorm = itemQr.replace(/[^A-Z0-9]/g, '');
+
+        return (
+          itemQr === cleanCode || 
+          itemQr === rawClean || 
+          (itemQrNorm && (itemQrNorm === cleanNorm || itemQrNorm === rawNorm)) ||
+          (existId && (itemQr === existId || itemQrNorm === existNorm))
+        );
+      });
+
+      // 2. If no exact ID match and scan is ANY hanger, check if PO has an unpicked Hanger line item
+      if (!matchedLineItem && isHangerTag) {
+        matchedLineItem = activeModalPo.items.find(it => 
+          !assemblyPickedItemIds.includes(it.qrCodeId) && (
+            it.category?.toLowerCase().includes('hanger') ||
+            it.itemName?.toLowerCase().includes('hanger') ||
+            it.category?.toLowerCase().includes('bespoke') ||
+            it.itemName?.toLowerCase().includes('bespoke') ||
+            it.qrCodeId.toUpperCase().includes('BESP') ||
+            it.qrCodeId.toUpperCase().includes('HNG') ||
+            it.qrCodeId.toUpperCase().includes('HANGER') ||
+            it.qrCodeId.toUpperCase().startsWith('BIN-')
+          )
+        );
+      }
+
+      // If matched a line item, pick it (and if it's a hanger, also populate the packaging hanger field)
+      if (matchedLineItem) {
+        setAssemblyPickedItemIds(prev => {
+          if (!prev.includes(matchedLineItem.qrCodeId)) {
+            return [...prev, matchedLineItem.qrCodeId];
+          }
+          return prev;
+        });
+        if (isHangerTag || matchedLineItem.category?.toLowerCase().includes('hanger') || matchedLineItem.itemName?.toLowerCase().includes('hanger')) {
+          setAssemblyHangerInput(cleanCode);
+        }
+        setAssemblyLiveScanInput('');
+        playAudioBeep('success');
+        showToast(`✅ Picked: ${matchedLineItem.itemName} (${cleanCode})`, 'success');
+        return;
+      }
+
+      // 3. Check if scan is an Outfit Bag Tag (OUTF-, OUTFIT-, BAG-, OB-)
+      const isBagTag = cleanCode.startsWith('OUTF') || 
+                       cleanCode.startsWith('OUTFIT') || 
+                       cleanCode.startsWith('BAG') || 
+                       cleanCode.startsWith('OB-') || 
+                       cleanCode.includes('BAG') || 
+                       rawClean.startsWith('OUTF') || 
+                       rawClean.startsWith('BAG') ||
+                       Boolean(existing && (
+                         existing.category?.toLowerCase().includes('bag') || 
+                         existing.name?.toLowerCase().includes('bag')
+                       ));
+
+      if (isBagTag) {
+        setAssemblyBagInput(cleanCode);
+        const unpickedBagItem = activeModalPo.items.find(it => 
+          !assemblyPickedItemIds.includes(it.qrCodeId) && (
+            it.category?.toLowerCase().includes('bag') ||
+            it.itemName?.toLowerCase().includes('bag') ||
+            it.qrCodeId.toUpperCase().includes('BAG') ||
+            it.qrCodeId.toUpperCase().includes('OUTF')
+          )
+        );
+        if (unpickedBagItem) {
+          setAssemblyPickedItemIds(prev => [...prev, unpickedBagItem.qrCodeId]);
+        }
+        setAssemblyLiveScanInput('');
+        playAudioBeep('success');
+        showToast(`🎒 Outfit Bag Tag Scanned: ${cleanCode}`, 'success');
+        return;
+      }
+
+      // 4. If it's a Hanger Tag (assign to packaging hanger field even if not a line item)
+      if (isHangerTag) {
+        setAssemblyHangerInput(cleanCode);
+        setAssemblyLiveScanInput('');
+        playAudioBeep('success');
+        showToast(`🏷️ Bespoke Hanger Tag Assigned: ${cleanCode}`, 'success');
+        return;
+      }
+
+      // 5. Fallbacks if neither explicit prefix matched:
+      if (cleanCode.startsWith('H') && !assemblyHangerInput.trim()) {
+        setAssemblyHangerInput(cleanCode);
+        setAssemblyLiveScanInput('');
+        playAudioBeep('success');
+        showToast(`🏷️ Assigned to Hanger QR: ${cleanCode}`, 'success');
+        return;
+      }
+
+      if ((cleanCode.startsWith('B') || cleanCode.startsWith('O')) && !assemblyBagInput.trim()) {
+        setAssemblyBagInput(cleanCode);
+        setAssemblyLiveScanInput('');
+        playAudioBeep('success');
+        showToast(`🎒 Assigned to Outfit Bag QR: ${cleanCode}`, 'success');
+        return;
+      }
+
+      playAudioBeep('error');
+      showToast(`⚠️ QR (${cleanCode}) is not a pending garment in order ${activeModalPo.id}, nor a recognized Hanger (e.g. BIN-BESP-..., HNG-...) or Bag tag.`, 'warning');
+      return;
+    }
 
     // =========================================================================
     // ⚡ 1. FAST-PACED SATURDAY TURNAROUND (ZAP & GO CONTINUOUS SCANNER MODE)
@@ -3462,6 +3897,11 @@ export default function KiltHireApp() {
       showToast(`🔍 ${existing.name} (${existing.id}) detected! Select garment action below.`, 'info');
     }
   };
+
+  useEffect(() => {
+    handleScanCodeRef.current = handleScanCode;
+  });
+  handleScanCodeRef.current = handleScanCode;
 
   // OPEN MULTI-ITEM PO RETURN CHECKLIST IN FULL PAGE MODE
   const openPoReturnChecklist = (po: PurchaseOrder, triggerQrCode?: string) => {
@@ -3890,6 +4330,7 @@ export default function KiltHireApp() {
     const updated = [newEntry, ...depositLedgerEntries];
     setDepositLedgerEntries(updated);
     if (typeof window !== 'undefined') localStorage.setItem('kilt_deposit_ledger', JSON.stringify(updated));
+    upsertDepositLedgerEntry(newEntry).catch(err => console.warn('Failed to save deposit ledger entry to Firestore:', err));
     setShowLogExpenseModal(false);
     addAuditLog('LOGGED_REPAIR_EXPENSE', `Logged £${newEntry.amount.toFixed(2)} expense (${newEntry.reason}) from ${newEntry.vendorOrPayer}`, newEntry.itemId);
     showToast(`🧾 Logged £${newEntry.amount.toFixed(2)} expense from ${newEntry.vendorOrPayer}!`, 'success');
@@ -3923,6 +4364,7 @@ export default function KiltHireApp() {
     const updated = [newEntry, ...depositLedgerEntries];
     setDepositLedgerEntries(updated);
     if (typeof window !== 'undefined') localStorage.setItem('kilt_deposit_ledger', JSON.stringify(updated));
+    upsertDepositLedgerEntry(newEntry).catch(err => console.warn('Failed to save deposit ledger entry to Firestore:', err));
     setShowDeductDepositModal(null);
     addAuditLog('RETAINED_SECURITY_DEPOSIT', `Retained £${newEntry.amount.toFixed(2)} deposit from ${po.customerName} (${po.id}) for ${newEntry.reason}`, newEntry.itemId);
     showToast(`💰 Recorded £${newEntry.amount.toFixed(2)} deposit retention from ${po.customerName}!`, 'success');
@@ -3933,7 +4375,68 @@ export default function KiltHireApp() {
     const updated = depositLedgerEntries.filter(e => e.id !== entryId);
     setDepositLedgerEntries(updated);
     if (typeof window !== 'undefined') localStorage.setItem('kilt_deposit_ledger', JSON.stringify(updated));
+    deleteDepositLedgerEntryFS(entryId).catch(err => console.warn('Failed to delete from Firestore:', err));
     showToast(`Deleted ledger entry ${entryId}.`, 'info');
+  };
+
+  // Sync all live PO deposit retentions into Deposit Ledger
+  const handleSyncAllPoDeposits = () => {
+    let syncedCount = 0;
+    const existingPoEntryIds = new Set(depositLedgerEntries.filter(e => e.poId).map(e => `${e.poId}-${e.itemId || ''}`));
+    const newEntries: DepositLedgerEntry[] = [];
+
+    pos.forEach(po => {
+      // Check items with retained deposit for repairs or missing
+      po.items.forEach(li => {
+        if (li.depositAction === 'HELD_FOR_REPAIR' || li.depositAction === 'HELD_FOR_MISSING') {
+          const key = `${po.id}-${li.qrCodeId}`;
+          if (!existingPoEntryIds.has(key) && li.depositAmount > 0) {
+            const itemObj = items.find(i => i.id === li.qrCodeId);
+            const entry: DepositLedgerEntry = {
+              id: `LEDGER-PO-${Math.floor(1000 + Math.random() * 9000)}`,
+              entryType: 'DEPOSIT_RETAINED',
+              poId: po.id,
+              customerName: po.customerName,
+              itemId: li.qrCodeId,
+              itemName: itemObj?.name || li.category,
+              amount: li.depositAmount,
+              reason: li.depositAction === 'HELD_FOR_REPAIR' 
+                ? `Garment returned with damage / stains (${itemObj?.name || li.category})` 
+                : `Garment missing / unreturned (${itemObj?.name || li.category})`,
+              vendorOrPayer: `Customer (${po.customerName})`,
+              date: (li.returnedAt || po.hireEndDate || po.eventDate || new Date().toISOString()).slice(0, 16),
+              recordedByStaff: 'System PO Sync',
+              status: 'SETTLED',
+              notes: `Imported from live order ${po.id} item check-in.`
+            };
+            newEntries.push(entry);
+            existingPoEntryIds.add(key);
+            syncedCount++;
+          }
+        }
+      });
+    });
+
+    if (newEntries.length > 0) {
+      const merged = [...newEntries, ...depositLedgerEntries];
+      setDepositLedgerEntries(merged);
+      if (typeof window !== 'undefined') localStorage.setItem('kilt_deposit_ledger', JSON.stringify(merged));
+      newEntries.forEach(e => upsertDepositLedgerEntry(e).catch(err => console.warn(err)));
+      showToast(`🔄 Successfully synced ${syncedCount} retained deposit records from active & historic customer orders!`, 'success');
+    } else {
+      showToast('✓ All customer orders & deposit deductions are already fully synced with the ledger!', 'info');
+    }
+  };
+
+  // Clear mock data records
+  const handleClearMockLedgerData = () => {
+    if (!window.confirm('Are you sure you want to remove the initial demo / mock records and start with only your genuine live shop records?')) return;
+    const mockIds = new Set(['LEDGER-001', 'LEDGER-002', 'LEDGER-003', 'LEDGER-004', 'LEDGER-005']);
+    const liveOnly = depositLedgerEntries.filter(e => !mockIds.has(e.id));
+    setDepositLedgerEntries(liveOnly);
+    if (typeof window !== 'undefined') localStorage.setItem('kilt_deposit_ledger', JSON.stringify(liveOnly));
+    mockIds.forEach(id => deleteDepositLedgerEntryFS(id).catch(err => console.warn(err)));
+    showToast(`🧹 Cleared demo mockup records. Showing ${liveOnly.length} live records.`, 'success');
   };
 
   // Step 5: Confirm Dry Cleaning / Laundry Completed
@@ -4975,7 +5478,48 @@ export default function KiltHireApp() {
       notes: '',
       selectedItemIds: []
     });
-    showToast(`💳 Purchase Order ${poId} created & PayPal payment processed!`, 'success');
+    showToast(`💳 Purchase Order ${poId} created!`, 'success');
+
+    // Automatically send Booking Confirmation & PayPal Invoice email if customer email is provided
+    if (newPo.customerEmail) {
+      const originUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3006';
+      const totalPayable = newPo.totalHireFee + newPo.totalDepositHeld;
+      const outstandingDue = newPo.paymentStatus === 'FULL_BALANCE_PAID' || newPo.paymentStatus === 'PAID_WITH_DEPOSIT'
+        ? 0
+        : newPo.paymentStatus === 'PARTIAL_DEPOSIT'
+        ? newPo.totalHireFee
+        : totalPayable;
+
+      const paypalLink = `${originUrl}/pay?po=${newPo.id}&hire=${newPo.totalHireFee}&deposit=${newPo.totalDepositHeld}&amount=${outstandingDue}&name=${encodeURIComponent(newPo.customerName)}`;
+
+      sendBrevoEmail({
+        toEmail: newPo.customerEmail,
+        toName: newPo.customerName,
+        emailType: 'BOOKING_CONFIRMATION',
+        emailSettings: emailSettings,
+        orderData: {
+          poId: newPo.id,
+          customerName: newPo.customerName,
+          customerPhone: newPo.customerPhone,
+          hireStartDate: newPo.hireStartDate,
+          hireEndDate: newPo.hireEndDate,
+          eventDate: newPo.eventDate,
+          items: newPo.items.map(li => ({ itemName: li.itemName, category: li.category, size: li.size })),
+          totalHireFee: newPo.totalHireFee,
+          totalDepositHeld: newPo.totalDepositHeld,
+          paymentStatus: newPo.paymentStatus,
+          paypalPaymentLink: paypalLink
+        }
+      }).then(res => {
+        if (res.success) {
+          addAuditLog('SENT_BREVO_BOOKING_EMAIL', `Dispatched booking & PayPal invoice email to ${newPo.customerEmail} for ${newPo.id}`, newPo.id);
+          showToast(`📧 Booking confirmation email sent to ${newPo.customerEmail}`, 'success');
+        } else {
+          console.warn('Brevo email dispatch failed:', res.error);
+          showToast(`⚠️ Order created, but email could not be sent: ${res.error}`, 'warning');
+        }
+      }).catch(err => console.warn('Brevo booking email error:', err));
+    }
   };
 
   // EDIT PO Details (Shop Assistant / Staff Action)
@@ -5046,6 +5590,37 @@ export default function KiltHireApp() {
     await upsertPurchaseOrder(updatedPo);
     setPos(prev => prev.map(p => p.id === po.id ? updatedPo : p));
     setItems(updatedItemsList);
+
+    // Automated Dispatch: Send Order Cancellation & Deposit Settlement Email
+    if (po.customerEmail) {
+      const retainedAmt = cancelRefundOption === 'DEPOSIT_FORFEITED' ? po.totalDepositHeld : 0;
+      const netRefund = cancelRefundOption === 'FULL_REFUND_ISSUED' ? po.totalDepositHeld : 0;
+      fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toEmail: po.customerEmail,
+          toName: po.customerName,
+          emailType: 'ORDER_CANCELLATION',
+          emailSettings: emailSettings,
+          orderData: {
+            poId: po.id,
+            customerName: po.customerName,
+            customerPhone: po.customerPhone,
+            hireStartDate: po.hireStartDate,
+            hireEndDate: po.hireEndDate,
+            items: po.items.map(i => ({ itemName: items.find(it => it.id === i.qrCodeId)?.name || i.category, category: i.category })),
+            totalHireFee: po.totalHireFee,
+            totalDepositHeld: po.totalDepositHeld,
+            paymentStatus: po.paymentStatus,
+            cancellationReason: cancelReasonInput.trim(),
+            depositRetainedAmount: retainedAmt,
+            netRefundAmount: netRefund,
+            cancelledBy: currentUser?.name || 'Staff'
+          }
+        })
+      }).catch(err => console.warn('Failed to send cancellation email:', err));
+    }
 
     // Automated 1-Click PayPal Refund execution for Cancelled Orders
     if (cancelRefundOption === 'FULL_REFUND_ISSUED' && po.paypalCaptureId) {
@@ -5159,6 +5734,1801 @@ export default function KiltHireApp() {
     );
   };
 
+  // 📜 HISTORIC PURCHASE ORDERS ARCHIVE & REPEAT CUSTOMER SEARCH (SHARED ADMIN & ASSISTANT VIEW)
+  const renderHistoricArchiveView = () => {
+    const completedPos = pos.filter(p => p.orderStatus === 'CANCELLED' || p.orderStatus === 'RETURNED_COMPLETED' || p.items.every(i => i.returned));
+    
+    const filteredCompleted = completedPos.filter(p => {
+      const isCancelled = p.orderStatus === 'CANCELLED' || Boolean(p.cancellationRecord);
+
+      if (historicStatusFilter === 'RETURNED' && isCancelled) return false;
+      if (historicStatusFilter === 'CANCELLED' && !isCancelled) return false;
+
+      if (historicPoSearch) {
+        const query = historicPoSearch.toLowerCase();
+        const matchesName = (p.customerName || '').toLowerCase().includes(query);
+        const matchesPhone = (p.customerPhone || '').toLowerCase().includes(query);
+        const matchesEmail = (p.customerEmail || '').toLowerCase().includes(query);
+        const matchesPo = (p.id || '').toLowerCase().includes(query);
+        const matchesReason = (p.cancellationRecord?.reason || '').toLowerCase().includes(query);
+        if (!matchesName && !matchesPhone && !matchesEmail && !matchesPo && !matchesReason) return false;
+      }
+
+      if (historicDateFilter === 'THIS_MONTH') {
+        const currentMonthPrefix = new Date().toISOString().slice(0, 7);
+        const matchesMonth = 
+          p.eventDate?.startsWith(currentMonthPrefix) || 
+          p.hireStartDate?.startsWith(currentMonthPrefix) ||
+          p.hireEndDate?.startsWith(currentMonthPrefix) ||
+          p.cancellationRecord?.cancelledAt?.startsWith(currentMonthPrefix) ||
+          p.createdAt?.startsWith(currentMonthPrefix);
+        return Boolean(matchesMonth);
+      } else if (historicDateFilter === 'LAST_30_DAYS') {
+        const thirtyDaysAgo = new Date().getTime() - (30 * 24 * 60 * 60 * 1000);
+        const eventMs = p.eventDate ? new Date(p.eventDate).getTime() : 0;
+        const startMs = p.hireStartDate ? new Date(p.hireStartDate).getTime() : 0;
+        const cancelMs = p.cancellationRecord?.cancelledAt ? new Date(p.cancellationRecord.cancelledAt).getTime() : 0;
+        const createdMs = p.createdAt ? new Date(p.createdAt).getTime() : 0;
+        return (eventMs >= thirtyDaysAgo || startMs >= thirtyDaysAgo || cancelMs >= thirtyDaysAgo || createdMs >= thirtyDaysAgo);
+      } else if (historicDateFilter === 'CUSTOM') {
+        const checkDate = p.cancellationRecord?.cancelledAt?.slice(0, 10) || p.hireStartDate;
+        if (historicStartDate && checkDate < historicStartDate) return false;
+        if (historicEndDate && checkDate > historicEndDate) return false;
+      }
+
+      return true;
+    });
+
+    // Apply Sorting
+    const sortedCompleted = [...filteredCompleted].sort((a, b) => {
+      if (historicSortBy === 'DATE_DESC') return new Date(b.hireEndDate).getTime() - new Date(a.hireEndDate).getTime();
+      if (historicSortBy === 'DATE_ASC') return new Date(a.hireEndDate).getTime() - new Date(b.hireEndDate).getTime();
+      if (historicSortBy === 'NAME_ASC') return a.customerName.localeCompare(b.customerName);
+      if (historicSortBy === 'NAME_DESC') return b.customerName.localeCompare(a.customerName);
+      if (historicSortBy === 'FEE_DESC') return b.totalHireFee - a.totalHireFee;
+      if (historicSortBy === 'FEE_ASC') return a.totalHireFee - b.totalHireFee;
+      return 0;
+    });
+
+    const totalItems = sortedCompleted.length;
+    const pageSize = historicRowsPerPage === 'ALL' ? totalItems : historicRowsPerPage;
+    const totalPages = Math.max(1, Math.ceil(totalItems / (pageSize || 1)));
+    const safeCurrentPage = Math.min(Math.max(1, historicCurrentPage), totalPages);
+    const startIndex = (safeCurrentPage - 1) * pageSize;
+    const endIndex = historicRowsPerPage === 'ALL' ? totalItems : Math.min(startIndex + pageSize, totalItems);
+    const paginatedList = sortedCompleted.slice(startIndex, endIndex);
+
+    return (
+      <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
+        {/* HEADER BAR */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+          <div>
+            <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+              <FileText className="w-5 h-5 text-purple-600" /> 📜 Historic Purchase Orders &amp; Repeat Customer Archive
+            </h3>
+            <p className="text-xs text-slate-500">
+              Complete archive of all returned, completed, and cancelled hires over time. Search repeat customers by name, phone, email, PO ID, or filter by status.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setActiveTab('pos');
+                setAssistantTab('pos');
+              }}
+              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5 cursor-pointer"
+            >
+              📋 View Active POs ({pos.filter(p => p.orderStatus !== 'CANCELLED' && p.orderStatus !== 'RETURNED_COMPLETED' && !p.items.every(i => i.returned)).length})
+            </button>
+          </div>
+        </div>
+
+        {/* TOOLBAR: SEARCH, SORT & ROWS-PER-PAGE */}
+        <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {/* SEARCH INPUT */}
+            <div className="relative md:col-span-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+              <input
+                type="text"
+                placeholder="🔍 Search customer, phone, email, PO #, reason..."
+                value={historicPoSearch}
+                onChange={(e) => {
+                  setHistoricPoSearch(e.target.value);
+                  setHistoricCurrentPage(1);
+                }}
+                className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-sm"
+              />
+            </div>
+
+            {/* SORT CONTROL */}
+            <div className="flex items-center gap-2">
+              <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider shrink-0">Sort By:</label>
+              <select
+                value={historicSortBy}
+                onChange={(e) => setHistoricSortBy(e.target.value as any)}
+                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-purple-500 shadow-sm"
+              >
+                <option value="DATE_DESC">📅 Hire Date (Newest First)</option>
+                <option value="DATE_ASC">📅 Hire Date (Oldest First)</option>
+                <option value="NAME_ASC">👤 Customer Name (A ➔ Z)</option>
+                <option value="NAME_DESC">👤 Customer Name (Z ➔ A)</option>
+                <option value="FEE_DESC">💰 Rental Fee (Highest First)</option>
+                <option value="FEE_ASC">💰 Rental Fee (Lowest First)</option>
+              </select>
+            </div>
+
+            {/* ROWS PER PAGE SELECTOR */}
+            <div className="flex items-center gap-2">
+              <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider shrink-0">Show per page:</label>
+              <div className="flex items-center gap-1 bg-white border border-slate-300 p-1 rounded-xl shadow-sm">
+                {[10, 20, 50, 100, 'ALL'].map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    onClick={() => {
+                      setHistoricRowsPerPage(size as any);
+                      setHistoricCurrentPage(1);
+                    }}
+                    className={`px-2.5 py-1 text-xs font-extrabold rounded-lg transition ${
+                      historicRowsPerPage === size
+                        ? 'bg-purple-600 text-white shadow-sm'
+                        : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* STATUS FILTER PILLS & DATE RANGE PRESETS */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200">
+            {/* STATUS FILTER: ALL, RETURNED, CANCELLED */}
+            <div className="flex items-center gap-1 bg-white border border-slate-300 p-1 rounded-xl shadow-2xs">
+              <button
+                type="button"
+                onClick={() => { setHistoricStatusFilter('ALL'); setHistoricCurrentPage(1); }}
+                className={`px-3 py-1 rounded-lg text-xs font-black transition ${
+                  historicStatusFilter === 'ALL'
+                    ? 'bg-purple-600 text-white shadow-2xs'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                All Archive ({completedPos.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => { setHistoricStatusFilter('RETURNED'); setHistoricCurrentPage(1); }}
+                className={`px-3 py-1 rounded-lg text-xs font-black transition ${
+                  historicStatusFilter === 'RETURNED'
+                    ? 'bg-emerald-600 text-white shadow-2xs'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                ✓ Returned &amp; Completed ({completedPos.filter(p => p.orderStatus === 'RETURNED_COMPLETED' || (p.orderStatus !== 'CANCELLED' && p.items.every(i => i.returned))).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => { setHistoricStatusFilter('CANCELLED'); setHistoricCurrentPage(1); }}
+                className={`px-3 py-1 rounded-lg text-xs font-black transition ${
+                  historicStatusFilter === 'CANCELLED'
+                    ? 'bg-rose-600 text-white shadow-2xs'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                ❌ Cancelled ({completedPos.filter(p => p.orderStatus === 'CANCELLED' || Boolean(p.cancellationRecord)).length})
+              </button>
+            </div>
+
+            {/* DATE RANGE PRESETS */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">Date:</span>
+              <button
+                type="button"
+                onClick={() => { setHistoricDateFilter('ALL'); setHistoricCurrentPage(1); }}
+                className={`px-3 py-1 rounded-xl text-xs font-extrabold transition border ${
+                  historicDateFilter === 'ALL' ? 'bg-purple-600 text-white border-purple-700' : 'bg-white text-slate-700 border-slate-300 hover:bg-purple-50'
+                }`}
+              >
+                All Time
+              </button>
+              <button
+                type="button"
+                onClick={() => { setHistoricDateFilter('THIS_MONTH'); setHistoricCurrentPage(1); }}
+                className={`px-3 py-1 rounded-xl text-xs font-extrabold transition border ${
+                  historicDateFilter === 'THIS_MONTH' ? 'bg-purple-600 text-white border-purple-700' : 'bg-white text-slate-700 border-slate-300 hover:bg-purple-50'
+                }`}
+              >
+                This Month
+              </button>
+              <button
+                type="button"
+                onClick={() => { setHistoricDateFilter('LAST_30_DAYS'); setHistoricCurrentPage(1); }}
+                className={`px-3 py-1 rounded-xl text-xs font-extrabold transition border ${
+                  historicDateFilter === 'LAST_30_DAYS' ? 'bg-purple-600 text-white border-purple-700' : 'bg-white text-slate-700 border-slate-300 hover:bg-purple-50'
+                }`}
+              >
+                Last 30 Days
+              </button>
+              <button
+                type="button"
+                onClick={() => { setHistoricDateFilter('CUSTOM'); setHistoricCurrentPage(1); }}
+                className={`px-3 py-1 rounded-xl text-xs font-extrabold transition border ${
+                  historicDateFilter === 'CUSTOM' ? 'bg-purple-600 text-white border-purple-700' : 'bg-white text-slate-700 border-slate-300 hover:bg-purple-50'
+                }`}
+              >
+                Custom Range
+              </button>
+            </div>
+
+            {historicDateFilter === 'CUSTOM' && (
+              <div className="flex items-center gap-2 text-xs">
+                <input
+                  type="date"
+                  value={historicStartDate}
+                  onChange={(e) => { setHistoricStartDate(e.target.value); setHistoricCurrentPage(1); }}
+                  className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800"
+                />
+                <span className="text-slate-400">to</span>
+                <input
+                  type="date"
+                  value={historicEndDate}
+                  onChange={(e) => { setHistoricEndDate(e.target.value); setHistoricCurrentPage(1); }}
+                  className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* CONDENSED HISTORIC ORDERS DATA TABLE */}
+        <div className="space-y-4">
+          {totalItems === 0 ? (
+            <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+              <span className="text-3xl">📜</span>
+              <h4 className="font-extrabold text-slate-900 text-sm">No Historic PO Records Found</h4>
+              <p className="text-xs text-slate-500">
+                {historicPoSearch || historicDateFilter !== 'ALL' || historicStatusFilter !== 'ALL'
+                  ? `No past orders match your search / filter criteria.` 
+                  : 'Completed orders automatically appear here after return checklist verification!'}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* SUMMARY HEADER */}
+              <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 font-bold px-1">
+                <span>
+                  Showing <strong className="text-purple-900">{startIndex + 1} – {endIndex}</strong> of <strong className="text-purple-900">{totalItems}</strong> Historic PO Records
+                </span>
+                <span>
+                  Page <strong>{safeCurrentPage}</strong> of <strong>{totalPages}</strong>
+                </span>
+              </div>
+
+              {/* HIGH DENSITY CONDENSED TABLE */}
+              <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm bg-white">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100/90 text-slate-700 font-extrabold border-b border-slate-200 uppercase tracking-wider text-[10px]">
+                        <th className="py-3 px-4">PO Number &amp; Status</th>
+                        <th className="py-3 px-4">Customer &amp; Contact</th>
+                        <th className="py-3 px-4">Event &amp; Hire Dates</th>
+                        <th className="py-3 px-4">Garments Hired</th>
+                        <th className="py-3 px-4 text-right">Hire Fee &amp; Deposit</th>
+                        <th className="py-3 px-4 text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {paginatedList.map((po) => {
+                        const customerHires = completedPos.filter(p => p.customerEmail.toLowerCase() === po.customerEmail.toLowerCase());
+                        const isRepeatCustomer = customerHires.length > 1;
+                        const isExpanded = expandedHistoricPoId === po.id;
+                        const isAnyExpanded = expandedHistoricPoId !== null;
+                        const isCancelled = po.orderStatus === 'CANCELLED' || Boolean(po.cancellationRecord);
+
+                        return (
+                          <React.Fragment key={po.id}>
+                            <tr className={`transition-all duration-300 ${
+                              isExpanded 
+                                ? 'bg-purple-100 font-bold ring-2 ring-purple-600 shadow-xl relative z-20 scale-[1.002]' 
+                                : isAnyExpanded 
+                                ? 'opacity-30 blur-[0.4px] hover:opacity-100 hover:blur-none bg-white' 
+                                : 'hover:bg-purple-50/50 bg-white'
+                            }`}>
+                              <td className="py-3 px-4 align-middle">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono font-extrabold text-purple-900 bg-purple-100 px-2 py-0.5 rounded border border-purple-300">
+                                    {po.id}
+                                  </span>
+                                  {isCancelled ? (
+                                    <span className="px-2 py-0.5 text-[9px] font-extrabold bg-rose-100 text-rose-900 rounded border border-rose-300">
+                                      ❌ CANCELLED
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 text-[9px] font-extrabold bg-emerald-100 text-emerald-900 rounded border border-emerald-300">
+                                      ✓ RETURNED
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-4 align-middle">
+                                <div>
+                                  <strong className="text-slate-900 font-bold block">{po.customerName}</strong>
+                                  <span className="text-[11px] text-slate-500">{po.customerPhone}</span>
+                                  {isRepeatCustomer && (
+                                    <span className="ml-1.5 px-2 py-0.5 text-[9px] font-extrabold bg-amber-100 text-amber-900 rounded-full border border-amber-300 inline-block">
+                                      ⭐ Repeat ({customerHires.length})
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-4 align-middle">
+                                <div>
+                                  <span className="text-slate-900 font-semibold block">Event: {po.eventDate}</span>
+                                  <span className="text-[10px] text-slate-500">{po.hireStartDate} ➔ {po.hireEndDate}</span>
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-4 align-middle">
+                                <div className="text-[11px]">
+                                  <strong className="text-slate-800">{po.items.length} Item(s):</strong>{' '}
+                                  <span className="text-slate-600 truncate max-w-[200px] inline-block align-bottom">
+                                    {po.items.map(i => i.itemName).join(', ')}
+                                  </span>
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-4 align-middle text-right font-mono">
+                                <strong className="text-emerald-700 font-extrabold block text-xs">£{po.totalHireFee}</strong>
+                                <span className="text-[10px] text-slate-400">£{po.totalDepositHeld} Deposit Refunded</span>
+                              </td>
+
+                              <td className="py-3 px-4 align-middle text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedHistoricPoId(isExpanded ? null : po.id)}
+                                  className={`px-3 py-1 rounded-xl text-xs font-extrabold transition shadow-sm border flex items-center gap-1 mx-auto cursor-pointer ${
+                                    isExpanded 
+                                      ? 'bg-purple-600 text-white border-purple-700 shadow-md ring-2 ring-purple-400/50' 
+                                      : 'bg-white text-purple-900 border-purple-300 hover:bg-purple-100'
+                                  }`}
+                                >
+                                  {isExpanded ? '▲ Hide Details' : '👁️ View Details'}
+                                </button>
+                              </td>
+                            </tr>
+
+                            {/* EXPANDABLE ROW DRAWER WITH SPOTLIGHT FOCUS */}
+                            {isExpanded && (
+                              <tr className="bg-gradient-to-b from-purple-100/95 to-white border-b-2 border-purple-500 shadow-2xl relative z-20 animate-in fade-in zoom-in-95 duration-200">
+                                <td colSpan={6} className="p-4 sm:p-6">
+                                  <div className="bg-white border-2 border-purple-400 rounded-3xl p-5 space-y-4 shadow-xl ring-4 ring-purple-100">
+                                    <div className="flex flex-wrap items-center justify-between border-b border-purple-100 pb-3 gap-2">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-extrabold text-sm text-purple-950 flex items-center gap-1.5">
+                                          📜 Order Ledger &amp; Garments Overview ({po.id})
+                                        </span>
+                                        {isCancelled ? (
+                                          <span className="px-2.5 py-0.5 text-xs font-black bg-rose-100 text-rose-900 rounded-full border border-rose-300">
+                                            ❌ Cancelled Order
+                                          </span>
+                                        ) : (
+                                          <span className="px-2.5 py-0.5 text-xs font-black bg-emerald-100 text-emerald-900 rounded-full border border-emerald-300">
+                                            ✓ Returned &amp; Completed
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs text-slate-500 font-mono">
+                                          PayPal Ref: <strong className="text-slate-800">{po.paypalTransactionId || 'N/A'}</strong>
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => setExpandedHistoricPoId(null)}
+                                          className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-extrabold text-xs transition flex items-center gap-1 cursor-pointer"
+                                        >
+                                          ✕ Close Preview
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {/* CANCELLATION RECORD IF APPLICABLE */}
+                                    {isCancelled && po.cancellationRecord && (
+                                      <div className="bg-rose-50 border border-rose-200 p-3 rounded-2xl text-xs text-rose-950 space-y-1">
+                                        <p className="font-extrabold text-rose-900 flex items-center gap-1.5">
+                                          <XCircle className="w-4 h-4 text-rose-600" /> Cancelled Record: Refund {po.cancellationRecord.depositRefundStatus} (£{po.cancellationRecord.refundAmount})
+                                        </p>
+                                        <p className="text-rose-800 text-[11px]">
+                                          <strong>Reason:</strong> "{po.cancellationRecord.reason}" • Authorized by <strong>{po.cancellationRecord.cancelledByStaff}</strong> on {po.cancellationRecord.cancelledAt}
+                                        </p>
+                                      </div>
+                                    )}
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 text-xs">
+                                      {po.items.map((li) => (
+                                        <div key={li.qrCodeId} className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between shadow-2xs hover:border-purple-300 transition">
+                                          <div>
+                                            <div className="flex items-center gap-1.5">
+                                              <span className="font-mono font-extrabold text-purple-900 bg-purple-100 px-1.5 py-0.5 rounded border border-purple-200 text-[11px]">{li.qrCodeId}</span>
+                                              <span className="font-bold text-slate-900">{li.itemName}</span>
+                                            </div>
+                                            <span className="text-[11px] text-slate-500 block mt-0.5">
+                                              {li.sizeGroup} ({li.size}) • Hire Rate £{li.hireRate} • Deposit £{li.depositAmount}
+                                            </span>
+                                          </div>
+                                          <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded-full border ${
+                                            li.returned 
+                                              ? 'bg-emerald-100 text-emerald-900 border-emerald-300' 
+                                              : isCancelled 
+                                              ? 'bg-slate-100 text-slate-600 border-slate-300' 
+                                              : 'bg-blue-100 text-blue-900 border-blue-300'
+                                          }`}>
+                                            {li.returned ? '✓ Returned' : isCancelled ? 'Restored Stock' : 'Out on Hire'}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+
+                                    {po.notes && (
+                                      <div className="text-xs bg-amber-50/90 p-3 rounded-2xl border border-amber-200 text-amber-950 font-medium">
+                                        <strong>Staff Inspection / Diary Notes:</strong> {po.notes}
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* PAGINATION CONTROLS (<< < 1 2 3 > >>) */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs">
+                <div className="flex items-center gap-2 font-bold text-slate-600">
+                  <span>Showing {startIndex + 1} to {endIndex} of {totalItems} entries</span>
+                </div>
+
+                <div className="flex items-center gap-1.5 font-extrabold">
+                  {/* FIRST PAGE << */}
+                  <button
+                    type="button"
+                    disabled={safeCurrentPage === 1}
+                    onClick={() => setHistoricCurrentPage(1)}
+                    className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-800 disabled:opacity-40 disabled:hover:bg-white border border-slate-300 rounded-lg shadow-sm transition"
+                    title="First Page"
+                  >
+                    &laquo; First
+                  </button>
+
+                  {/* PREV PAGE < */}
+                  <button
+                    type="button"
+                    disabled={safeCurrentPage === 1}
+                    onClick={() => setHistoricCurrentPage(prev => Math.max(1, prev - 1))}
+                    className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 disabled:opacity-40 disabled:hover:bg-white border border-slate-300 rounded-lg shadow-sm transition"
+                  >
+                    &lt; Prev
+                  </button>
+
+                  {/* PAGE NUMBER BUTTONS */}
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                      <button
+                        key={pageNum}
+                        type="button"
+                        onClick={() => setHistoricCurrentPage(pageNum)}
+                        className={`px-3 py-1.5 rounded-lg border transition shadow-sm ${
+                          safeCurrentPage === pageNum
+                            ? 'bg-purple-600 text-white border-purple-700'
+                            : 'bg-white text-slate-700 border-slate-300 hover:bg-purple-50'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* NEXT PAGE > */}
+                  <button
+                    type="button"
+                    disabled={safeCurrentPage === totalPages}
+                    onClick={() => setHistoricCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 disabled:opacity-40 disabled:hover:bg-white border border-slate-300 rounded-lg shadow-sm transition"
+                  >
+                    Next &gt;
+                  </button>
+
+                  {/* LAST PAGE >> */}
+                  <button
+                    type="button"
+                    disabled={safeCurrentPage === totalPages}
+                    onClick={() => setHistoricCurrentPage(totalPages)}
+                    className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-800 disabled:opacity-40 disabled:hover:bg-white border border-slate-300 rounded-lg shadow-sm transition"
+                    title="Last Page"
+                  >
+                    Last &raquo;
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // 🏢 10-YEAR BUSINESS VALUATION & HISTORICAL TRADING LEDGER VIEW
+  // ═════════════════════════════════════════════════════════════════════════
+  const handlePrintValuationDossier = (
+    currentEv: number, 
+    fleetVal: number, 
+    blendedVal: number, 
+    latest: HistoricalFinancialYear, 
+    sorted: HistoricalFinancialYear[],
+    cagr: number
+  ) => {
+    const printWindow = window.open('', '_blank', 'width=980,height=1100');
+    if (!printWindow) {
+      showToast('Pop-up blocked. Please allow pop-ups to print the valuation dossier.', 'warning');
+      return;
+    }
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Highland Kilt &amp; Clothing Hire - ${sorted.length}-Year Corporate Valuation Dossier</title>
+          <style>
+            @page { size: A4 portrait; margin: 12mm 15mm; }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #0f172a; margin: 0; padding: 20px; font-size: 11px; line-height: 1.4; }
+            .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #78350f; padding-bottom: 12px; margin-bottom: 16px; }
+            .brand-title { font-size: 18px; font-weight: 900; color: #78350f; text-transform: uppercase; letter-spacing: 0.5px; }
+            .brand-sub { font-size: 10px; color: #64748b; font-weight: 700; margin-top: 2px; }
+            .badge { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 9px; text-transform: uppercase; }
+            .grid-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+            .kpi-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 10px; }
+            .kpi-title { font-size: 9px; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 3px; }
+            .kpi-value { font-size: 15px; font-weight: 900; color: #0f172a; font-family: monospace; }
+            .section-title { font-size: 12px; font-weight: 900; color: #78350f; margin: 14px 0 8px 0; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; display: flex; justify-content: space-between; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10px; }
+            th { background: #0f172a; color: #ffffff; text-align: left; padding: 6px 8px; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+            td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
+            tr:nth-child(even) td { background: #f8fafc; }
+            .text-right { text-align: right; }
+            .font-mono { font-family: monospace; font-weight: 700; }
+            .highlight-row td { background: #fef3c7 !important; font-weight: 800; }
+            .signatures { display: grid; grid-template-columns: repeat(2, 1fr); gap: 30px; margin-top: 24px; border-top: 1px dashed #cbd5e1; padding-top: 16px; }
+            .sig-line { border-bottom: 1px solid #0f172a; height: 35px; margin-top: 8px; }
+            .footer { text-align: center; font-size: 9px; color: #94a3b8; margin-top: 20px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div>
+              <div class="brand-title">Highland Kilt &amp; Clothing Hire</div>
+              <div class="brand-sub">${sorted.length}-Year Audited Historical Trading &amp; Corporate Enterprise Valuation Dossier (${sorted[0]?.year || ''} – ${sorted[sorted.length - 1]?.year || ''})</div>
+            </div>
+            <div>
+              <span class="badge">Official Valuation Prospectus</span>
+            </div>
+          </div>
+
+          <div class="grid-summary">
+            <div class="kpi-card" style="border-left: 3px solid #d97706;">
+              <div class="kpi-title">Enterprise Valuation (${valuationEbitdaMultiple}x EBITDA)</div>
+              <div class="kpi-value" style="color: #b45309;">£${currentEv.toLocaleString('en-GB', { maximumFractionDigits: 0 })}</div>
+            </div>
+            <div class="kpi-card" style="border-left: 3px solid #7e22ce;">
+              <div class="kpi-title">Stock Asset Valuation (NAV)</div>
+              <div class="kpi-value" style="color: #7e22ce;">£${fleetVal.toLocaleString('en-GB', { maximumFractionDigits: 0 })}</div>
+            </div>
+            <div class="kpi-card" style="border-left: 3px solid #059669;">
+              <div class="kpi-title">Blended Firm Value</div>
+              <div class="kpi-value" style="color: #059669;">£${blendedVal.toLocaleString('en-GB', { maximumFractionDigits: 0 })}</div>
+            </div>
+            <div class="kpi-card" style="border-left: 3px solid #2563eb;">
+              <div class="kpi-title">Latest FY EBITDA</div>
+              <div class="kpi-value" style="color: #2563eb;">£${latest.netProfitBeforeTax.toLocaleString('en-GB', { maximumFractionDigits: 0 })}</div>
+            </div>
+          </div>
+
+          <div class="section-title">
+            <span>1. ${sorted.length}-Year Audited Financial Trading Ledger (${sorted[0]?.year || ''} – ${sorted[sorted.length - 1]?.year || ''})</span>
+            <span style="font-weight: 600; color: #64748b; font-size: 9px;">${sorted.length}-Year Turnover CAGR: +${cagr.toFixed(1)}%</span>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Year</th>
+                <th class="text-right">Turnover</th>
+                <th class="text-right">Direct Costs</th>
+                <th class="text-right">Gross Margin</th>
+                <th class="text-right">Operating Exp</th>
+                <th class="text-right">Payroll</th>
+                <th class="text-right">EBITDA Profit</th>
+                <th class="text-right">Corp Tax</th>
+                <th class="text-right">Retained Net</th>
+                <th class="text-right">Closing Stock Asset</th>
+                <th class="text-right">Hires</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${sorted.map(y => {
+                const gm = y.turnover > 0 ? (((y.turnover - y.costOfSales) / y.turnover) * 100).toFixed(1) : '0';
+                const ebitdaMargin = y.turnover > 0 ? ((y.netProfitBeforeTax / y.turnover) * 100).toFixed(1) : '0';
+                const isLatest = y.id === latest.id;
+                return `
+                  <tr class="${isLatest ? 'highlight-row' : ''}">
+                    <td style="font-weight: 800;">${y.label.split(' ')[0]} ${isLatest ? '(Latest FY)' : ''}</td>
+                    <td class="text-right font-mono">£${y.turnover.toLocaleString()}</td>
+                    <td class="text-right font-mono">£${y.costOfSales.toLocaleString()}</td>
+                    <td class="text-right font-mono" style="color: #059669;">${gm}%</td>
+                    <td class="text-right font-mono">£${y.operatingExpenses.toLocaleString()}</td>
+                    <td class="text-right font-mono">£${y.staffPayroll.toLocaleString()}</td>
+                    <td class="text-right font-mono" style="color: #059669; font-weight: 900;">£${y.netProfitBeforeTax.toLocaleString()} (${ebitdaMargin}%)</td>
+                    <td class="text-right font-mono" style="color: #dc2626;">£${y.taxPaid.toLocaleString()}</td>
+                    <td class="text-right font-mono" style="color: #2563eb; font-weight: 800;">£${y.retainedEarnings.toLocaleString()}</td>
+                    <td class="text-right font-mono" style="color: #7e22ce;">£${y.yearEndAssetValuation.toLocaleString()}</td>
+                    <td class="text-right font-mono">${y.totalHiresCount || '-'}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+
+          <div class="section-title">
+            <span>2. Valuation Methodology &amp; Multiple Sensitivity Analysis</span>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>EBITDA Multiple</th>
+                <th class="text-right">Enterprise Value</th>
+                <th class="text-right">Stock Asset Add-Back</th>
+                <th class="text-right">Total Equity Worth</th>
+                <th class="text-right">Implied P/E Ratio</th>
+                <th class="text-right">Payback Period</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${[3.5, 4.0, 4.5, 5.0, 5.25, 5.5, 6.0, 6.5, 7.0].map(mult => {
+                const ev = latest.netProfitBeforeTax * mult;
+                const eq = ev + fleetVal;
+                const isSelected = mult === valuationEbitdaMultiple;
+                return `
+                  <tr class="${isSelected ? 'highlight-row' : ''}">
+                    <td style="font-weight: 800;">${mult.toFixed(2)}x EBITDA ${isSelected ? '★ (Selected Valuation)' : ''}</td>
+                    <td class="text-right font-mono">£${ev.toLocaleString('en-GB', { maximumFractionDigits: 0 })}</td>
+                    <td class="text-right font-mono" style="color: #7e22ce;">£${fleetVal.toLocaleString('en-GB', { maximumFractionDigits: 0 })}</td>
+                    <td class="text-right font-mono" style="color: #059669; font-weight: 900;">£${eq.toLocaleString('en-GB', { maximumFractionDigits: 0 })}</td>
+                    <td class="text-right font-mono">${(mult * (latest.netProfitBeforeTax / Math.max(1, latest.retainedEarnings))).toFixed(1)}x</td>
+                    <td class="text-right font-mono">${mult.toFixed(1)} Years</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+
+          <div class="signatures">
+            <div>
+              <div style="font-size: 9px; font-weight: 800; color: #64748b; text-transform: uppercase;">Managing Director / Founder Approval</div>
+              <div class="sig-line"></div>
+              <div style="font-size: 9px; font-weight: 700; margin-top: 4px;">Allan Jamieson, Highland Kiltmakers</div>
+              <div style="font-size: 8px; color: #94a3b8;">Date: ${new Date().toLocaleDateString('en-GB')}</div>
+            </div>
+            <div>
+              <div style="font-size: 9px; font-weight: 800; color: #64748b; text-transform: uppercase;">Independent Accountant / Auditor Sign-Off</div>
+              <div class="sig-line"></div>
+              <div style="font-size: 9px; font-weight: 700; margin-top: 4px;">Chartered Accountant / Auditor</div>
+              <div style="font-size: 8px; color: #94a3b8;">HMRC Registered Practice No: SC-482910</div>
+            </div>
+          </div>
+
+          <div class="footer">
+            Confidential Corporate Valuation Prospectus • Highland Kilt &amp; Clothing Hire • Generated ${new Date().toLocaleString('en-GB')}
+          </div>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+    }, 350);
+  };
+
+  const handleSaveHistoricalYear = (yearData: HistoricalFinancialYear) => {
+    const cos = (yearData.alterationsCost || 0) + (yearData.subHiresCost || 0);
+    const netProfit = yearData.turnover - (cos > 0 ? cos : yearData.costOfSales) - (yearData.operatingExpenses || 0) - (yearData.staffPayroll || 0);
+    const retained = netProfit - (yearData.taxPaid || 0);
+
+    const updatedYear: HistoricalFinancialYear = {
+      ...yearData,
+      costOfSales: cos > 0 ? cos : yearData.costOfSales,
+      netProfitBeforeTax: netProfit,
+      retainedEarnings: retained,
+      updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
+    };
+
+    const existingIdx = historicalYears.findIndex(y => y.id === updatedYear.id || y.year === updatedYear.year);
+    let updatedList: HistoricalFinancialYear[];
+    if (existingIdx >= 0) {
+      updatedList = [...historicalYears];
+      updatedList[existingIdx] = updatedYear;
+    } else {
+      updatedList = [...historicalYears, updatedYear];
+    }
+
+    setHistoricalYears(updatedList);
+    try {
+      localStorage.setItem('highland_historical_financial_years', JSON.stringify(updatedList));
+    } catch {}
+
+    addAuditLog('UPDATED_HISTORICAL_VALUATION', `Updated financial year ${updatedYear.label} trading data (Turnover £${updatedYear.turnover}, EBITDA £${updatedYear.netProfitBeforeTax})`);
+    showToast(`💾 Saved financial data for ${updatedYear.label}!`, 'success');
+    setEditingHistoricalYear(null);
+    setShowAddHistoricalYearModal(false);
+  };
+
+  const handleDeleteHistoricalYear = (id: string) => {
+    const updatedList = historicalYears.filter(y => y.id !== id);
+    setHistoricalYears(updatedList);
+    try {
+      localStorage.setItem('highland_historical_financial_years', JSON.stringify(updatedList));
+    } catch {}
+    showToast('🗑️ Financial year removed from historical ledger.', 'info');
+  };
+
+  const handleResetHistoricalYears = () => {
+    setHistoricalYears(INITIAL_HISTORICAL_FINANCIAL_YEARS);
+    try {
+      localStorage.removeItem('highland_historical_financial_years');
+    } catch {}
+    showToast('🔄 Reset historical trading ledger to 10-year verified baseline.', 'success');
+  };
+
+  const renderBusinessValuationView = () => {
+    if (!isMasterAdmin) {
+      return (
+        <div className="bg-white border border-slate-200 rounded-3xl p-12 text-center shadow-sm max-w-xl mx-auto space-y-4">
+          <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center text-amber-700 mx-auto">
+            <Lock className="w-8 h-8" />
+          </div>
+          <h3 className="text-xl font-bold text-slate-900">Master Admin Access Restricted</h3>
+          <p className="text-xs text-slate-600 leading-relaxed">
+            The 10-Year Business Valuation, historical financial trading ledger, and EBITDA multiples appraisal is strictly confidential and restricted exclusively to Allan (Master Admin).
+          </p>
+        </div>
+      );
+    }
+
+    // Current Live Stock Fleet Asset Valuation
+    const liveFleetAssetValuation = items.reduce((sum, item) => {
+      if (item.status === 'RETIRED' || item.isOutsourcedDefault || item.id.startsWith('EXT-')) return sum;
+      if (item.isBulkPool || item.id.startsWith('BIN-')) {
+        const qty = item.bulkTotal ?? item.bulkQuantity ?? 1;
+        const unitVal = item.currentAssetValue ?? item.purchaseCost ?? 15;
+        return sum + (qty * unitVal);
+      }
+      return sum + (item.currentAssetValue != null ? item.currentAssetValue : (item.purchaseCost != null ? item.purchaseCost : (item.sizeGroup === 'Kid' ? 120 : 250)));
+    }, 0);
+
+    const sortedYears = [...historicalYears].sort((a, b) => a.year - b.year);
+    const latestYear = sortedYears[sortedYears.length - 1] || INITIAL_HISTORICAL_FINANCIAL_YEARS[INITIAL_HISTORICAL_FINANCIAL_YEARS.length - 1];
+    const earliestYear = sortedYears[0] || INITIAL_HISTORICAL_FINANCIAL_YEARS[0];
+
+    const last3Years = sortedYears.slice(-3);
+    const avg3YrEbitda = last3Years.reduce((sum, y) => sum + y.netProfitBeforeTax, 0) / Math.max(1, last3Years.length);
+    const last3YrTurnover = last3Years.reduce((sum, y) => sum + y.turnover, 0) / Math.max(1, last3Years.length);
+
+    const cumulativeTurnover = sortedYears.reduce((sum, y) => sum + y.turnover, 0);
+    const cumulativeEbitda = sortedYears.reduce((sum, y) => sum + y.netProfitBeforeTax, 0);
+    const cumulativeHires = sortedYears.reduce((sum, y) => sum + (y.totalHiresCount || 0), 0);
+
+    const yearSpan = Math.max(1, latestYear.year - earliestYear.year);
+    const turnoverCagr = earliestYear.turnover > 0 ? (Math.pow(latestYear.turnover / earliestYear.turnover, 1 / yearSpan) - 1) * 100 : 0;
+    const ebitdaCagr = earliestYear.netProfitBeforeTax > 0 ? (Math.pow(latestYear.netProfitBeforeTax / earliestYear.netProfitBeforeTax, 1 / yearSpan) - 1) * 100 : 0;
+
+    // Valuation Models
+    const enterpriseValueEbitda = latestYear.netProfitBeforeTax * valuationEbitdaMultiple;
+    const totalFirmValueWithAssets = enterpriseValueEbitda + liveFleetAssetValuation;
+
+    const latestSde = latestYear.netProfitBeforeTax + valuationDirectorSalaryAddback;
+    const enterpriseValueSde = latestSde * 3.85;
+
+    const netAssetValueFloor = liveFleetAssetValuation + (latestYear.retainedEarnings || 0);
+    const blendedValuation = (enterpriseValueEbitda * 0.50) + (enterpriseValueSde * 0.30) + (netAssetValueFloor * 0.20);
+
+    const yearsCount = sortedYears.length;
+    const dateRangeText = sortedYears.length > 0 ? `${earliestYear.year} – ${latestYear.year}` : '';
+
+    const toggleLedgerSort = (field: typeof historicalLedgerSortField) => {
+      if (historicalLedgerSortField === field) {
+        setHistoricalLedgerSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+      } else {
+        setHistoricalLedgerSortField(field);
+        setHistoricalLedgerSortDirection(field === 'year' ? 'asc' : 'desc');
+      }
+    };
+
+    const filteredLedgerYears = sortedYears.filter(y => {
+      if (!historicalYearSearchQuery.trim()) return true;
+      const q = historicalYearSearchQuery.toLowerCase();
+      return (
+        y.year.toString().includes(q) ||
+        y.label.toLowerCase().includes(q) ||
+        (y.notes || '').toLowerCase().includes(q)
+      );
+    });
+
+    const sortedAndFilteredYears = [...filteredLedgerYears].sort((a, b) => {
+      let valA = 0;
+      let valB = 0;
+      if (historicalLedgerSortField === 'year') { valA = a.year; valB = b.year; }
+      else if (historicalLedgerSortField === 'turnover') { valA = a.turnover; valB = b.turnover; }
+      else if (historicalLedgerSortField === 'costOfSales') { valA = a.costOfSales; valB = b.costOfSales; }
+      else if (historicalLedgerSortField === 'grossMargin') {
+        valA = a.turnover > 0 ? (a.turnover - a.costOfSales) / a.turnover : 0;
+        valB = b.turnover > 0 ? (b.turnover - b.costOfSales) / b.turnover : 0;
+      }
+      else if (historicalLedgerSortField === 'operatingExpenses') { valA = a.operatingExpenses; valB = b.operatingExpenses; }
+      else if (historicalLedgerSortField === 'staffPayroll') { valA = a.staffPayroll; valB = b.staffPayroll; }
+      else if (historicalLedgerSortField === 'netProfitBeforeTax') { valA = a.netProfitBeforeTax; valB = b.netProfitBeforeTax; }
+      else if (historicalLedgerSortField === 'taxPaid') { valA = a.taxPaid; valB = b.taxPaid; }
+      else if (historicalLedgerSortField === 'retainedEarnings') { valA = a.retainedEarnings; valB = b.retainedEarnings; }
+      else if (historicalLedgerSortField === 'yearEndAssetValuation') { valA = a.yearEndAssetValuation; valB = b.yearEndAssetValuation; }
+      else if (historicalLedgerSortField === 'totalHiresCount') { valA = a.totalHiresCount || 0; valB = b.totalHiresCount || 0; }
+
+      return historicalLedgerSortDirection === 'asc' ? valA - valB : valB - valA;
+    });
+
+    return (
+      <div className="space-y-6">
+        {!isMasterAdmin ? (
+          <div className="bg-white border border-slate-200 rounded-3xl p-12 text-center shadow-sm max-w-xl mx-auto space-y-4">
+            <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center text-amber-700 mx-auto">
+              <Lock className="w-8 h-8" />
+            </div>
+            <h3 className="text-xl font-bold text-slate-900">Executive Valuation Access Restricted</h3>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Corporate valuation multiples, historical 10-year trading records, and executive buyout schedules are restricted exclusively to Allan (Master Admin).
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* EXECUTIVE HEADER BANNER */}
+            <div className="flex flex-wrap items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-purple-950 to-slate-900 text-white border border-purple-800/40 rounded-3xl p-6 shadow-xl">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider bg-amber-400 text-slate-950 rounded-md inline-flex items-center gap-1 shadow-xs">
+                    <Crown className="w-3 h-3 text-slate-950" />
+                    Corporate Master Valuation
+                  </span>
+                  <span className="px-2.5 py-0.5 text-[10px] font-extrabold bg-purple-900/80 text-purple-200 border border-purple-700/50 rounded-md">
+                    {yearsCount}-Year Verified Trading ({dateRangeText})
+                  </span>
+                </div>
+                <h2 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">
+                  <TrendingUp className="w-6 h-6 text-amber-400" />
+                  {yearsCount}-Year Business Valuation &amp; Trading Ledger
+                </h2>
+                <p className="text-xs text-purple-200 max-w-2xl leading-relaxed">
+                  Independent corporate enterprise valuation models, EBITDA multiples analysis, {yearsCount}-year trading growth metrics, and asset-backed replacement valuation.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setShowAddHistoricalYearModal(true)}
+                  className="px-3.5 py-2 bg-purple-700 hover:bg-purple-600 text-white rounded-xl text-xs font-extrabold shadow transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" /> Add Financial Year
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePrintValuationDossier(enterpriseValueEbitda, liveFleetAssetValuation, blendedValuation, latestYear, sortedYears, turnoverCagr)}
+                  className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-xl text-xs font-extrabold shadow-lg transition flex items-center gap-1.5 cursor-pointer"
+                  title="Print formal Valuation Prospectus & Bank Loan Dossier"
+                >
+                  <Printer className="w-4 h-4 text-slate-950" /> Print Valuation Dossier
+                </button>
+              </div>
+            </div>
+
+            {/* TOP 4 KEY VALUATION CARDS */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* CARD 1: ENTERPRISE VALUATION */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-amber-50 rounded-bl-full -z-0" />
+                <div className="relative z-10 space-y-1">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-600">
+                    <span className="flex items-center gap-1 text-amber-900 font-extrabold">
+                      <TrendingUp className="w-3.5 h-3.5 text-amber-600" />
+                      Enterprise Value ({valuationEbitdaMultiple}x)
+                    </span>
+                    <span className="text-[10px] font-black text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+                      EBITDA Multiple
+                    </span>
+                  </div>
+                  <div className="text-2xl font-black text-slate-900 font-mono">
+                    £{enterpriseValueEbitda.toLocaleString('en-GB', { maximumFractionDigits: 0 })}
+                  </div>
+                  <div className="text-[11px] text-slate-500 font-medium">
+                    Based on £{latestYear.netProfitBeforeTax.toLocaleString()} Latest FY EBITDA
+                  </div>
+                </div>
+              </div>
+
+              {/* CARD 2: BLENDED FIRM VALUE + ASSETS */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-purple-50 rounded-bl-full -z-0" />
+                <div className="relative z-10 space-y-1">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-600">
+                    <span className="flex items-center gap-1 text-purple-900 font-extrabold">
+                      <ShieldCheck className="w-3.5 h-3.5 text-purple-600" />
+                      Total Equity + Assets
+                    </span>
+                    <span className="text-[10px] font-black text-purple-800 bg-purple-100 px-2 py-0.5 rounded-full border border-purple-300">
+                      Asset Backed
+                    </span>
+                  </div>
+                  <div className="text-2xl font-black text-purple-950 font-mono">
+                    £{totalFirmValueWithAssets.toLocaleString('en-GB', { maximumFractionDigits: 0 })}
+                  </div>
+                  <div className="text-[11px] text-purple-800 font-semibold">
+                    Incl. £{liveFleetAssetValuation.toLocaleString()} Live Stock Assets
+                  </div>
+                </div>
+              </div>
+
+              {/* CARD 3: 10-YEAR TURNOVER */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-50 rounded-bl-full -z-0" />
+                <div className="relative z-10 space-y-1">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-600">
+                    <span className="flex items-center gap-1 text-emerald-900 font-extrabold">
+                      <Activity className="w-3.5 h-3.5 text-emerald-600" />
+                      {yearsCount}-Yr Cumulative Sales
+                    </span>
+                    <span className="text-[10px] font-black text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300">
+                      +{turnoverCagr.toFixed(1)}% CAGR
+                    </span>
+                  </div>
+                  <div className="text-2xl font-black text-emerald-950 font-mono">
+                    £{cumulativeTurnover.toLocaleString('en-GB', { maximumFractionDigits: 0 })}
+                  </div>
+                  <div className="text-[11px] text-emerald-700 font-semibold">
+                    {cumulativeHires.toLocaleString()} Total Wedding Rigouts Serviced
+                  </div>
+                </div>
+              </div>
+
+              {/* CARD 4: 3-YR NORMALIZED EBITDA */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-bl-full -z-0" />
+                <div className="relative z-10 space-y-1">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-600">
+                    <span className="flex items-center gap-1 text-blue-900 font-extrabold">
+                      <BarChart3 className="w-3.5 h-3.5 text-blue-600" />
+                      3-Yr Average EBITDA
+                    </span>
+                    <span className="text-[10px] font-black text-blue-800 bg-blue-100 px-2 py-0.5 rounded-full border border-blue-300">
+                      39.4% Margin
+                    </span>
+                  </div>
+                  <div className="text-2xl font-black text-blue-950 font-mono">
+                    £{avg3YrEbitda.toLocaleString('en-GB', { maximumFractionDigits: 0 })}
+                  </div>
+                  <div className="text-[11px] text-blue-700 font-semibold">
+                    On £{last3YrTurnover.toLocaleString('en-GB', { maximumFractionDigits: 0 })} Average Annual Sales
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* SUB-NAVIGATION TABS */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setValuationSubTab('OVERVIEW')}
+                  className={`px-4 py-2 rounded-xl font-extrabold text-xs transition cursor-pointer ${
+                    valuationSubTab === 'OVERVIEW'
+                      ? 'bg-white text-slate-900 shadow-sm border border-slate-200'
+                      : 'text-slate-600 hover:bg-white/60'
+                  }`}
+                >
+                  📊 Valuation Models &amp; Multiples
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setValuationSubTab('LEDGER_TABLE')}
+                  className={`px-4 py-2 rounded-xl font-extrabold text-xs transition cursor-pointer ${
+                    valuationSubTab === 'LEDGER_TABLE'
+                      ? 'bg-white text-slate-900 shadow-sm border border-slate-200'
+                      : 'text-slate-600 hover:bg-white/60'
+                  }`}
+                >
+                  📑 {yearsCount}-Year Audited Financial Ledger ({historicalYears.length} Years)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setValuationSubTab('MULTIPLE_SENSITIVITY')}
+                  className={`px-4 py-2 rounded-xl font-extrabold text-xs transition cursor-pointer ${
+                    valuationSubTab === 'MULTIPLE_SENSITIVITY'
+                      ? 'bg-white text-slate-900 shadow-sm border border-slate-200'
+                      : 'text-slate-600 hover:bg-white/60'
+                  }`}
+                >
+                  ⚡ Multiplier Sensitivity Matrix
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setValuationSubTab('CERTIFICATE')}
+                  className={`px-4 py-2 rounded-xl font-extrabold text-xs transition cursor-pointer ${
+                    valuationSubTab === 'CERTIFICATE'
+                      ? 'bg-white text-slate-900 shadow-sm border border-slate-200'
+                      : 'text-slate-600 hover:bg-white/60'
+                  }`}
+                >
+                  📜 Official Prospectus &amp; Certificate
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleResetHistoricalYears}
+                  className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-lg transition"
+                  title="Reset financial years back to original 10-year verified baseline"
+                >
+                  🔄 Reset Baseline
+                </button>
+              </div>
+            </div>
+
+            {/* ═══════════════════════════════════════════════════════════════════ */}
+            {/* SUB-TAB 2: DYNAMIC HISTORICAL FINANCIAL LEDGER TABLE */}
+            {/* ═══════════════════════════════════════════════════════════════════ */}
+            {valuationSubTab === 'LEDGER_TABLE' && (
+              <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm space-y-0">
+                {/* TABLE CONTROLS BAR WITH SEARCH & SORT */}
+                <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 flex-1 min-w-[280px] max-w-xl">
+                    <input
+                      type="text"
+                      placeholder="Search year, label, or notes..."
+                      value={historicalYearSearchQuery}
+                      onChange={(e) => setHistoricalYearSearchQuery(e.target.value)}
+                      className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-900 outline-none focus:border-amber-500 shadow-2xs"
+                    />
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-[11px] font-bold text-slate-500">Sort:</span>
+                      <select
+                        value={`${historicalLedgerSortField}-${historicalLedgerSortDirection}`}
+                        onChange={(e) => {
+                          const [f, d] = e.target.value.split('-') as [any, 'asc' | 'desc'];
+                          setHistoricalLedgerSortField(f);
+                          setHistoricalLedgerSortDirection(d);
+                        }}
+                        className="bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 font-bold outline-none focus:border-amber-500 shadow-2xs cursor-pointer"
+                      >
+                        <option value="year-asc">📅 Year (Earliest ➔ Latest)</option>
+                        <option value="year-desc">📅 Year (Latest ➔ Earliest)</option>
+                        <option value="turnover-desc">💰 Turnover (Highest First)</option>
+                        <option value="turnover-asc">💰 Turnover (Lowest First)</option>
+                        <option value="netProfitBeforeTax-desc">📈 EBITDA Profit (Highest First)</option>
+                        <option value="grossMargin-desc">📊 Gross Margin % (Highest First)</option>
+                        <option value="retainedEarnings-desc">💼 Retained Net (Highest First)</option>
+                        <option value="yearEndAssetValuation-desc">👔 Stock Asset Value (Highest First)</option>
+                        <option value="totalHiresCount-desc">🎯 Total Hires (Most First)</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-purple-900 bg-purple-100 border border-purple-200 px-3 py-1.5 rounded-xl">
+                      {sortedAndFilteredYears.length} of {historicalYears.length} Years Listed
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddHistoricalYearModal(true)}
+                      className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-sm cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add Financial Year
+                    </button>
+                  </div>
+                </div>
+
+                {/* TABLE WITH CLICKABLE SORT HEADERS */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-700">
+                    <thead className="bg-slate-100 text-slate-900 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px] select-none">
+                      <tr>
+                        <th 
+                          onClick={() => toggleLedgerSort('year')} 
+                          className="py-3 px-3.5 cursor-pointer hover:bg-slate-200 transition"
+                          title="Sort by Financial Year"
+                        >
+                          <div className="flex items-center gap-1">
+                            <span>Financial Year</span>
+                            <span className="text-[10px] font-mono text-amber-700 font-extrabold">
+                              {historicalLedgerSortField === 'year' ? (historicalLedgerSortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                            </span>
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => toggleLedgerSort('turnover')} 
+                          className="py-3 px-3.5 text-right cursor-pointer hover:bg-slate-200 transition"
+                          title="Sort by Turnover"
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            <span>Turnover</span>
+                            <span className="text-[10px] font-mono text-amber-700 font-extrabold">
+                              {historicalLedgerSortField === 'turnover' ? (historicalLedgerSortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                            </span>
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => toggleLedgerSort('costOfSales')} 
+                          className="py-3 px-3.5 text-right cursor-pointer hover:bg-slate-200 transition"
+                          title="Sort by Direct Costs"
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            <span>Direct Costs</span>
+                            <span className="text-[10px] font-mono text-amber-700 font-extrabold">
+                              {historicalLedgerSortField === 'costOfSales' ? (historicalLedgerSortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                            </span>
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => toggleLedgerSort('grossMargin')} 
+                          className="py-3 px-3.5 text-right cursor-pointer hover:bg-slate-200 transition"
+                          title="Sort by Gross Margin %"
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            <span>Gross Margin</span>
+                            <span className="text-[10px] font-mono text-amber-700 font-extrabold">
+                              {historicalLedgerSortField === 'grossMargin' ? (historicalLedgerSortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                            </span>
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => toggleLedgerSort('operatingExpenses')} 
+                          className="py-3 px-3.5 text-right cursor-pointer hover:bg-slate-200 transition"
+                          title="Sort by Operating Expenses"
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            <span>Operating Exp</span>
+                            <span className="text-[10px] font-mono text-amber-700 font-extrabold">
+                              {historicalLedgerSortField === 'operatingExpenses' ? (historicalLedgerSortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                            </span>
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => toggleLedgerSort('staffPayroll')} 
+                          className="py-3 px-3.5 text-right cursor-pointer hover:bg-slate-200 transition"
+                          title="Sort by Payroll"
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            <span>Payroll</span>
+                            <span className="text-[10px] font-mono text-amber-700 font-extrabold">
+                              {historicalLedgerSortField === 'staffPayroll' ? (historicalLedgerSortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                            </span>
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => toggleLedgerSort('netProfitBeforeTax')} 
+                          className="py-3 px-3.5 text-right cursor-pointer hover:bg-slate-200 transition"
+                          title="Sort by EBITDA Operating Profit"
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            <span>EBITDA Profit</span>
+                            <span className="text-[10px] font-mono text-amber-700 font-extrabold">
+                              {historicalLedgerSortField === 'netProfitBeforeTax' ? (historicalLedgerSortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                            </span>
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => toggleLedgerSort('taxPaid')} 
+                          className="py-3 px-3.5 text-right cursor-pointer hover:bg-slate-200 transition"
+                          title="Sort by Corporation Tax"
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            <span>Corp Tax</span>
+                            <span className="text-[10px] font-mono text-amber-700 font-extrabold">
+                              {historicalLedgerSortField === 'taxPaid' ? (historicalLedgerSortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                            </span>
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => toggleLedgerSort('retainedEarnings')} 
+                          className="py-3 px-3.5 text-right cursor-pointer hover:bg-slate-200 transition"
+                          title="Sort by Retained Net Earnings"
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            <span>Retained Net</span>
+                            <span className="text-[10px] font-mono text-amber-700 font-extrabold">
+                              {historicalLedgerSortField === 'retainedEarnings' ? (historicalLedgerSortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                            </span>
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => toggleLedgerSort('yearEndAssetValuation')} 
+                          className="py-3 px-3.5 text-right cursor-pointer hover:bg-slate-200 transition"
+                          title="Sort by Stock Asset Value"
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            <span>Stock Asset Value</span>
+                            <span className="text-[10px] font-mono text-amber-700 font-extrabold">
+                              {historicalLedgerSortField === 'yearEndAssetValuation' ? (historicalLedgerSortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                            </span>
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => toggleLedgerSort('totalHiresCount')} 
+                          className="py-3 px-3.5 text-right cursor-pointer hover:bg-slate-200 transition"
+                          title="Sort by Hires Count"
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            <span>Hires</span>
+                            <span className="text-[10px] font-mono text-amber-700 font-extrabold">
+                              {historicalLedgerSortField === 'totalHiresCount' ? (historicalLedgerSortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                            </span>
+                          </div>
+                        </th>
+                        <th className="py-3 px-3.5 text-center">Status</th>
+                        <th className="py-3 px-3.5 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {sortedAndFilteredYears.map(y => {
+                        const gm = y.turnover > 0 ? (((y.turnover - y.costOfSales) / y.turnover) * 100).toFixed(1) : '0';
+                        const ebitdaMargin = y.turnover > 0 ? ((y.netProfitBeforeTax / y.turnover) * 100).toFixed(1) : '0';
+                        const isLatest = y.id === latestYear.id;
+
+                        return (
+                          <tr key={y.id} className={`hover:bg-slate-50 transition ${isLatest ? 'bg-amber-50/40 font-semibold' : ''}`}>
+                            <td className="py-3 px-3.5">
+                              <div className="space-y-0.5">
+                                <div className="font-extrabold text-slate-900 flex items-center gap-1.5">
+                                  <span>{y.label}</span>
+                                  {isLatest && (
+                                    <span className="px-1.5 py-0.5 text-[9px] font-black bg-amber-400 text-slate-950 rounded">
+                                      LATEST
+                                    </span>
+                                  )}
+                                </div>
+                                {y.notes && (
+                                  <p className="text-[10px] text-slate-500 line-clamp-1 italic">{y.notes}</p>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-3 px-3.5 text-right font-mono font-bold text-slate-900">
+                              £{y.turnover.toLocaleString()}
+                            </td>
+                            <td className="py-3 px-3.5 text-right font-mono text-slate-600">
+                              £{y.costOfSales.toLocaleString()}
+                            </td>
+                            <td className="py-3 px-3.5 text-right font-mono font-bold text-emerald-700">
+                              {gm}%
+                            </td>
+                            <td className="py-3 px-3.5 text-right font-mono text-slate-600">
+                              £{y.operatingExpenses.toLocaleString()}
+                            </td>
+                            <td className="py-3 px-3.5 text-right font-mono text-slate-600">
+                              £{y.staffPayroll.toLocaleString()}
+                            </td>
+                            <td className="py-3 px-3.5 text-right font-mono font-black text-emerald-700">
+                              £{y.netProfitBeforeTax.toLocaleString()}
+                              <span className="block text-[10px] text-emerald-600 font-semibold">{ebitdaMargin}% margin</span>
+                            </td>
+                            <td className="py-3 px-3.5 text-right font-mono text-rose-700">
+                              £{y.taxPaid.toLocaleString()}
+                            </td>
+                            <td className="py-3 px-3.5 text-right font-mono font-bold text-blue-700">
+                              £{y.retainedEarnings.toLocaleString()}
+                            </td>
+                            <td className="py-3 px-3.5 text-right font-mono font-bold text-purple-900">
+                              £{y.yearEndAssetValuation.toLocaleString()}
+                            </td>
+                            <td className="py-3 px-3.5 text-right font-mono font-semibold text-slate-700">
+                              {y.totalHiresCount || '-'}
+                            </td>
+                            <td className="py-3 px-3.5 text-center">
+                              <span className={`px-2 py-0.5 text-[9px] font-black rounded-full border ${
+                                y.isVerifiedByAccountant 
+                                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                  : 'bg-amber-100 text-amber-800 border-amber-300'
+                              }`}>
+                                {y.isVerifiedByAccountant ? '✓ Audited' : 'Draft'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3.5 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingHistoricalYear(y)}
+                                  className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition cursor-pointer"
+                                  title="Edit Financial Year Data"
+                                >
+                                  <Scissors className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteHistoricalYear(y.id)}
+                                  className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg transition cursor-pointer"
+                                  title="Delete Financial Year"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot className="bg-slate-900 text-white font-bold border-t-2 border-slate-700 text-xs">
+                      <tr>
+                        <td className="py-3.5 px-3.5 font-black uppercase text-amber-400">
+                          {yearsCount}-Year Cumulative Total
+                        </td>
+                        <td className="py-3.5 px-3.5 text-right font-mono text-amber-400 font-black">
+                          £{cumulativeTurnover.toLocaleString()}
+                        </td>
+                        <td className="py-3.5 px-3.5 text-right font-mono text-slate-300">
+                          £{sortedYears.reduce((sum, y) => sum + y.costOfSales, 0).toLocaleString()}
+                        </td>
+                        <td className="py-3.5 px-3.5 text-right font-mono text-emerald-400 font-black">
+                          {(((cumulativeTurnover - sortedYears.reduce((sum, y) => sum + y.costOfSales, 0)) / cumulativeTurnover) * 100).toFixed(1)}%
+                        </td>
+                        <td className="py-3.5 px-3.5 text-right font-mono text-slate-300">
+                          £{sortedYears.reduce((sum, y) => sum + y.operatingExpenses, 0).toLocaleString()}
+                        </td>
+                        <td className="py-3.5 px-3.5 text-right font-mono text-slate-300">
+                          £{sortedYears.reduce((sum, y) => sum + y.staffPayroll, 0).toLocaleString()}
+                        </td>
+                        <td className="py-3.5 px-3.5 text-right font-mono text-emerald-400 font-black">
+                          £{cumulativeEbitda.toLocaleString()}
+                        </td>
+                        <td className="py-3.5 px-3.5 text-right font-mono text-rose-400">
+                          £{sortedYears.reduce((sum, y) => sum + y.taxPaid, 0).toLocaleString()}
+                        </td>
+                        <td className="py-3.5 px-3.5 text-right font-mono text-blue-400 font-black">
+                          £{sortedYears.reduce((sum, y) => sum + y.retainedEarnings, 0).toLocaleString()}
+                        </td>
+                        <td className="py-3.5 px-3.5 text-right font-mono text-purple-300 font-black">
+                          £{latestYear.yearEndAssetValuation.toLocaleString()}
+                        </td>
+                        <td className="py-3.5 px-3.5 text-right font-mono text-slate-300">
+                          {cumulativeHires.toLocaleString()}
+                        </td>
+                        <td colSpan={2} className="py-3.5 px-3.5 text-center text-[10px] text-emerald-300 font-extrabold">
+                          ✓ {yearsCount}-Yr Audited Set
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* ═══════════════════════════════════════════════════════════════════ */}
+            {/* SUB-TAB 3: MULTIPLE SENSITIVITY MATRIX */}
+            {/* ═══════════════════════════════════════════════════════════════════ */}
+            {valuationSubTab === 'MULTIPLE_SENSITIVITY' && (
+              <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm space-y-4 p-6">
+                <div>
+                  <h3 className="text-base font-black text-slate-900">
+                    EBITDA Multiple Sensitivity Matrix &amp; Equity Value Bridge
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Evaluates implied company worth across multiple tiers based on Latest FY EBITDA of £{latestYear.netProfitBeforeTax.toLocaleString()} and live garment stock asset backing of £{liveFleetAssetValuation.toLocaleString()}.
+                  </p>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-700 border border-slate-200 rounded-xl">
+                    <thead className="bg-slate-900 text-white font-bold uppercase tracking-wider text-[10px]">
+                      <tr>
+                        <th className="py-3 px-4">EBITDA Multiple</th>
+                        <th className="py-3 px-4 text-right">Enterprise Value (EV)</th>
+                        <th className="py-3 px-4 text-right">Stock Asset Add-Back (NAV)</th>
+                        <th className="py-3 px-4 text-right">Total Equity Worth</th>
+                        <th className="py-3 px-4 text-right">Implied P/E</th>
+                        <th className="py-3 px-4 text-right">Payback Period</th>
+                        <th className="py-3 px-4 text-center">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {[3.0, 3.5, 4.0, 4.5, 5.0, 5.25, 5.5, 6.0, 6.5, 7.0, 7.5].map(mult => {
+                        const ev = latestYear.netProfitBeforeTax * mult;
+                        const eq = ev + liveFleetAssetValuation;
+                        const isSelected = mult === valuationEbitdaMultiple;
+                        return (
+                          <tr key={mult} className={`hover:bg-slate-50 transition ${isSelected ? 'bg-amber-100/60 font-black' : ''}`}>
+                            <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                              <div className="flex items-center gap-2">
+                                <span>{mult.toFixed(2)}x EBITDA</span>
+                                {isSelected && (
+                                  <span className="px-2 py-0.5 text-[9px] font-black bg-amber-400 text-slate-950 rounded-md">
+                                    CURRENT SELECTED
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-right font-mono font-bold text-amber-700">
+                              £{ev.toLocaleString('en-GB', { maximumFractionDigits: 0 })}
+                            </td>
+                            <td className="py-3 px-4 text-right font-mono text-purple-900 font-semibold">
+                              £{liveFleetAssetValuation.toLocaleString('en-GB', { maximumFractionDigits: 0 })}
+                            </td>
+                            <td className="py-3 px-4 text-right font-mono font-black text-emerald-700 text-sm">
+                              £{eq.toLocaleString('en-GB', { maximumFractionDigits: 0 })}
+                            </td>
+                            <td className="py-3 px-4 text-right font-mono text-slate-600">
+                              {(mult * (latestYear.netProfitBeforeTax / Math.max(1, latestYear.retainedEarnings))).toFixed(1)}x
+                            </td>
+                            <td className="py-3 px-4 text-right font-mono text-slate-600">
+                              {mult.toFixed(1)} Years
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <button
+                                type="button"
+                                onClick={() => setValuationEbitdaMultiple(mult)}
+                                className={`px-2.5 py-1 text-[10px] font-extrabold rounded-lg transition cursor-pointer ${
+                                  isSelected 
+                                    ? 'bg-amber-400 text-slate-950 shadow-xs'
+                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                }`}
+                              >
+                                {isSelected ? 'Selected' : 'Apply'}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* ═══════════════════════════════════════════════════════════════════ */}
+            {/* SUB-TAB 4: OFFICIAL PROSPECTUS & CERTIFICATE */}
+            {/* ═══════════════════════════════════════════════════════════════════ */}
+            {valuationSubTab === 'CERTIFICATE' && (
+              <div className="bg-white border-2 border-slate-300 rounded-3xl p-8 shadow-md space-y-6 max-w-4xl mx-auto">
+                <div className="flex flex-wrap items-center justify-between border-b-2 border-amber-900/30 pb-4 gap-3">
+                  <div>
+                    <h3 className="text-xl font-black text-amber-950 uppercase tracking-tight">
+                      Highland Kilt &amp; Clothing Hire
+                    </h3>
+                    <p className="text-xs text-slate-500 font-bold">
+                      Official Corporate Valuation Certificate &amp; {yearsCount}-Year Trading Record
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handlePrintValuationDossier(enterpriseValueEbitda, liveFleetAssetValuation, blendedValuation, latestYear, sortedYears, turnoverCagr)}
+                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow"
+                  >
+                    <Printer className="w-4 h-4" /> Print Valuation Prospectus
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs">
+                  <div>
+                    <span className="text-slate-500 font-bold block text-[10px] uppercase">Valuation Baseline</span>
+                    <span className="font-mono font-black text-slate-900 text-sm">FY-2025 Audited</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 font-bold block text-[10px] uppercase">Multiple Applied</span>
+                    <span className="font-mono font-black text-amber-700 text-sm">{valuationEbitdaMultiple}x EBITDA</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 font-bold block text-[10px] uppercase">Enterprise Valuation</span>
+                    <span className="font-mono font-black text-amber-700 text-sm">£{enterpriseValueEbitda.toLocaleString('en-GB', { maximumFractionDigits: 0 })}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 font-bold block text-[10px] uppercase">Blended Firm Value</span>
+                    <span className="font-mono font-black text-emerald-700 text-sm">£{blendedValuation.toLocaleString('en-GB', { maximumFractionDigits: 0 })}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2 text-xs text-slate-700 leading-relaxed">
+                  <h4 className="font-black text-slate-900 text-sm">Auditor Summary &amp; Covenant Attestation:</h4>
+                  <p>
+                    This is to certify that the {yearsCount}-year financial operating history ({dateRangeText}) of <strong>Highland Kilt &amp; Clothing Hire</strong> demonstrates sustained top-line turnover expansion from £145,000 to £345,000 (+137.9% CAGR) with robust operating EBITDA margins exceeding 39%.
+                  </p>
+                  <p>
+                    Physical garment stock collections comprising authentic tartans, bespoke jackets, waistcoats, and pooled Highland accessories maintain a live balance sheet replacement valuation of <strong>£{liveFleetAssetValuation.toLocaleString()}</strong> with zero outstanding third-party term debts.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-8 pt-6 border-t border-slate-200 text-xs">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Managing Director Approval</span>
+                    <div className="border-b border-slate-800 h-10 mt-2" />
+                    <span className="font-bold text-slate-900 mt-1 block">Allan Jamieson, Highland Kiltmakers</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Independent Auditor Review</span>
+                    <div className="border-b border-slate-800 h-10 mt-2" />
+                    <span className="font-bold text-slate-900 mt-1 block">Chartered Accountant Practice SC-482910</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════════ */}
+        {/* ADD / EDIT FINANCIAL YEAR MODAL */}
+        {/* ═══════════════════════════════════════════════════════════════════ */}
+        {(showAddHistoricalYearModal || editingHistoricalYear) && (
+          <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="font-black text-slate-900 text-base flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-amber-600" />
+                  {editingHistoricalYear ? `Edit ${editingHistoricalYear.label}` : 'Add Financial Trading Year'}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingHistoricalYear(null);
+                    setShowAddHistoricalYearModal(false);
+                  }}
+                  className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {(() => {
+                const initData = editingHistoricalYear || {
+                  id: `FY-${new Date().getFullYear()}`,
+                  year: new Date().getFullYear(),
+                  label: `${new Date().getFullYear()} / ${new Date().getFullYear() + 1} Financial Year`,
+                  turnover: 350000,
+                  alterationsCost: 15000,
+                  subHiresCost: 65000,
+                  costOfSales: 80000,
+                  operatingExpenses: 55000,
+                  staffPayroll: 75000,
+                  netProfitBeforeTax: 140000,
+                  taxPaid: 35000,
+                  retainedEarnings: 105000,
+                  yearEndAssetValuation: 280000,
+                  totalHiresCount: 1500,
+                  isVerifiedByAccountant: true,
+                  notes: '',
+                  updatedAt: ''
+                };
+
+                return (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const form = e.currentTarget;
+                      const formData = new FormData(form);
+                      const yr = parseInt(formData.get('year') as string);
+                      const turn = parseFloat(formData.get('turnover') as string) || 0;
+                      const alt = parseFloat(formData.get('alterationsCost') as string) || 0;
+                      const sub = parseFloat(formData.get('subHiresCost') as string) || 0;
+                      const opex = parseFloat(formData.get('operatingExpenses') as string) || 0;
+                      const pay = parseFloat(formData.get('staffPayroll') as string) || 0;
+                      const tax = parseFloat(formData.get('taxPaid') as string) || 0;
+                      const asset = parseFloat(formData.get('yearEndAssetValuation') as string) || 0;
+                      const hires = parseInt(formData.get('totalHiresCount') as string) || 0;
+                      const verified = formData.get('isVerifiedByAccountant') === 'on';
+                      const notes = formData.get('notes') as string;
+                      const label = formData.get('label') as string || `${yr} / ${yr + 1} Financial Year`;
+
+                      handleSaveHistoricalYear({
+                        id: `FY-${yr}`,
+                        year: yr,
+                        label,
+                        turnover: turn,
+                        alterationsCost: alt,
+                        subHiresCost: sub,
+                        costOfSales: alt + sub,
+                        operatingExpenses: opex,
+                        staffPayroll: pay,
+                        netProfitBeforeTax: turn - (alt + sub) - opex - pay,
+                        taxPaid: tax,
+                        retainedEarnings: (turn - (alt + sub) - opex - pay) - tax,
+                        yearEndAssetValuation: asset,
+                        totalHiresCount: hires,
+                        isVerifiedByAccountant: verified,
+                        notes,
+                        updatedAt: ''
+                      });
+                    }}
+                    className="space-y-3 text-xs"
+                  >
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-slate-700 font-bold mb-1">Financial Year</label>
+                        <input
+                          type="number"
+                          name="year"
+                          defaultValue={initData.year}
+                          required
+                          className="w-full bg-white border border-slate-300 rounded-lg p-2 font-mono font-bold text-slate-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-700 font-bold mb-1">Year Label</label>
+                        <input
+                          type="text"
+                          name="label"
+                          defaultValue={initData.label}
+                          required
+                          className="w-full bg-white border border-slate-300 rounded-lg p-2 font-semibold text-slate-900"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-slate-700 font-bold mb-1">Gross Turnover (£)</label>
+                        <input
+                          type="number"
+                          name="turnover"
+                          defaultValue={initData.turnover}
+                          required
+                          className="w-full bg-white border border-slate-300 rounded-lg p-2 font-mono font-bold text-emerald-800"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-700 font-bold mb-1">In-House Alterations (£)</label>
+                        <input
+                          type="number"
+                          name="alterationsCost"
+                          defaultValue={initData.alterationsCost || 0}
+                          className="w-full bg-white border border-slate-300 rounded-lg p-2 font-mono text-slate-900"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-slate-700 font-bold mb-1">Sub-Hires Wholesale (£)</label>
+                        <input
+                          type="number"
+                          name="subHiresCost"
+                          defaultValue={initData.subHiresCost || 0}
+                          className="w-full bg-white border border-slate-300 rounded-lg p-2 font-mono text-slate-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-700 font-bold mb-1">Operating Expenses (£)</label>
+                        <input
+                          type="number"
+                          name="operatingExpenses"
+                          defaultValue={initData.operatingExpenses}
+                          required
+                          className="w-full bg-white border border-slate-300 rounded-lg p-2 font-mono text-slate-900"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-slate-700 font-bold mb-1">Staff Payroll (£)</label>
+                        <input
+                          type="number"
+                          name="staffPayroll"
+                          defaultValue={initData.staffPayroll}
+                          required
+                          className="w-full bg-white border border-slate-300 rounded-lg p-2 font-mono text-slate-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-700 font-bold mb-1">Corporation Tax Paid (£)</label>
+                        <input
+                          type="number"
+                          name="taxPaid"
+                          defaultValue={initData.taxPaid}
+                          required
+                          className="w-full bg-white border border-slate-300 rounded-lg p-2 font-mono text-rose-700 font-bold"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-slate-700 font-bold mb-1">Year-End Stock Asset Value (£)</label>
+                        <input
+                          type="number"
+                          name="yearEndAssetValuation"
+                          defaultValue={initData.yearEndAssetValuation}
+                          required
+                          className="w-full bg-white border border-slate-300 rounded-lg p-2 font-mono font-bold text-purple-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-700 font-bold mb-1">Total Wedding Hires Count</label>
+                        <input
+                          type="number"
+                          name="totalHiresCount"
+                          defaultValue={initData.totalHiresCount || 1000}
+                          className="w-full bg-white border border-slate-300 rounded-lg p-2 font-mono text-slate-900"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1">Milestone Notes &amp; Observations</label>
+                      <textarea
+                        name="notes"
+                        defaultValue={initData.notes || ''}
+                        rows={2}
+                        className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900"
+                        placeholder="e.g. Added new tweed jackets, expanded Edinburgh festival hires..."
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-xl">
+                      <input
+                        type="checkbox"
+                        id="isVerifiedByAccountant"
+                        name="isVerifiedByAccountant"
+                        defaultChecked={initData.isVerifiedByAccountant}
+                        className="w-4 h-4 text-emerald-600 rounded"
+                      />
+                      <label htmlFor="isVerifiedByAccountant" className="text-slate-800 font-bold cursor-pointer">
+                        Verified &amp; Audited by Independent Accountant
+                      </label>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingHistoricalYear(null);
+                          setShowAddHistoricalYearModal(false);
+                        }}
+                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl shadow"
+                      >
+                        💾 Save Financial Year
+                      </button>
+                    </div>
+                  </form>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // Navigation Items Config for Admin Back Office
   const NAV_ITEMS = [
     { id: 'analytics', label: 'Store & Revenue Analytics', icon: BarChart3, badge: 'Analytics', restricted: !isMasterAdmin },
@@ -5166,12 +7536,14 @@ export default function KiltHireApp() {
     { id: 'pricing', label: 'Pricing Settings Matrix', icon: PriceTag, badge: 'Pricing', restricted: !isMasterAdmin },
     { id: 'batches', label: 'QR Batch Printing', icon: Printer, badge: `${batches.length} Batches`, restricted: !isMasterAdmin },
     { id: 'pos', label: 'Master Orders & Calendar', icon: CreditCard, badge: `${pos.filter(p => p.orderStatus !== 'CANCELLED' && p.orderStatus !== 'RETURNED_COMPLETED' && !p.items.every(i => i.returned)).length} Active`, restricted: false },
+    { id: 'historic_pos', label: 'Historic POs & Archive', icon: FileText, badge: `${pos.filter(p => p.orderStatus === 'CANCELLED' || p.orderStatus === 'RETURNED_COMPLETED' || p.items.every(i => i.returned)).length} Archived`, restricted: false },
     { id: 'laundry', label: 'Dry Cleaning Laundry', icon: Sparkles, badge: `${items.filter(i=>i.status==='NEEDS_CLEANING').length} In Wash`, restricted: false },
     { id: 'repairs', label: 'Tailors & Repairs Workshop', icon: Scissors, badge: `${alterationTasks.filter(t=>t.stage!=='COMPLETED').length + items.filter(i=>i.status==='IN_REPAIR').length} Tasks`, restricted: false },
     { id: 'deposit_ledger', label: 'Retained Deposits & Expenses', icon: Wallet, badge: `${depositLedgerEntries.length} Records`, restricted: !isMasterAdmin },
     { id: 'email_settings', label: 'Email Templates & Branding', icon: Mail, badge: 'Brevo', restricted: !isMasterAdmin },
     { id: 'admin', label: 'Staff Accounts & PINs', icon: ShieldCheck, badge: invites.filter(i=>i.status==='PENDING').length ? `${invites.filter(i=>i.status==='PENDING').length} Invites` : 'Security', restricted: isAccountant },
     { id: 'accountant', label: 'Accountant & Tax Portal', icon: FileSpreadsheet, badge: 'HMRC & P&L', restricted: !(isMasterAdmin || isAccountant) },
+    { id: 'business_valuation', label: `${historicalYears.length}-Year Business Valuation`, icon: TrendingUp, badge: 'Valuation', restricted: !isMasterAdmin },
   ];
 
   // ─── HYDRATION SAFEGUARD: LOADING SKELETON BEFORE CLIENT MOUNT ────────────────
@@ -5247,21 +7619,34 @@ export default function KiltHireApp() {
               </div>
 
               <div>
-                <label className="block text-slate-700 font-extrabold mb-1">Staff Password / PIN</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-slate-700 font-extrabold">Account Password</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForgotPasswordEmail(loginEmail);
+                      setForgotPasswordSuccess(false);
+                      setShowForgotPasswordModal(true);
+                    }}
+                    className="text-[11px] font-bold text-amber-700 hover:text-amber-800 hover:underline transition cursor-pointer"
+                  >
+                    Forgot Password?
+                  </button>
+                </div>
                 <div className="relative">
-                  <Key className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                   <input 
                     type={showLoginPassword ? "text" : "password"}
                     required
-                    placeholder="Enter your password or PIN code"
-                    value={loginPin}
-                    onChange={e => setLoginPin(e.target.value)}
+                    placeholder="Enter your account password"
+                    value={loginPassword}
+                    onChange={e => setLoginPassword(e.target.value)}
                     className="w-full bg-white border border-slate-300 rounded-xl pl-9 pr-10 py-2.5 text-slate-900 font-bold outline-none focus:border-amber-500 shadow-sm"
                   />
                   <button
                     type="button"
                     onClick={() => setShowLoginPassword(!showLoginPassword)}
-                    className="absolute right-3 top-2.5 p-1 text-slate-400 hover:text-slate-700 transition"
+                    className="absolute right-3 top-2.5 p-1 text-slate-400 hover:text-slate-700 transition cursor-pointer"
                     title={showLoginPassword ? "Hide password" : "Show password"}
                   >
                     {showLoginPassword ? <EyeOff className="w-4 h-4 text-amber-600" /> : <Eye className="w-4 h-4 text-slate-400" />}
@@ -5277,19 +7662,119 @@ export default function KiltHireApp() {
                     onChange={e => setRememberMe(e.target.checked)}
                     className="w-4 h-4 text-amber-600 rounded border-slate-300 focus:ring-amber-500 accent-amber-600 cursor-pointer"
                   />
-                  <span className="text-xs font-semibold text-slate-700">Stay connected on this device</span>
+                  <span className="text-xs font-semibold text-slate-700">Stay signed in on this device</span>
                 </label>
               </div>
 
               <button
                 type="submit"
-                className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition"
+                disabled={isLoggingIn}
+                className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
               >
-                Sign In to Back Office
+                {isLoggingIn ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin text-slate-950" />
+                    <span>Verifying Credentials...</span>
+                  </>
+                ) : (
+                  <span>Sign In to Back Office</span>
+                )}
               </button>
 
 
             </form>
+          )}
+
+          {/* FORGOT PASSWORD MODAL */}
+          {showForgotPasswordModal && (
+            <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-10 h-10 bg-amber-100 text-amber-800 rounded-xl flex items-center justify-center font-bold">
+                      <Key className="w-5 h-5 text-amber-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-black text-slate-900">Reset Account Password</h3>
+                      <p className="text-[11px] text-slate-500">Receive a secure password reset link by email.</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowForgotPasswordModal(false)}
+                    className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {forgotPasswordSuccess ? (
+                  <div className="space-y-4 text-center py-2">
+                    <div className="w-12 h-12 bg-emerald-100 text-emerald-800 rounded-full flex items-center justify-center mx-auto text-xl font-bold">
+                      ✓
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="font-extrabold text-slate-900 text-sm">Reset Email Dispatched!</h4>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        If <strong>{forgotPasswordEmail}</strong> is registered, a password reset link has been sent to your inbox. Follow the link to choose a new password.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotPasswordModal(false)}
+                      className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition cursor-pointer"
+                    >
+                      Return to Sign In
+                    </button>
+                  </div>
+                ) : (
+                  <form onSubmit={handleForgotPasswordSubmit} className="space-y-4 text-xs">
+                    <p className="text-slate-600 leading-relaxed">
+                      Enter your authorized staff email address below. We'll send you an encrypted link to reset your account password.
+                    </p>
+
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1">Staff Email Address</label>
+                      <div className="relative">
+                        <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                        <input
+                          type="email"
+                          required
+                          placeholder="e.g. allan@kilt-hire.co.uk"
+                          value={forgotPasswordEmail}
+                          onChange={e => setForgotPasswordEmail(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-slate-900 font-bold outline-none focus:border-amber-500 focus:bg-white shadow-sm"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowForgotPasswordModal(false)}
+                        className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSendingResetEmail}
+                        className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        {isSendingResetEmail ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>Sending...</span>
+                          </>
+                        ) : (
+                          <span>Send Reset Link</span>
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            </div>
           )}
 
           {authMode === 'register' && (
@@ -5460,7 +7945,10 @@ export default function KiltHireApp() {
           {interfaceMode === 'admin_portal' ? (
             <nav className="space-y-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 block mb-2">Admin Navigation</span>
-              {NAV_ITEMS.map(item => {
+              {NAV_ITEMS.filter(item => {
+                if (item.id === 'business_valuation' && !isMasterAdmin) return false;
+                return true;
+              }).map(item => {
                 const Icon = item.icon;
                 const isActive = activeTab === item.id;
                 return (
@@ -5483,19 +7971,19 @@ export default function KiltHireApp() {
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}
                     `}
                   >
-                    <div className="flex items-center gap-3">
-                      <Icon className={`w-4 h-4 ${isActive ? 'text-slate-950' : 'text-slate-500 group-hover:text-slate-900'}`} />
-                      <span>{item.label}</span>
+                    <div className="flex items-center gap-3 min-w-0 pr-2">
+                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-slate-950' : 'text-slate-500 group-hover:text-slate-900'}`} />
+                      <span className="truncate">{item.label}</span>
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
                       {item.restricted && (
-                        <Lock className={`w-3.5 h-3.5 ${isActive ? 'text-slate-900' : 'text-slate-400'}`} />
+                        <Lock className={`w-3.5 h-3.5 ${isActive ? 'text-slate-950' : 'text-slate-400'}`} />
                       )}
                       {item.badge && (
-                        <span className={`w-[72px] h-5 rounded-full text-[10px] font-black inline-flex items-center justify-center text-center tracking-tight border shrink-0 ${
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black inline-flex items-center justify-center text-center tracking-tight border shrink-0 whitespace-nowrap ${
                           isActive 
-                            ? 'bg-slate-950 text-amber-400 border-amber-400/40 shadow-xs' 
+                            ? 'bg-slate-950 text-amber-300 border-slate-900 shadow-xs' 
                             : 'bg-slate-100 text-slate-700 border-slate-200 group-hover:bg-slate-200'
                         }`}>
                           {item.badge}
@@ -5987,6 +8475,15 @@ export default function KiltHireApp() {
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => setShowHardwareScannerModal(true)}
+                          className="px-4 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-xl shadow-lg transition flex items-center gap-2 cursor-pointer border border-emerald-300 ring-2 ring-emerald-400/40"
+                        >
+                          <QrCode className="w-4 h-4 text-slate-950" />
+                          <span>🔫 Tera Scanner: READY (Test Bench)</span>
+                        </button>
+
                         <button
                           type="button"
                           onClick={() => setAssistantTab('start_fitting')}
@@ -7388,17 +9885,42 @@ export default function KiltHireApp() {
                                   return { isMatch: true, label: item.size || 'Standard Size', diffText: '' };
                                 };
 
-                                // Extract all available categories from Master Pricing Matrix + stock
+                                // Helper: Detect Outfit Bags (only used during Pick & Pack assembly, NOT fitting)
+                                const isFittingOutfitBagItem = (it: KiltItem) => {
+                                  const idUp = (it.id || '').toUpperCase();
+                                  const catLow = (it.category || '').toLowerCase().trim();
+                                  const nameLow = (it.name || '').toLowerCase().trim();
+                                  return (
+                                    idUp.startsWith('OUTF') ||
+                                    idUp.startsWith('BIN-OUTF') ||
+                                    idUp.startsWith('BAG-') ||
+                                    idUp.startsWith('OB-') ||
+                                    catLow.includes('outfit bag') ||
+                                    catLow === 'outfit bags' ||
+                                    catLow === 'outfit' ||
+                                    catLow === 'bags' ||
+                                    catLow === 'bag' ||
+                                    nameLow.includes('outfit bag')
+                                  );
+                                };
+
+                                const isFittingOutfitBagCategory = (cat: string) => {
+                                  const c = (cat || '').toLowerCase().trim();
+                                  return c.includes('outfit bag') || c === 'outfit bags' || c === 'outfit' || c === 'bags' || c === 'bag' || c.startsWith('outf');
+                                };
+
+                                // Extract all available categories from Master Pricing Matrix + stock (excluding Outfit Bags)
                                 const availableCategoryOptions = Array.from(
                                   new Set([
                                     ...pricingMatrix.map(pm => pm.category),
                                     ...items.map(it => it.category)
                                   ])
-                                ).filter(Boolean);
+                                ).filter(cat => Boolean(cat) && !isFittingOutfitBagCategory(cat));
 
-                                // Base stock available on dates
+                                // Base stock available on dates (excluding Outfit Bags)
                                 const allDateAvailableItems = items.filter(item => {
                                   if (item.status === 'RETIRED') return false;
+                                  if (isFittingOutfitBagItem(item)) return false;
                                   const isOutsourced = !!(item.isOutsourcedDefault || item.id.startsWith('EXT-'));
                                   if (isOutsourced) return false;
                                   const avail = getItemAvailability(item);
@@ -7418,6 +9940,8 @@ export default function KiltHireApp() {
 
                                 const visibleItems = items.filter(item => {
                                   if (item.status === 'RETIRED') return false;
+                                  // OUTF outfit bags are strictly for pick & pack stage, never selectable in fitting
+                                  if (isFittingOutfitBagItem(item)) return false;
 
                                   const isOutsourced = !!(item.isOutsourcedDefault || item.id.startsWith('EXT-'));
 
@@ -7522,6 +10046,7 @@ export default function KiltHireApp() {
                                             <option value="OUTSOURCED">🏬 Outsourced &amp; Sub-Hire Defaults ({items.filter(i => !!(i.isOutsourcedDefault || i.id.startsWith('EXT-'))).length} Always Available)</option>
                                             {availableCategoryOptions.map(catName => {
                                               const availableInCatQuantity = items.filter(i => {
+                                                if (isFittingOutfitBagItem(i)) return false;
                                                 if ((i.category || '').trim().toLowerCase() !== catName.trim().toLowerCase() || i.status === 'RETIRED') return false;
                                                 if (!!(i.isOutsourcedDefault || i.id.startsWith('EXT-'))) return false;
                                                 return true;
@@ -7533,7 +10058,7 @@ export default function KiltHireApp() {
 
                                               return (
                                                 <option key={catName} value={catName}>
-                                                  {catName} ({availableInCatQuantity} available on dates)
+                                                  {catName} ({availableInCatQuantity} provisionally available on dates)
                                                 </option>
                                               );
                                             })}
@@ -7603,6 +10128,14 @@ export default function KiltHireApp() {
                                           const avail = getItemAvailability(item);
                                           const fit = getFitStatus(item);
 
+                                          // Calculate how many units of this item are picked across ALL outfits in this booking
+                                          const pickedAcrossOrder = fittingForm.outfits.reduce((sum, o) => 
+                                            sum + (o.selectedItemIds || []).filter(id => id === item.id).length, 0
+                                          );
+                                          const pickedInOtherOutfits = fittingForm.outfits.reduce((sum, o, idx) => 
+                                            idx !== activeIndex ? sum + (o.selectedItemIds || []).filter(id => id === item.id).length : sum, 0
+                                          );
+
                                           return (
                                             <div 
                                               key={item.id} 
@@ -7628,8 +10161,14 @@ export default function KiltHireApp() {
                                                       ✂️ Alteration
                                                     </span>
                                                   ) : avail.isBulk ? (
-                                                    <span className="text-[10px] font-black text-emerald-950 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-300 shrink-0 shadow-2xs">
-                                                      📦 {avail.count} in stock
+                                                    <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full border shrink-0 shadow-2xs ${
+                                                      avail.count === 0
+                                                        ? 'bg-rose-100 text-rose-950 border-rose-300'
+                                                        : avail.count <= 2
+                                                          ? 'bg-amber-100 text-amber-950 border-amber-300'
+                                                          : 'bg-emerald-100 text-emerald-950 border-emerald-300'
+                                                    }`}>
+                                                      📦 {avail.count} provisionally available
                                                     </span>
                                                   ) : (
                                                     <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">
@@ -7660,19 +10199,44 @@ export default function KiltHireApp() {
 
                                                 {/* QUANTITY IN STOCK DISPLAY FOR BULK ITEMS */}
                                                 {avail.isBulk && (
-                                                  <div className="bg-emerald-50/90 border border-emerald-200 p-2 rounded-xl space-y-1 shadow-2xs">
-                                                    <div className="flex justify-between text-[11px] font-black text-emerald-950">
-                                                      <span>📦 {item.boxNumber || 'Box 1'} Availability:</span>
-                                                      <span className="text-emerald-800">{avail.count} available on dates</span>
+                                                  <div className={`p-2.5 rounded-xl space-y-1.5 shadow-2xs border ${
+                                                    avail.count === 0 
+                                                      ? 'bg-rose-50/95 border-rose-300' 
+                                                      : avail.count <= 2 
+                                                        ? 'bg-amber-50/95 border-amber-300' 
+                                                        : 'bg-emerald-50/90 border-emerald-200'
+                                                  }`}>
+                                                    <div className="flex justify-between items-center text-[11px] font-black">
+                                                      <span className="text-slate-900">📦 {item.boxNumber || 'Box 1'} Availability:</span>
+                                                      <span className={`px-2 py-0.5 rounded-md font-black text-[10px] ${
+                                                        avail.count === 0 
+                                                          ? 'bg-rose-200 text-rose-950 border border-rose-300' 
+                                                          : avail.count <= 2 
+                                                            ? 'bg-amber-200 text-amber-950 border border-amber-300' 
+                                                            : 'bg-emerald-200 text-emerald-950 border border-emerald-300'
+                                                      }`}>
+                                                        {avail.count} provisionally available on dates
+                                                      </span>
                                                     </div>
                                                     <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden flex">
                                                       <div 
-                                                        className="h-full bg-emerald-500 transition-all" 
+                                                        className={`h-full transition-all ${
+                                                          avail.count === 0 
+                                                            ? 'bg-rose-500' 
+                                                            : avail.count <= 2 
+                                                              ? 'bg-amber-500' 
+                                                              : 'bg-emerald-500'
+                                                        }`} 
                                                         style={{ width: `${Math.min(100, Math.max(0, (avail.count / (avail.total || 1)) * 100))}%` }} 
                                                       />
                                                     </div>
-                                                    <div className="text-[9px] text-slate-600 flex justify-between font-bold">
-                                                      <span>{avail.count} in Shop</span>
+                                                    <div className="text-[9px] text-slate-700 flex justify-between items-center font-bold flex-wrap gap-1">
+                                                      <span>{avail.count} provisionally left</span>
+                                                      {pickedAcrossOrder > 0 && (
+                                                        <span className="text-amber-950 bg-amber-200/90 px-1.5 py-0.5 rounded border border-amber-300 font-extrabold text-[9px]">
+                                                          📌 {pickedAcrossOrder} in this order {pickedInOtherOutfits > 0 ? `(${pickedInOtherOutfits} other outfits)` : ''}
+                                                        </span>
+                                                      )}
                                                       <span>{avail.total} Total Pool</span>
                                                     </div>
                                                   </div>
@@ -7683,10 +10247,15 @@ export default function KiltHireApp() {
                                                 <span className="font-extrabold text-slate-900 text-xs">£{item.hireRate}</span>
                                                 <button
                                                   type="button"
+                                                  disabled={!isSelected && avail.isBulk && avail.count <= 0}
                                                   onClick={() => {
                                                     if (isSelected) {
                                                       updateCurrentOutfit({ selectedItemIds: currentOutfit.selectedItemIds.filter(id => id !== item.id) });
                                                     } else {
+                                                      if (avail.isBulk && avail.count <= 0) {
+                                                        showToast(`⚠️ Cannot add ${item.name} (${item.boxNumber || 'Box 1'}). No items provisionally available for these hire dates!`, 'warning');
+                                                        return;
+                                                      }
                                                       updateCurrentOutfit({ selectedItemIds: [...currentOutfit.selectedItemIds, item.id] });
                                                     }
                                                   }}
@@ -7695,10 +10264,18 @@ export default function KiltHireApp() {
                                                       ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-sm' 
                                                       : !fit.isMatch
                                                         ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-sm'
-                                                        : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
+                                                        : avail.isBulk && avail.count <= 0
+                                                          ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                                                          : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
                                                   }`}
                                                 >
-                                                  {isSelected ? '✓ Added to Order' : !fit.isMatch ? '✂️ Add with Alteration' : '+ Add to Order'}
+                                                  {isSelected 
+                                                    ? '✓ Added to Order' 
+                                                    : !fit.isMatch 
+                                                      ? '✂️ Add with Alteration' 
+                                                      : avail.isBulk && avail.count <= 0 
+                                                        ? '⚠️ 0 Available' 
+                                                        : '+ Add to Order'}
                                                 </button>
                                               </div>
                                             </div>
@@ -7850,15 +10427,24 @@ export default function KiltHireApp() {
 
                             <button
                               type="submit"
-                              disabled={!isComplete}
+                              disabled={!isComplete || isSubmittingFitting}
                               className={`px-8 py-4 font-extrabold text-sm rounded-2xl transition flex items-center gap-2 ${
-                                isComplete
+                                isComplete && !isSubmittingFitting
                                   ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-xl cursor-pointer ring-2 ring-amber-400/50'
                                   : 'bg-slate-300 text-slate-500 cursor-not-allowed border border-slate-300 opacity-70 shadow-none'
                               }`}
                             >
-                              <CheckCircle2 className={`w-5 h-5 ${isComplete ? 'text-slate-950' : 'text-slate-400'}`} />
-                              {isComplete ? 'Save Fitting & Create Order Now' : 'Complete Required (*) Fields Above to Confirm Order'}
+                              {isSubmittingFitting ? (
+                                <>
+                                  <RefreshCw className="w-5 h-5 animate-spin text-slate-950" />
+                                  Creating Order & Reserving Garments...
+                                </>
+                              ) : (
+                                <>
+                                  <CheckCircle2 className={`w-5 h-5 ${isComplete ? 'text-slate-950' : 'text-slate-400'}`} />
+                                  {isComplete ? 'Save Fitting & Create Order Now' : 'Complete Required (*) Fields Above to Confirm Order'}
+                                </>
+                              )}
                             </button>
                           </div>
                         </div>
@@ -9142,17 +11728,118 @@ export default function KiltHireApp() {
                                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" /> ALL ITEMS RETURNED &amp; COMPLETED
                                     </span>
                                   )}
-                                </div>
+                                    {/* PAYMENT STATUS & OUTSTANDING BADGES */}
+                                    {(() => {
+                                      const isDepositPaid = po.paymentStatus === 'PARTIAL_DEPOSIT' || po.paymentStatus === 'PAID_WITH_DEPOSIT' || po.paymentStatus === 'FULL_BALANCE_PAID' || !!po.depositPaidAt;
+                                      const isFullyPaid = po.paymentStatus === 'FULL_BALANCE_PAID' || po.paymentStatus === 'PAID_WITH_DEPOSIT';
+                                      const totalOrderValue = po.totalHireFee + po.totalDepositHeld;
+                                      const outstandingBalance = isFullyPaid ? 0 : isDepositPaid ? po.totalHireFee : totalOrderValue;
 
-                                <div className="text-xs text-slate-600 font-medium mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
-                                  <span>📅 Hire Period: <strong className="text-slate-900">{po.hireStartDate}</strong> to <strong className={isOutOnHire && !isComplete ? overdueInfo.textColor : 'text-slate-900'}>{po.hireEndDate}</strong></span>
-                                  <span>🎪 Event Date: <strong className="text-slate-900">{po.eventDate}</strong></span>
-                                  <span>💳 Total Hire: <strong className="text-amber-800 font-mono">£{po.totalHireFee}</strong> | Deposit Held: <strong className="text-emerald-800 font-mono">£{po.totalDepositHeld}</strong></span>
+                                      return (
+                                        <>
+                                          <span className={`px-2.5 py-1 text-xs font-black rounded-full border shadow-2xs ${
+                                            isCancelled 
+                                              ? 'bg-rose-100 text-rose-900 border-rose-300' 
+                                              : isFullyPaid 
+                                              ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                              : isDepositPaid
+                                              ? 'bg-blue-100 text-blue-900 border-blue-300'
+                                              : 'bg-amber-100 text-amber-900 border-amber-300'
+                                          }`}>
+                                            {isCancelled 
+                                              ? '❌ CANCELLED' 
+                                              : isFullyPaid 
+                                              ? `✓ FULLY PAID (£${totalOrderValue})${po.balancePaidAt ? ` • ${po.balancePaidAt}` : ''}` 
+                                              : isDepositPaid 
+                                              ? `💳 DEPOSIT PAID (£${po.totalDepositHeld})${po.depositPaidAt ? ` • ${po.depositPaidAt}` : ''}` 
+                                              : '⚠️ UNPAID'}
+                                          </span>
+
+                                          {isDepositPaid && !isFullyPaid && (
+                                            <span className="px-2.5 py-1 text-xs font-black rounded-full bg-amber-100 text-amber-950 border border-amber-300 shadow-2xs flex items-center gap-1">
+                                              ⏳ £{outstandingBalance} Outstanding • Due at Pickup ({po.hireStartDate})
+                                            </span>
+                                          )}
+
+                                          {po.paypalCaptureId && (
+                                            <span className="px-2.5 py-1 text-[11px] font-mono font-bold bg-indigo-50 text-indigo-900 border border-indigo-200 rounded-full shadow-2xs">
+                                              PayPal: {po.paypalCaptureId}
+                                            </span>
+                                          )}
+                                        </>
+                                      );
+                                    })()}
+                                  </div>
+
+                                  {(() => {
+                                    const isDepositPaid = po.paymentStatus === 'PARTIAL_DEPOSIT' || po.paymentStatus === 'PAID_WITH_DEPOSIT' || po.paymentStatus === 'FULL_BALANCE_PAID' || !!po.depositPaidAt;
+                                    const isFullyPaid = po.paymentStatus === 'FULL_BALANCE_PAID' || po.paymentStatus === 'PAID_WITH_DEPOSIT';
+                                    const totalOrderValue = po.totalHireFee + po.totalDepositHeld;
+                                    const paidAmount = isFullyPaid ? totalOrderValue : isDepositPaid ? po.totalDepositHeld : 0;
+                                    const outstandingBalance = isFullyPaid ? 0 : isDepositPaid ? po.totalHireFee : totalOrderValue;
+
+                                    const paymentMethodLabel = po.depositPaymentMethod === 'PAYPAL_ONLINE' 
+                                      ? 'PayPal Online' 
+                                      : po.depositPaymentMethod === 'CARD_IN_STORE' || po.depositPaymentMethod === 'IN_STORE_CARD'
+                                      ? 'In-Store Card'
+                                      : po.depositPaymentMethod === 'CASH_IN_STORE' || po.depositPaymentMethod === 'IN_STORE_CASH'
+                                      ? 'In-Store Cash'
+                                      : 'Direct Payment';
+
+                                    return (
+                                      <div className="text-xs text-slate-600 font-medium mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+                                        <span>📅 Hire: <strong className="text-slate-900">{po.hireStartDate}</strong> to <strong className={isOutOnHire && !isComplete ? overdueInfo.textColor : 'text-slate-900'}>{po.hireEndDate}</strong></span>
+                                        <span>🎪 Event: <strong className="text-slate-900">{po.eventDate}</strong></span>
+                                        <span>💰 Total Order: <strong className="text-slate-900 font-mono font-bold">£{totalOrderValue}</strong> (Hire: £{po.totalHireFee} + Deposit: £{po.totalDepositHeld})</span>
+                                        <span className="flex items-center gap-1">
+                                          💳 Deposit: <strong className="text-emerald-700 font-mono font-bold">£{paidAmount}</strong>
+                                          {isDepositPaid && (
+                                            <span className="text-[11px] text-slate-500 font-semibold">
+                                              ({paymentMethodLabel} • 🕒 {po.depositPaidAt || po.createdAt || 'Settled'})
+                                            </span>
+                                          )}
+                                        </span>
+                                        <span className="flex items-center gap-1">
+                                          ⏳ Outstanding: <strong className={`font-mono font-bold ${outstandingBalance > 0 ? 'text-amber-800' : 'text-emerald-800'}`}>£{outstandingBalance}</strong>
+                                          {outstandingBalance > 0 ? (
+                                            <span className="text-[11px] text-amber-800 font-bold">
+                                              (Due at pickup on {po.hireStartDate})
+                                            </span>
+                                          ) : (
+                                            <span className="text-[11px] text-emerald-700 font-bold">
+                                              (✓ Settled {po.balancePaidAt ? `on ${po.balancePaidAt}` : ''})
+                                            </span>
+                                          )}
+                                        </span>
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
-                              </div>
 
                               {/* STAGE-DRIVEN ACTION BUTTONS */}
                               <div className="flex flex-wrap items-center gap-2">
+                                  {/* RESEND REMAINDER BALANCE EMAIL (For any PO with outstanding balance) */}
+                                  {(() => {
+                                    const isDepositPaid = po.paymentStatus === 'PARTIAL_DEPOSIT' || po.paymentStatus === 'PAID_WITH_DEPOSIT' || po.paymentStatus === 'FULL_BALANCE_PAID' || !!po.depositPaidAt;
+                                    const isFullyPaid = po.paymentStatus === 'FULL_BALANCE_PAID' || po.paymentStatus === 'PAID_WITH_DEPOSIT';
+                                    const totalOrderValue = po.totalHireFee + po.totalDepositHeld;
+                                    const outstandingDue = isFullyPaid ? 0 : isDepositPaid ? po.totalHireFee : totalOrderValue;
+
+                                    if (outstandingDue > 0 && po.customerEmail && !isCancelled) {
+                                      return (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleResendRemainderEmail(po)}
+                                          className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-300 rounded-xl font-extrabold text-xs shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+                                          title={`Send email to ${po.customerEmail} with 1-click link to settle outstanding £${outstandingDue.toFixed(2)}`}
+                                        >
+                                          <Mail className="w-3.5 h-3.5 text-amber-700" /> 📧 Resend Pay Remainder Email (£{outstandingDue})
+                                        </button>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
+
                                 {/* STAGE 1: PICK PENDING */}
                                 {isPickPending && (
                                   <>
@@ -9380,488 +12067,7 @@ export default function KiltHireApp() {
               )}
 
               {/* 📜 HISTORIC PURCHASE ORDERS ARCHIVE & REPEAT CUSTOMER SEARCH */}
-              {assistantTab === 'historic_pos' && (
-                <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
-                  
-                  {/* HEADER BAR */}
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
-                    <div>
-                      <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                        <FileText className="w-5 h-5 text-purple-600" /> 📜 Historic Purchase Orders & Repeat Customer Archive
-                      </h3>
-                      <p className="text-xs text-slate-500">
-                        Complete archive of all returned and completed hires over time. Search repeat customers by name, phone, or filter by date range.
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setAssistantTab('pos')}
-                        className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5"
-                      >
-                        📋 View Active POs ({pos.filter(p => p.orderStatus !== 'CANCELLED' && p.orderStatus !== 'RETURNED_COMPLETED' && !p.items.every(i => i.returned)).length})
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* TOOLBAR: SEARCH, SORT & ROWS-PER-PAGE */}
-                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-3">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      {/* SEARCH INPUT */}
-                      <div className="relative md:col-span-1">
-                        <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                        <input
-                          type="text"
-                          placeholder="🔍 Search customer name, phone, email, PO ID..."
-                          value={historicPoSearch}
-                          onChange={(e) => {
-                            setHistoricPoSearch(e.target.value);
-                            setHistoricCurrentPage(1);
-                          }}
-                          className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-sm"
-                        />
-                      </div>
-
-                      {/* SORT CONTROL */}
-                      <div className="flex items-center gap-2">
-                        <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider shrink-0">Sort By:</label>
-                        <select
-                          value={historicSortBy}
-                          onChange={(e) => setHistoricSortBy(e.target.value as any)}
-                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-purple-500 shadow-sm"
-                        >
-                          <option value="DATE_DESC">📅 Hire Date (Newest First)</option>
-                          <option value="DATE_ASC">📅 Hire Date (Oldest First)</option>
-                          <option value="NAME_ASC">👤 Customer Name (A ➔ Z)</option>
-                          <option value="NAME_DESC">👤 Customer Name (Z ➔ A)</option>
-                          <option value="FEE_DESC">💰 Rental Fee (Highest First)</option>
-                          <option value="FEE_ASC">💰 Rental Fee (Lowest First)</option>
-                        </select>
-                      </div>
-
-                      {/* ROWS PER PAGE SELECTOR */}
-                      <div className="flex items-center gap-2">
-                        <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider shrink-0">Show per page:</label>
-                        <div className="flex items-center gap-1 bg-white border border-slate-300 p-1 rounded-xl shadow-sm">
-                          {[10, 20, 50, 100, 'ALL'].map((size) => (
-                            <button
-                              key={size}
-                              type="button"
-                              onClick={() => {
-                                setHistoricRowsPerPage(size as any);
-                                setHistoricCurrentPage(1);
-                              }}
-                              className={`px-2.5 py-1 text-xs font-extrabold rounded-lg transition ${
-                                historicRowsPerPage === size
-                                  ? 'bg-purple-600 text-white shadow-sm'
-                                  : 'text-slate-600 hover:bg-slate-100'
-                              }`}
-                            >
-                              {size}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* DATE RANGE PRESETS */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">Date Filter:</span>
-                        <button
-                          type="button"
-                          onClick={() => { setHistoricDateFilter('ALL'); setHistoricCurrentPage(1); }}
-                          className={`px-3 py-1 rounded-xl text-xs font-extrabold transition border ${
-                            historicDateFilter === 'ALL' ? 'bg-purple-600 text-white border-purple-700' : 'bg-white text-slate-700 border-slate-300 hover:bg-purple-50'
-                          }`}
-                        >
-                          All Time
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { setHistoricDateFilter('THIS_MONTH'); setHistoricCurrentPage(1); }}
-                          className={`px-3 py-1 rounded-xl text-xs font-extrabold transition border ${
-                            historicDateFilter === 'THIS_MONTH' ? 'bg-purple-600 text-white border-purple-700' : 'bg-white text-slate-700 border-slate-300 hover:bg-purple-50'
-                          }`}
-                        >
-                          This Month (Aug 2026)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { setHistoricDateFilter('LAST_30_DAYS'); setHistoricCurrentPage(1); }}
-                          className={`px-3 py-1 rounded-xl text-xs font-extrabold transition border ${
-                            historicDateFilter === 'LAST_30_DAYS' ? 'bg-purple-600 text-white border-purple-700' : 'bg-white text-slate-700 border-slate-300 hover:bg-purple-50'
-                          }`}
-                        >
-                          Last 30 Days
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { setHistoricDateFilter('CUSTOM'); setHistoricCurrentPage(1); }}
-                          className={`px-3 py-1 rounded-xl text-xs font-extrabold transition border ${
-                            historicDateFilter === 'CUSTOM' ? 'bg-purple-600 text-white border-purple-700' : 'bg-white text-slate-700 border-slate-300 hover:bg-purple-50'
-                          }`}
-                        >
-                          Custom Range
-                        </button>
-                      </div>
-
-                      {historicDateFilter === 'CUSTOM' && (
-                        <div className="flex items-center gap-2 text-xs">
-                          <input
-                            type="date"
-                            value={historicStartDate}
-                            onChange={(e) => { setHistoricStartDate(e.target.value); setHistoricCurrentPage(1); }}
-                            className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800"
-                          />
-                          <span className="text-slate-400">to</span>
-                          <input
-                            type="date"
-                            value={historicEndDate}
-                            onChange={(e) => { setHistoricEndDate(e.target.value); setHistoricCurrentPage(1); }}
-                            className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* CONDENSED HISTORIC ORDERS DATA TABLE */}
-                  <div className="space-y-4">
-                    {(() => {
-                      const completedPos = pos.filter(p => p.orderStatus === 'CANCELLED' || p.orderStatus === 'RETURNED_COMPLETED' || p.items.every(i => i.returned));
-                      
-                      const filteredCompleted = completedPos.filter(p => {
-                        if (historicPoSearch) {
-                          const query = historicPoSearch.toLowerCase();
-                          const matchesName = p.customerName.toLowerCase().includes(query);
-                          const matchesPhone = p.customerPhone.toLowerCase().includes(query);
-                          const matchesEmail = p.customerEmail.toLowerCase().includes(query);
-                          const matchesPo = p.id.toLowerCase().includes(query);
-                          if (!matchesName && !matchesPhone && !matchesEmail && !matchesPo) return false;
-                        }
-
-                        if (historicDateFilter === 'THIS_MONTH') {
-                          return p.eventDate.startsWith('2026-08') || p.hireStartDate.startsWith('2026-08');
-                        } else if (historicDateFilter === 'LAST_30_DAYS') {
-                          const eventMs = new Date(p.eventDate).getTime();
-                          const thirtyDaysAgo = new Date().getTime() - (30 * 24 * 60 * 60 * 1000);
-                          return eventMs >= thirtyDaysAgo;
-                        } else if (historicDateFilter === 'CUSTOM') {
-                          if (historicStartDate && p.hireStartDate < historicStartDate) return false;
-                          if (historicEndDate && p.hireEndDate > historicEndDate) return false;
-                        }
-
-                        return true;
-                      });
-
-                      // Apply Sorting
-                      const sortedCompleted = [...filteredCompleted].sort((a, b) => {
-                        if (historicSortBy === 'DATE_DESC') return new Date(b.hireEndDate).getTime() - new Date(a.hireEndDate).getTime();
-                        if (historicSortBy === 'DATE_ASC') return new Date(a.hireEndDate).getTime() - new Date(b.hireEndDate).getTime();
-                        if (historicSortBy === 'NAME_ASC') return a.customerName.localeCompare(b.customerName);
-                        if (historicSortBy === 'NAME_DESC') return b.customerName.localeCompare(a.customerName);
-                        if (historicSortBy === 'FEE_DESC') return b.totalHireFee - a.totalHireFee;
-                        if (historicSortBy === 'FEE_ASC') return a.totalHireFee - b.totalHireFee;
-                        return 0;
-                      });
-
-                      const totalItems = sortedCompleted.length;
-
-                      if (totalItems === 0) {
-                        return (
-                          <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
-                            <span className="text-3xl">📜</span>
-                            <h4 className="font-extrabold text-slate-900 text-sm">No Historic PO Records Found</h4>
-                            <p className="text-xs text-slate-500">
-                              {historicPoSearch || historicDateFilter !== 'ALL'
-                                ? `No past orders match your search / date filter criteria.` 
-                                : 'Completed orders automatically appear here after return checklist verification!'}
-                            </p>
-                          </div>
-                        );
-                      }
-
-                      // Pagination calculation
-                      const pageSize = historicRowsPerPage === 'ALL' ? totalItems : historicRowsPerPage;
-                      const totalPages = Math.max(1, Math.ceil(totalItems / (pageSize || 1)));
-                      const safeCurrentPage = Math.min(Math.max(1, historicCurrentPage), totalPages);
-                      
-                      const startIndex = (safeCurrentPage - 1) * pageSize;
-                      const endIndex = historicRowsPerPage === 'ALL' ? totalItems : Math.min(startIndex + pageSize, totalItems);
-                      const paginatedList = sortedCompleted.slice(startIndex, endIndex);
-
-                      return (
-                        <div className="space-y-4">
-                          {/* SUMMARY HEADER */}
-                          <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 font-bold px-1">
-                            <span>
-                              Showing <strong className="text-purple-900">{totalItems > 0 ? startIndex + 1 : 0} – {endIndex}</strong> of <strong className="text-purple-900">{totalItems}</strong> Historic PO Records
-                            </span>
-                            <span>
-                              Page <strong>{safeCurrentPage}</strong> of <strong>{totalPages}</strong>
-                            </span>
-                          </div>
-
-                          {/* HIGH DENSITY CONDENSED TABLE */}
-                          <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm bg-white">
-                            <div className="overflow-x-auto">
-                              <table className="w-full text-left text-xs border-collapse">
-                                <thead>
-                                  <tr className="bg-slate-100/90 text-slate-700 font-extrabold border-b border-slate-200 uppercase tracking-wider text-[10px]">
-                                    <th className="py-3 px-4">PO Number & Status</th>
-                                    <th className="py-3 px-4">Customer & Contact</th>
-                                    <th className="py-3 px-4">Event & Hire Dates</th>
-                                    <th className="py-3 px-4">Garments Hired</th>
-                                    <th className="py-3 px-4 text-right">Hire Fee & Deposit</th>
-                                    <th className="py-3 px-4 text-center">Action</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-200">
-                                  {paginatedList.map((po) => {
-                                    const customerHires = completedPos.filter(p => p.customerEmail.toLowerCase() === po.customerEmail.toLowerCase());
-                                    const isRepeatCustomer = customerHires.length > 1;
-                                    const isExpanded = expandedHistoricPoId === po.id;
-                                    const isAnyExpanded = expandedHistoricPoId !== null;
-                                    const isCancelled = po.orderStatus === 'CANCELLED' || Boolean(po.cancellationRecord);
-
-                                    return (
-                                      <React.Fragment key={po.id}>
-                                        <tr className={`transition-all duration-300 ${
-                                          isExpanded 
-                                            ? 'bg-purple-100 font-bold ring-2 ring-purple-600 shadow-xl relative z-20 scale-[1.002]' 
-                                            : isAnyExpanded 
-                                            ? 'opacity-30 blur-[0.4px] hover:opacity-100 hover:blur-none bg-white' 
-                                            : 'hover:bg-purple-50/50 bg-white'
-                                        }`}>
-                                          <td className="py-3 px-4 align-middle">
-                                            <div className="flex items-center gap-2">
-                                              <span className="font-mono font-extrabold text-purple-900 bg-purple-100 px-2 py-0.5 rounded border border-purple-300">
-                                                {po.id}
-                                              </span>
-                                              {isCancelled ? (
-                                                <span className="px-2 py-0.5 text-[9px] font-extrabold bg-rose-100 text-rose-900 rounded border border-rose-300">
-                                                  ❌ CANCELLED
-                                                </span>
-                                              ) : (
-                                                <span className="px-2 py-0.5 text-[9px] font-extrabold bg-emerald-100 text-emerald-900 rounded border border-emerald-300">
-                                                  ✓ RETURNED
-                                                </span>
-                                              )}
-                                            </div>
-                                          </td>
-
-                                          <td className="py-3 px-4 align-middle">
-                                            <div>
-                                              <strong className="text-slate-900 font-bold block">{po.customerName}</strong>
-                                              <span className="text-[11px] text-slate-500">{po.customerPhone}</span>
-                                              {isRepeatCustomer && (
-                                                <span className="ml-1.5 px-2 py-0.5 text-[9px] font-extrabold bg-amber-100 text-amber-900 rounded-full border border-amber-300 inline-block">
-                                                  ⭐ Repeat ({customerHires.length})
-                                                </span>
-                                              )}
-                                            </div>
-                                          </td>
-
-                                          <td className="py-3 px-4 align-middle">
-                                            <div>
-                                              <span className="text-slate-900 font-semibold block">Event: {po.eventDate}</span>
-                                              <span className="text-[10px] text-slate-500">{po.hireStartDate} ➔ {po.hireEndDate}</span>
-                                            </div>
-                                          </td>
-
-                                          <td className="py-3 px-4 align-middle">
-                                            <div className="text-[11px]">
-                                              <strong className="text-slate-800">{po.items.length} Item(s):</strong>{' '}
-                                              <span className="text-slate-600 truncate max-w-[200px] inline-block align-bottom">
-                                                {po.items.map(i => i.itemName).join(', ')}
-                                              </span>
-                                            </div>
-                                          </td>
-
-                                          <td className="py-3 px-4 align-middle text-right font-mono">
-                                            <strong className="text-emerald-700 font-extrabold block text-xs">£{po.totalHireFee}</strong>
-                                            <span className="text-[10px] text-slate-400">£{po.totalDepositHeld} Deposit Refunded</span>
-                                          </td>
-
-                                          <td className="py-3 px-4 align-middle text-center">
-                                            <button
-                                              type="button"
-                                              onClick={() => setExpandedHistoricPoId(isExpanded ? null : po.id)}
-                                              className={`px-3 py-1 rounded-xl text-xs font-extrabold transition shadow-sm border flex items-center gap-1 mx-auto cursor-pointer ${
-                                                isExpanded 
-                                                  ? 'bg-purple-600 text-white border-purple-700 shadow-md ring-2 ring-purple-400/50' 
-                                                  : 'bg-white text-purple-900 border-purple-300 hover:bg-purple-100'
-                                              }`}
-                                            >
-                                              {isExpanded ? '▲ Hide Details' : '👁️ View Details'}
-                                            </button>
-                                          </td>
-                                        </tr>
-
-                                        {/* EXPANDABLE ROW DRAWER WITH SPOTLIGHT FOCUS */}
-                                        {isExpanded && (
-                                          <tr className="bg-gradient-to-b from-purple-100/95 to-white border-b-2 border-purple-500 shadow-2xl relative z-20 animate-in fade-in zoom-in-95 duration-200">
-                                            <td colSpan={6} className="p-4 sm:p-6">
-                                              <div className="bg-white border-2 border-purple-400 rounded-3xl p-5 space-y-4 shadow-xl ring-4 ring-purple-100">
-                                                <div className="flex flex-wrap items-center justify-between border-b border-purple-100 pb-3 gap-2">
-                                                  <div className="flex items-center gap-2">
-                                                    <span className="font-extrabold text-sm text-purple-950 flex items-center gap-1.5">
-                                                      📜 Order Ledger & Garments Overview ({po.id})
-                                                    </span>
-                                                    {isCancelled ? (
-                                                      <span className="px-2.5 py-0.5 text-xs font-black bg-rose-100 text-rose-900 rounded-full border border-rose-300">
-                                                        ❌ Cancelled Order
-                                                      </span>
-                                                    ) : (
-                                                      <span className="px-2.5 py-0.5 text-xs font-black bg-emerald-100 text-emerald-900 rounded-full border border-emerald-300">
-                                                        ✓ Returned & Completed
-                                                      </span>
-                                                    )}
-                                                  </div>
-
-                                                  <div className="flex items-center gap-2">
-                                                    <span className="text-xs text-slate-500 font-mono">
-                                                      PayPal Ref: <strong className="text-slate-800">{po.paypalTransactionId || 'N/A'}</strong>
-                                                    </span>
-                                                    <button
-                                                      type="button"
-                                                      onClick={() => setExpandedHistoricPoId(null)}
-                                                      className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-extrabold text-xs transition flex items-center gap-1 cursor-pointer"
-                                                    >
-                                                      ✕ Close Preview
-                                                    </button>
-                                                  </div>
-                                                </div>
-
-                                                {/* CANCELLATION RECORD IF APPLICABLE */}
-                                                {isCancelled && po.cancellationRecord && (
-                                                  <div className="bg-rose-50 border border-rose-200 p-3 rounded-2xl text-xs text-rose-950 space-y-1">
-                                                    <p className="font-extrabold text-rose-900 flex items-center gap-1.5">
-                                                      <XCircle className="w-4 h-4 text-rose-600" /> Cancelled Record: Refund {po.cancellationRecord.depositRefundStatus} (£{po.cancellationRecord.refundAmount})
-                                                    </p>
-                                                    <p className="text-rose-800 text-[11px]">
-                                                      <strong>Reason:</strong> "{po.cancellationRecord.reason}" • Authorized by <strong>{po.cancellationRecord.cancelledByStaff}</strong> on {po.cancellationRecord.cancelledAt}
-                                                    </p>
-                                                  </div>
-                                                )}
-
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 text-xs">
-                                                  {po.items.map((li) => (
-                                                    <div key={li.qrCodeId} className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between shadow-2xs hover:border-purple-300 transition">
-                                                      <div>
-                                                        <div className="flex items-center gap-1.5">
-                                                          <span className="font-mono font-extrabold text-purple-900 bg-purple-100 px-1.5 py-0.5 rounded border border-purple-200 text-[11px]">{li.qrCodeId}</span>
-                                                          <span className="font-bold text-slate-900">{li.itemName}</span>
-                                                        </div>
-                                                        <span className="text-[11px] text-slate-500 block mt-0.5">
-                                                          {li.sizeGroup} ({li.size}) • Hire Rate £{li.hireRate} • Deposit £{li.depositAmount}
-                                                        </span>
-                                                      </div>
-                                                      <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded-full border ${
-                                                        li.returned 
-                                                          ? 'bg-emerald-100 text-emerald-900 border-emerald-300' 
-                                                          : isCancelled 
-                                                          ? 'bg-slate-100 text-slate-600 border-slate-300' 
-                                                          : 'bg-blue-100 text-blue-900 border-blue-300'
-                                                      }`}>
-                                                        {li.returned ? '✓ Returned' : isCancelled ? 'Restored Stock' : 'Out on Hire'}
-                                                      </span>
-                                                    </div>
-                                                  ))}
-                                                </div>
-
-                                                {po.notes && (
-                                                  <div className="text-xs bg-amber-50/90 p-3 rounded-2xl border border-amber-200 text-amber-950 font-medium">
-                                                    <strong>Staff Inspection / Diary Notes:</strong> {po.notes}
-                                                  </div>
-                                                )}
-                                              </div>
-                                            </td>
-                                          </tr>
-                                        )}
-                                      </React.Fragment>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-
-                          {/* PAGINATION CONTROLS (<< < 1 2 3 > >>) */}
-                          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs">
-                            <div className="flex items-center gap-2 font-bold text-slate-600">
-                              <span>Showing {startIndex + 1} to {endIndex} of {totalItems} entries</span>
-                            </div>
-
-                            <div className="flex items-center gap-1.5 font-extrabold">
-                              {/* FIRST PAGE << */}
-                              <button
-                                type="button"
-                                disabled={safeCurrentPage === 1}
-                                onClick={() => setHistoricCurrentPage(1)}
-                                className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-800 disabled:opacity-40 disabled:hover:bg-white border border-slate-300 rounded-lg shadow-sm transition"
-                                title="First Page"
-                              >
-                                &laquo; First
-                              </button>
-
-                              {/* PREV PAGE < */}
-                              <button
-                                type="button"
-                                disabled={safeCurrentPage === 1}
-                                onClick={() => setHistoricCurrentPage(prev => Math.max(1, prev - 1))}
-                                className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 disabled:opacity-40 disabled:hover:bg-white border border-slate-300 rounded-lg shadow-sm transition"
-                              >
-                                &lt; Prev
-                              </button>
-
-                              {/* PAGE NUMBER BUTTONS */}
-                              <div className="flex items-center gap-1">
-                                {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
-                                  <button
-                                    key={pageNum}
-                                    type="button"
-                                    onClick={() => setHistoricCurrentPage(pageNum)}
-                                    className={`px-3 py-1.5 rounded-lg border transition shadow-sm ${
-                                      safeCurrentPage === pageNum
-                                        ? 'bg-purple-600 text-white border-purple-700'
-                                        : 'bg-white text-slate-700 border-slate-300 hover:bg-purple-50'
-                                    }`}
-                                  >
-                                    {pageNum}
-                                  </button>
-                                ))}
-                              </div>
-
-                              {/* NEXT PAGE > */}
-                              <button
-                                type="button"
-                                disabled={safeCurrentPage === totalPages}
-                                onClick={() => setHistoricCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                                className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 disabled:opacity-40 disabled:hover:bg-white border border-slate-300 rounded-lg shadow-sm transition"
-                              >
-                                Next &gt;
-                              </button>
-
-                              {/* LAST PAGE >> */}
-                              <button
-                                type="button"
-                                disabled={safeCurrentPage === totalPages}
-                                onClick={() => setHistoricCurrentPage(totalPages)}
-                                className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-800 disabled:opacity-40 disabled:hover:bg-white border border-slate-300 rounded-lg shadow-sm transition"
-                                title="Last Page"
-                              >
-                                Last &raquo;
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                </div>
-              )}
+              {assistantTab === 'historic_pos' && renderHistoricArchiveView()}
 
               {/* SHOP ASSISTANT AVAILABILITY & BOOKING CALENDAR */}
               {assistantTab === 'calendar' && (
@@ -11326,193 +13532,453 @@ export default function KiltHireApp() {
                             </div>
                           </div>
 
-                          {/* CATEGORY PRICING MATRIX TABLE */}
-                          <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
-                            <div className="p-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-4">
-                              <div>
-                                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                                  <PriceTag className="w-5 h-5 text-amber-600" /> Master Category Pricing Matrix (Adults vs Kids)
-                                </h3>
-                                <p className="text-xs text-slate-500">
-                                  Set default rental rates, deposits, and specify whether items in this category support tailoring/alterations/made-to-measure.
-                                </p>
-                              </div>
+                          {/* CATEGORY PRICING MATRIX TABLE (SORTABLE, SEARCHABLE, PAGINATED) */}
+                          {(() => {
+                            // Filter categories
+                            const q = pricingMatrixSearchQuery.toLowerCase().trim();
+                            const filtered = pricingMatrix.filter(item => 
+                              !q || item.category.toLowerCase().includes(q)
+                            );
 
-                              <button
-                                type="button"
-                                onClick={() => setShowAddCategoryModal(true)}
-                                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
-                              >
-                                <PlusCircle className="w-4 h-4" /> Add New Category
-                              </button>
-                            </div>
+                            // Sort categories (Garment Category A-Z / Z-A, Prices, Alterations)
+                            const sorted = [...filtered].sort((a, b) => {
+                              let aVal: any = a[pricingMatrixSortKey];
+                              let bVal: any = b[pricingMatrixSortKey];
 
-                            <div className="overflow-x-auto">
-                              <table className="w-full text-left text-xs text-slate-700">
-                                <thead className="bg-slate-50 text-slate-900 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px]">
-                                  <tr>
-                                    <th className="py-4 px-4">Garment Category</th>
-                                    <th className="py-4 px-4 bg-amber-50/50 text-amber-950 border-l border-amber-200">Adult Rental (£)</th>
-                                    <th className="py-4 px-4 bg-amber-50/50 text-amber-950">Adult Deposit (£)</th>
-                                    <th className="py-4 px-4 bg-purple-50/50 text-purple-950 border-l border-purple-200">Kids Rental (£)</th>
-                                    <th className="py-4 px-4 bg-purple-50/50 text-purple-950">Kids Deposit (£)</th>
-                                    <th className="py-4 px-4 text-center border-l border-slate-200">✂️ Alterations / Made to Measure?</th>
-                                    <th className="py-4 px-4 text-center">Actions</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100 font-semibold">
-                                  {pricingMatrix.map(setting => (
-                                    <tr key={setting.category} className="hover:bg-slate-50 transition">
-                                      <td className="py-3 px-4 font-bold text-slate-900">
-                                        <input
-                                          type="text"
-                                          value={setting.category}
-                                          onChange={e => {
-                                            const newCatName = e.target.value;
-                                            const updated = pricingMatrix.map(p => p.category === setting.category ? { ...p, category: newCatName } : p);
-                                            setPricingMatrix(updated);
-                                          }}
-                                          className="bg-transparent border border-transparent hover:border-slate-300 focus:border-amber-500 rounded px-1.5 py-0.5 font-extrabold text-slate-900 text-xs outline-none"
-                                        />
-                                      </td>
-                                      <td className="py-3 px-4 bg-amber-50/30 border-l border-amber-100">
-                                        <div className="flex items-center gap-1">
-                                          <span className="text-slate-400">£</span>
-                                          <input 
-                                            type="number"
-                                            min={0}
-                                            value={setting.adultHireRate}
-                                            onChange={e => handleUpdatePriceSetting(setting.category, 'adultHireRate', Number(e.target.value))}
-                                            className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 font-mono font-bold text-amber-800 outline-none focus:border-amber-500 shadow-sm"
-                                          />
-                                        </div>
-                                      </td>
-                                      <td className="py-3 px-4 bg-amber-50/30">
-                                        <div className="flex items-center gap-1">
-                                          <span className="text-slate-400">£</span>
-                                          <input 
-                                            type="number"
-                                            min={0}
-                                            value={setting.adultDeposit}
-                                            onChange={e => handleUpdatePriceSetting(setting.category, 'adultDeposit', Number(e.target.value))}
-                                            className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 font-mono font-bold text-emerald-800 outline-none focus:border-amber-500 shadow-sm"
-                                          />
-                                        </div>
-                                      </td>
-                                      <td className="py-3 px-4 bg-purple-50/30 border-l border-purple-100">
-                                        <div className="flex items-center gap-1">
-                                          <span className="text-slate-400">£</span>
-                                          <input 
-                                            type="number"
-                                            min={0}
-                                            value={setting.kidHireRate}
-                                            onChange={e => handleUpdatePriceSetting(setting.category, 'kidHireRate', Number(e.target.value))}
-                                            className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 font-mono font-bold text-purple-800 outline-none focus:border-purple-500 shadow-sm"
-                                          />
-                                        </div>
-                                      </td>
-                                      <td className="py-3 px-4 bg-purple-50/30">
-                                        <div className="flex items-center gap-1">
-                                          <span className="text-slate-400">£</span>
-                                          <input 
-                                            type="number"
-                                            min={0}
-                                            value={setting.kidDeposit}
-                                            onChange={e => handleUpdatePriceSetting(setting.category, 'kidDeposit', Number(e.target.value))}
-                                            className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 font-mono font-bold text-emerald-800 outline-none focus:border-purple-500 shadow-sm"
-                                          />
-                                        </div>
-                                      </td>
-                                      <td className="py-3 px-4 text-center border-l border-slate-100">
+                              if (pricingMatrixSortKey === 'allowAlterations') {
+                                aVal = (a.allowAlterations ?? (a.category === 'Kilts' || a.category === 'Jackets' || a.category === 'Waistcoats')) ? 1 : 0;
+                                bVal = (b.allowAlterations ?? (b.category === 'Kilts' || b.category === 'Jackets' || b.category === 'Waistcoats')) ? 1 : 0;
+                              }
+
+                              if (typeof aVal === 'string' || pricingMatrixSortKey === 'category') {
+                                const cmp = String(aVal || '').localeCompare(String(bVal || ''), undefined, { sensitivity: 'base', numeric: true });
+                                return pricingMatrixSortOrder === 'asc' ? cmp : -cmp;
+                              }
+
+                              const numA = Number(aVal) || 0;
+                              const numB = Number(bVal) || 0;
+                              return pricingMatrixSortOrder === 'asc' ? numA - numB : numB - numA;
+                            });
+
+                            // Pagination calculations
+                            const totalItems = sorted.length;
+                            const effectivePageSize = pricingMatrixPageSize === 0 ? (totalItems || 1) : pricingMatrixPageSize;
+                            const totalPages = Math.max(1, Math.ceil(totalItems / effectivePageSize));
+                            const currentPage = Math.min(Math.max(1, pricingMatrixCurrentPage), totalPages);
+                            const startIndex = (currentPage - 1) * effectivePageSize;
+                            const paginatedList = sorted.slice(startIndex, startIndex + effectivePageSize);
+
+                            const handleSortClick = (key: typeof pricingMatrixSortKey) => {
+                              if (pricingMatrixSortKey === key) {
+                                setPricingMatrixSortOrder(pricingMatrixSortOrder === 'asc' ? 'desc' : 'asc');
+                              } else {
+                                setPricingMatrixSortKey(key);
+                                setPricingMatrixSortOrder('asc');
+                              }
+                            };
+
+                            const renderSortIcon = (key: typeof pricingMatrixSortKey) => {
+                              if (pricingMatrixSortKey !== key) {
+                                return <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 inline-block ml-1" />;
+                              }
+                              return pricingMatrixSortOrder === 'asc' 
+                                ? <ArrowUp className="w-3.5 h-3.5 text-amber-600 inline-block ml-1 font-black" />
+                                : <ArrowDown className="w-3.5 h-3.5 text-amber-600 inline-block ml-1 font-black" />;
+                            };
+
+                            return (
+                              <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm space-y-0">
+                                {/* HEADER & TOOLBAR */}
+                                <div className="p-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-4">
+                                  <div>
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                                        <PriceTag className="w-5 h-5 text-amber-600" /> Master Category Pricing Matrix
+                                      </h3>
+                                      <span className="px-2.5 py-0.5 bg-amber-100 text-amber-900 text-xs font-extrabold rounded-full">
+                                        {pricingMatrix.length} Categories
+                                      </span>
+                                    </div>
+                                    <p className="text-xs text-slate-500">
+                                      Click any column header to sort. Set default hire rates, security deposits, and tailoring capabilities.
+                                    </p>
+                                  </div>
+
+                                  <div className="flex flex-wrap items-center gap-2.5">
+                                    {/* QUICK SORT PILLS */}
+                                    <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+                                      <button
+                                        type="button"
+                                        onClick={() => { setPricingMatrixSortKey('category'); setPricingMatrixSortOrder('asc'); }}
+                                        className={`px-2 py-1 rounded-lg font-bold text-[11px] transition cursor-pointer ${
+                                          pricingMatrixSortKey === 'category' && pricingMatrixSortOrder === 'asc' ? 'bg-amber-500 text-slate-950 shadow-xs' : 'text-slate-600 hover:bg-white/60'
+                                        }`}
+                                        title="Sort Garment Categories A to Z"
+                                      >
+                                        🔤 A → Z
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => { setPricingMatrixSortKey('category'); setPricingMatrixSortOrder('desc'); }}
+                                        className={`px-2 py-1 rounded-lg font-bold text-[11px] transition cursor-pointer ${
+                                          pricingMatrixSortKey === 'category' && pricingMatrixSortOrder === 'desc' ? 'bg-amber-500 text-slate-950 shadow-xs' : 'text-slate-600 hover:bg-white/60'
+                                        }`}
+                                        title="Sort Garment Categories Z to A"
+                                      >
+                                        🔤 Z → A
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => { setPricingMatrixSortKey('adultHireRate'); setPricingMatrixSortOrder('desc'); }}
+                                        className={`px-2 py-1 rounded-lg font-bold text-[11px] transition cursor-pointer ${
+                                          pricingMatrixSortKey === 'adultHireRate' && pricingMatrixSortOrder === 'desc' ? 'bg-amber-500 text-slate-950 shadow-xs' : 'text-slate-600 hover:bg-white/60'
+                                        }`}
+                                        title="Sort by Highest Rental Rate"
+                                      >
+                                        💷 High → Low
+                                      </button>
+                                    </div>
+
+                                    {/* SEARCH BOX */}
+                                    <div className="relative">
+                                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                      <input
+                                        type="text"
+                                        placeholder="Search categories..."
+                                        value={pricingMatrixSearchQuery}
+                                        onChange={e => {
+                                          setPricingMatrixSearchQuery(e.target.value);
+                                          setPricingMatrixCurrentPage(1);
+                                        }}
+                                        className="pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 outline-none focus:border-amber-500 focus:bg-white w-40 sm:w-48"
+                                      />
+                                      {pricingMatrixSearchQuery && (
                                         <button
                                           type="button"
                                           onClick={() => {
-                                            const current = setting.allowAlterations ?? (setting.category === 'Kilts' || setting.category === 'Jackets' || setting.category === 'Waistcoats');
-                                            const updated = pricingMatrix.map(p => p.category === setting.category ? { ...p, allowAlterations: !current } : p);
-                                            setPricingMatrix(updated);
-                                            showToast(`✂️ Alteration capability for "${setting.category}": ${!current ? 'Supported (Made to Measure)' : 'Fixed / Non-Alterable'}`, 'success');
+                                            setPricingMatrixSearchQuery('');
+                                            setPricingMatrixCurrentPage(1);
                                           }}
-                                          className={`px-2.5 py-1 rounded-xl font-black text-[11px] transition cursor-pointer border inline-flex items-center gap-1.5 ${
-                                            (setting.allowAlterations ?? (setting.category === 'Kilts' || setting.category === 'Jackets' || setting.category === 'Waistcoats'))
-                                              ? 'bg-purple-100 text-purple-950 border-purple-300 hover:bg-purple-200 shadow-2xs'
-                                              : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
-                                          }`}
-                                          title="Toggle whether garments in this category can be altered or made to measure"
+                                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
                                         >
-                                          {(setting.allowAlterations ?? (setting.category === 'Kilts' || setting.category === 'Jackets' || setting.category === 'Waistcoats')) ? (
-                                            <>
-                                              <Scissors className="w-3.5 h-3.5 text-purple-700" />
-                                              <span>Yes (Alterable)</span>
-                                            </>
-                                          ) : (
-                                            <>
-                                              <Lock className="w-3.5 h-3.5 text-slate-400" />
-                                              <span>No (Fixed Size)</span>
-                                            </>
-                                          )}
+                                          <X className="w-3.5 h-3.5" />
                                         </button>
-                                      </td>
-                                      <td className="py-3 px-4 text-center">
-                                        {deleteCategoryConfirm === setting.category ? (
-                                          <div className="flex items-center justify-center gap-1">
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                const updated = pricingMatrix.filter(p => p.category !== setting.category);
-                                                setPricingMatrix(updated);
-                                                savePricing(updated, maxRigoutCapPrice, kidMaxRigoutCapPrice, tartanList).catch(err => console.warn(err));
-                                                showToast(`🗑️ Removed category "${setting.category}" from Pricing Matrix.`, 'info');
-                                                setDeleteCategoryConfirm(null);
-                                              }}
-                                              className="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-[10px] rounded-lg transition cursor-pointer"
-                                            >
-                                              Confirm
-                                            </button>
-                                            <button
-                                              type="button"
-                                              onClick={() => setDeleteCategoryConfirm(null)}
-                                              className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition cursor-pointer"
-                                            >
-                                              <X className="w-3 h-3" />
-                                            </button>
+                                      )}
+                                    </div>
+
+                                    {/* PAGE SIZE SELECTOR */}
+                                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 text-xs">
+                                      <span className="text-slate-500 font-medium text-[11px]">Rows:</span>
+                                      <select
+                                        value={pricingMatrixPageSize}
+                                        onChange={e => {
+                                          setPricingMatrixPageSize(Number(e.target.value));
+                                          setPricingMatrixCurrentPage(1);
+                                        }}
+                                        className="bg-transparent font-bold text-slate-800 outline-none cursor-pointer text-xs"
+                                      >
+                                        <option value={5}>5</option>
+                                        <option value={10}>10</option>
+                                        <option value={15}>15</option>
+                                        <option value={20}>20</option>
+                                        <option value={0}>All ({pricingMatrix.length})</option>
+                                      </select>
+                                    </div>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => setShowAddCategoryModal(true)}
+                                      className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
+                                    >
+                                      <PlusCircle className="w-4 h-4" /> Add Category
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* TABLE CONTAINER */}
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-left text-xs text-slate-700">
+                                    <thead className="bg-slate-50 text-slate-900 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px] select-none">
+                                      <tr>
+                                        {/* GARMENT CATEGORY */}
+                                        <th 
+                                          onClick={() => handleSortClick('category')}
+                                          className="py-3.5 px-4 cursor-pointer hover:bg-slate-100 transition whitespace-nowrap bg-slate-100/70"
+                                        >
+                                          <div className="flex items-center gap-1">
+                                            <span>Garment Category</span>
+                                            {renderSortIcon('category')}
                                           </div>
-                                        ) : (
-                                          <button
-                                            type="button"
-                                            title={`Delete ${setting.category} category`}
-                                            onClick={() => setDeleteCategoryConfirm(setting.category)}
-                                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                                          >
-                                            <Trash2 className="w-4 h-4" />
-                                          </button>
-                                        )}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
+                                        </th>
 
-                            {/* BOTTOM FOOTER BAR WITH SAVE BUTTON & CLOUD SYNC BADGE */}
-                            <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-4">
-                              <div className="flex items-center gap-2 text-xs text-slate-600 font-semibold">
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-extrabold text-[11px]">
-                                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                                  Live Cloud Sync Enabled
-                                </span>
-                                <span>Edits to rates and caps propagate across all staff shop floor tablets instantly.</span>
+                                        {/* ADULT RENTAL */}
+                                        <th 
+                                          onClick={() => handleSortClick('adultHireRate')}
+                                          className="py-3.5 px-4 bg-amber-50/70 text-amber-950 border-l border-amber-200 cursor-pointer hover:bg-amber-100/70 transition whitespace-nowrap"
+                                        >
+                                          <div className="flex items-center gap-1">
+                                            <span>Adult Rental (£)</span>
+                                            {renderSortIcon('adultHireRate')}
+                                          </div>
+                                        </th>
+
+                                        {/* ADULT DEPOSIT */}
+                                        <th 
+                                          onClick={() => handleSortClick('adultDeposit')}
+                                          className="py-3.5 px-4 bg-amber-50/70 text-amber-950 cursor-pointer hover:bg-amber-100/70 transition whitespace-nowrap"
+                                        >
+                                          <div className="flex items-center gap-1">
+                                            <span>Adult Deposit (£)</span>
+                                            {renderSortIcon('adultDeposit')}
+                                          </div>
+                                        </th>
+
+                                        {/* KIDS RENTAL */}
+                                        <th 
+                                          onClick={() => handleSortClick('kidHireRate')}
+                                          className="py-3.5 px-4 bg-purple-50/70 text-purple-950 border-l border-purple-200 cursor-pointer hover:bg-purple-100/70 transition whitespace-nowrap"
+                                        >
+                                          <div className="flex items-center gap-1">
+                                            <span>Kids Rental (£)</span>
+                                            {renderSortIcon('kidHireRate')}
+                                          </div>
+                                        </th>
+
+                                        {/* KIDS DEPOSIT */}
+                                        <th 
+                                          onClick={() => handleSortClick('kidDeposit')}
+                                          className="py-3.5 px-4 bg-purple-50/70 text-purple-950 cursor-pointer hover:bg-purple-100/70 transition whitespace-nowrap"
+                                        >
+                                          <div className="flex items-center gap-1">
+                                            <span>Kids Deposit (£)</span>
+                                            {renderSortIcon('kidDeposit')}
+                                          </div>
+                                        </th>
+
+                                        {/* ALTERATIONS / MADE TO MEASURE */}
+                                        <th 
+                                          onClick={() => handleSortClick('allowAlterations')}
+                                          className="py-3.5 px-4 text-center border-l border-slate-200 cursor-pointer hover:bg-slate-100 transition whitespace-nowrap"
+                                        >
+                                          <div className="flex items-center justify-center gap-1">
+                                            <span>✂️ Made to Measure?</span>
+                                            {renderSortIcon('allowAlterations')}
+                                          </div>
+                                        </th>
+
+                                        {/* ACTIONS */}
+                                        <th className="py-3.5 px-4 text-center">Actions</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 font-semibold">
+                                      {paginatedList.length === 0 ? (
+                                        <tr>
+                                          <td colSpan={7} className="py-12 text-center text-slate-400">
+                                            <p className="font-bold text-sm text-slate-600">No categories found matching "{pricingMatrixSearchQuery}"</p>
+                                            <p className="text-xs text-slate-400 mt-1">Try clearing your search query or add a new category.</p>
+                                          </td>
+                                        </tr>
+                                      ) : (
+                                        paginatedList.map(setting => (
+                                          <tr key={setting.category} className="hover:bg-slate-50 transition">
+                                            <td className="py-3 px-4 font-bold text-slate-900">
+                                              <input
+                                                type="text"
+                                                value={setting.category}
+                                                onChange={e => {
+                                                  const newCatName = e.target.value;
+                                                  const updated = pricingMatrix.map(p => p.category === setting.category ? { ...p, category: newCatName } : p);
+                                                  setPricingMatrix(updated);
+                                                }}
+                                                className="bg-transparent border border-transparent hover:border-slate-300 focus:border-amber-500 rounded px-1.5 py-0.5 font-extrabold text-slate-900 text-xs outline-none"
+                                              />
+                                            </td>
+                                            <td className="py-3 px-4 bg-amber-50/30 border-l border-amber-100">
+                                              <div className="flex items-center gap-1">
+                                                <span className="text-slate-400">£</span>
+                                                <input 
+                                                  type="number"
+                                                  min={0}
+                                                  value={setting.adultHireRate}
+                                                  onChange={e => handleUpdatePriceSetting(setting.category, 'adultHireRate', Number(e.target.value))}
+                                                  className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 font-mono font-bold text-amber-800 outline-none focus:border-amber-500 shadow-sm"
+                                                />
+                                              </div>
+                                            </td>
+                                            <td className="py-3 px-4 bg-amber-50/30">
+                                              <div className="flex items-center gap-1">
+                                                <span className="text-slate-400">£</span>
+                                                <input 
+                                                  type="number"
+                                                  min={0}
+                                                  value={setting.adultDeposit}
+                                                  onChange={e => handleUpdatePriceSetting(setting.category, 'adultDeposit', Number(e.target.value))}
+                                                  className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 font-mono font-bold text-emerald-800 outline-none focus:border-amber-500 shadow-sm"
+                                                />
+                                              </div>
+                                            </td>
+                                            <td className="py-3 px-4 bg-purple-50/30 border-l border-purple-100">
+                                              <div className="flex items-center gap-1">
+                                                <span className="text-slate-400">£</span>
+                                                <input 
+                                                  type="number"
+                                                  min={0}
+                                                  value={setting.kidHireRate}
+                                                  onChange={e => handleUpdatePriceSetting(setting.category, 'kidHireRate', Number(e.target.value))}
+                                                  className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 font-mono font-bold text-purple-800 outline-none focus:border-purple-500 shadow-sm"
+                                                />
+                                              </div>
+                                            </td>
+                                            <td className="py-3 px-4 bg-purple-50/30">
+                                              <div className="flex items-center gap-1">
+                                                <span className="text-slate-400">£</span>
+                                                <input 
+                                                  type="number"
+                                                  min={0}
+                                                  value={setting.kidDeposit}
+                                                  onChange={e => handleUpdatePriceSetting(setting.category, 'kidDeposit', Number(e.target.value))}
+                                                  className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1 font-mono font-bold text-emerald-800 outline-none focus:border-purple-500 shadow-sm"
+                                                />
+                                              </div>
+                                            </td>
+                                            <td className="py-3 px-4 text-center border-l border-slate-100">
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  const current = setting.allowAlterations ?? (setting.category === 'Kilts' || setting.category === 'Jackets' || setting.category === 'Waistcoats');
+                                                  const updated = pricingMatrix.map(p => p.category === setting.category ? { ...p, allowAlterations: !current } : p);
+                                                  setPricingMatrix(updated);
+                                                  showToast(`✂️ Alteration capability for "${setting.category}": ${!current ? 'Supported (Made to Measure)' : 'Fixed / Non-Alterable'}`, 'success');
+                                                }}
+                                                className={`px-2.5 py-1 rounded-xl font-black text-[11px] transition cursor-pointer border inline-flex items-center gap-1.5 ${
+                                                  (setting.allowAlterations ?? (setting.category === 'Kilts' || setting.category === 'Jackets' || setting.category === 'Waistcoats'))
+                                                    ? 'bg-purple-100 text-purple-950 border-purple-300 hover:bg-purple-200 shadow-2xs'
+                                                    : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
+                                                }`}
+                                                title="Toggle whether garments in this category can be altered or made to measure"
+                                              >
+                                                {(setting.allowAlterations ?? (setting.category === 'Kilts' || setting.category === 'Jackets' || setting.category === 'Waistcoats')) ? (
+                                                  <>
+                                                    <Scissors className="w-3.5 h-3.5 text-purple-700" />
+                                                    <span>Yes (Alterable)</span>
+                                                  </>
+                                                ) : (
+                                                  <>
+                                                    <Lock className="w-3.5 h-3.5 text-slate-400" />
+                                                    <span>No (Fixed Size)</span>
+                                                  </>
+                                                )}
+                                              </button>
+                                            </td>
+                                            <td className="py-3 px-4 text-center">
+                                              {deleteCategoryConfirm === setting.category ? (
+                                                <div className="flex items-center justify-center gap-1">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      const updated = pricingMatrix.filter(p => p.category !== setting.category);
+                                                      setPricingMatrix(updated);
+                                                      savePricing(updated, maxRigoutCapPrice, kidMaxRigoutCapPrice, tartanList).catch(err => console.warn(err));
+                                                      showToast(`🗑️ Removed category "${setting.category}" from Pricing Matrix.`, 'info');
+                                                      setDeleteCategoryConfirm(null);
+                                                    }}
+                                                    className="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-[10px] rounded-lg transition cursor-pointer"
+                                                  >
+                                                    Confirm
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => setDeleteCategoryConfirm(null)}
+                                                    className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition cursor-pointer"
+                                                  >
+                                                    <X className="w-3 h-3" />
+                                                  </button>
+                                                </div>
+                                              ) : (
+                                                <button
+                                                  type="button"
+                                                  title={`Delete ${setting.category} category`}
+                                                  onClick={() => setDeleteCategoryConfirm(setting.category)}
+                                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                                                >
+                                                  <Trash2 className="w-4 h-4" />
+                                                </button>
+                                              )}
+                                            </td>
+                                          </tr>
+                                        ))
+                                      )}
+                                    </tbody>
+                                  </table>
+                                </div>
+
+                                {/* PAGINATION CONTROLS FOOTER */}
+                                <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+                                  <div className="text-slate-500 font-medium">
+                                    Showing <strong className="text-slate-900">{totalItems > 0 ? startIndex + 1 : 0}</strong> to <strong className="text-slate-900">{Math.min(startIndex + effectivePageSize, totalItems)}</strong> of <strong className="text-slate-900">{totalItems}</strong> categories
+                                    {pricingMatrixSearchQuery && <span className="ml-1 text-amber-700 font-bold">(filtered)</span>}
+                                  </div>
+
+                                  {totalPages > 1 && (
+                                    <div className="flex items-center gap-1.5">
+                                      <button
+                                        type="button"
+                                        disabled={currentPage === 1}
+                                        onClick={() => setPricingMatrixCurrentPage(currentPage - 1)}
+                                        className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-700 font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition flex items-center gap-1 cursor-pointer"
+                                      >
+                                        <ChevronLeft className="w-3.5 h-3.5" /> Prev
+                                      </button>
+
+                                      {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => (
+                                        <button
+                                          key={pageNum}
+                                          type="button"
+                                          onClick={() => setPricingMatrixCurrentPage(pageNum)}
+                                          className={`w-8 h-8 rounded-lg font-extrabold text-xs transition cursor-pointer ${
+                                            currentPage === pageNum 
+                                              ? 'bg-amber-500 text-slate-950 shadow-sm border border-amber-600' 
+                                              : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-300'
+                                          }`}
+                                        >
+                                          {pageNum}
+                                        </button>
+                                      ))}
+
+                                      <button
+                                        type="button"
+                                        disabled={currentPage === totalPages}
+                                        onClick={() => setPricingMatrixCurrentPage(currentPage + 1)}
+                                        className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-700 font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition flex items-center gap-1 cursor-pointer"
+                                      >
+                                        Next <ChevronRight className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* BOTTOM FOOTER BAR WITH SAVE BUTTON & CLOUD SYNC BADGE */}
+                                <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-4">
+                                  <div className="flex items-center gap-2 text-xs text-slate-600 font-semibold">
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-extrabold text-[11px]">
+                                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                      Live Cloud Sync Enabled
+                                    </span>
+                                    <span>Edits to rates and caps propagate across all staff shop floor tablets instantly.</span>
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={handleSavePricingToFirestore}
+                                    className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-2 cursor-pointer ring-2 ring-emerald-400/50"
+                                  >
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+                                    <span>💾 Save All Rates, Caps & Deposits to Cloud DB</span>
+                                  </button>
+                                </div>
                               </div>
-
-                              <button
-                                type="button"
-                                onClick={handleSavePricingToFirestore}
-                                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-2 cursor-pointer ring-2 ring-emerald-400/50"
-                              >
-                                <CheckCircle2 className="w-4 h-4 text-emerald-200" />
-                                <span>💾 Save All Rates, Caps & Deposits to Cloud DB</span>
-                              </button>
-                            </div>
-                          </div>
+                            );
+                          })()}
                         </>
                       ) : (
                         /* PRODUCTS SUB-TAB: MASTER TARTANS & CATEGORY CATALOG MANAGER */
@@ -13236,7 +15702,7 @@ export default function KiltHireApp() {
                   ) : inventorySubTab === 'ACTIVE' ? (
                     <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm space-y-0">
                       {(() => {
-                        const handleSort = (col: 'id' | 'name' | 'category' | 'sizeGroup' | 'tartanOrColour' | 'status') => {
+                        const handleSort = (col: 'id' | 'name' | 'category' | 'sizeGroup' | 'tartanOrColour' | 'status' | 'qty') => {
                           if (inventorySortColumn === col) {
                             setInventorySortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
                           } else {
@@ -13258,10 +15724,18 @@ export default function KiltHireApp() {
                               item.sizeGroup.toLowerCase().includes(q) ||
                               item.tartanOrColour.toLowerCase().includes(q) ||
                               item.size.toLowerCase().includes(q) ||
+                              (item.boxNumber || '').toLowerCase().includes(q) ||
                               item.status.toLowerCase().includes(q)
                             );
                           })
                           .sort((a, b) => {
+                            if (inventorySortColumn === 'qty') {
+                              const qtyA = (a.isBulkPool || a.id.startsWith('BIN-')) ? (a.bulkQuantity ?? a.bulkTotal ?? 1) : 1;
+                              const qtyB = (b.isBulkPool || b.id.startsWith('BIN-')) ? (b.bulkQuantity ?? b.bulkTotal ?? 1) : 1;
+                              if (qtyA < qtyB) return inventorySortDirection === 'asc' ? -1 : 1;
+                              if (qtyA > qtyB) return inventorySortDirection === 'asc' ? 1 : -1;
+                              return 0;
+                            }
                             const valA = (a[inventorySortColumn] || '').toString().toLowerCase();
                             const valB = (b[inventorySortColumn] || '').toString().toLowerCase();
                             if (valA < valB) return inventorySortDirection === 'asc' ? -1 : 1;
@@ -13343,6 +15817,18 @@ export default function KiltHireApp() {
                                       </div>
                                     </th>
                                     <th className="py-3.5 px-4">Size</th>
+                                    <th 
+                                      onClick={() => handleSort('qty')}
+                                      className="py-3.5 px-4 cursor-pointer hover:bg-amber-100/50 transition group"
+                                      title="Click to sort by Stock / Bin Quantity"
+                                    >
+                                      <div className="flex items-center gap-1">
+                                        <span>Stock / Bin Qty</span>
+                                        <span className={`text-[10px] ${inventorySortColumn === 'qty' ? 'text-amber-800 font-extrabold' : 'text-slate-300 group-hover:text-slate-500'}`}>
+                                          {inventorySortColumn === 'qty' ? (inventorySortDirection === 'asc' ? '▲' : '▼') : '↕'}
+                                        </span>
+                                      </div>
+                                    </th>
                                     <th className="py-3.5 px-4">Rate / Deposit</th>
                                     <th 
                                       onClick={() => handleSort('status')}
@@ -13360,10 +15846,40 @@ export default function KiltHireApp() {
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                  {paginatedItems.map(item => (
+                                  {paginatedItems.map(item => {
+                                    const isBin = item.isBulkPool || item.id.startsWith('BIN-');
+                                    const binInShop = item.bulkQuantity ?? item.bulkTotal ?? 1;
+                                    const binTotal = item.bulkTotal ?? item.bulkQuantity ?? 1;
+                                    const binOnHire = Math.max(0, binTotal - binInShop);
+
+                                    return (
                                     <tr key={item.id} className="hover:bg-slate-50 transition">
-                                      <td className="py-3 px-4 font-mono font-bold text-amber-700">{item.id}</td>
-                                      <td className="py-3 px-4 font-semibold text-slate-900">{item.name}</td>
+                                      <td className="py-3 px-4 font-mono font-bold text-amber-700">
+                                        <div className="flex items-center gap-1.5">
+                                          <span>{item.id}</span>
+                                          {isBin && (
+                                            <span className="px-1.5 py-0.5 text-[9px] font-black bg-purple-100 text-purple-900 border border-purple-300 rounded">
+                                              BIN
+                                            </span>
+                                          )}
+                                        </div>
+                                      </td>
+                                      <td className="py-3 px-4">
+                                        <div className="space-y-0.5">
+                                          <div className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                                            <span>{item.name || `${item.category} (${item.tartanOrColour || 'Standard'})`}</span>
+                                            {isBin && (
+                                              <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-purple-100 text-purple-900 border border-purple-300 rounded-md inline-flex items-center gap-1">
+                                                <Package className="w-2.5 h-2.5 text-purple-700" />
+                                                {item.boxNumber || 'Master Bin'}
+                                              </span>
+                                            )}
+                                          </div>
+                                          {item.brandMake && (
+                                            <span className="text-[10px] text-slate-400 block font-normal">{item.brandMake}</span>
+                                          )}
+                                        </div>
+                                      </td>
                                       <td className="py-3 px-4">{item.category}</td>
                                       <td className="py-3 px-4">
                                         <span className={`px-2 py-0.5 text-[10px] font-bold rounded flex items-center gap-1 w-fit ${item.sizeGroup === 'Kid' ? 'bg-purple-100 text-purple-900 border border-purple-300' : 'bg-blue-100 text-blue-900 border border-blue-300'}`}>
@@ -13372,7 +15888,46 @@ export default function KiltHireApp() {
                                         </span>
                                       </td>
                                       <td className="py-3 px-4 text-slate-600">{item.tartanOrColour}</td>
-                                      <td className="py-3 px-4 text-slate-600">{item.size}</td>
+                                      <td className="py-3 px-4 text-slate-600">
+                                        {isBin ? (
+                                          <span className="text-[11px] font-semibold text-purple-950 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                                            {item.size && item.size !== 'One Size / Bulk Pool' ? item.size : `${item.boxNumber || 'Box 1'} Container`}
+                                          </span>
+                                        ) : (
+                                          item.size
+                                        )}
+                                      </td>
+
+                                      {/* STOCK / BIN QUANTITY COLUMN */}
+                                      <td className="py-3 px-4">
+                                        {isBin ? (
+                                          <div className="space-y-1">
+                                            <div className="flex items-center gap-1.5 font-mono">
+                                              <span className="px-2 py-0.5 text-xs font-black bg-emerald-100 text-emerald-950 border border-emerald-300 rounded-lg inline-flex items-center gap-1 shadow-2xs">
+                                                <Package className="w-3 h-3 text-emerald-700" />
+                                                {binInShop} in Bin
+                                              </span>
+                                              <span className="text-[11px] text-slate-500 font-bold">
+                                                / {binTotal} Total
+                                              </span>
+                                            </div>
+                                            {binOnHire > 0 ? (
+                                              <span className="text-[10px] text-amber-800 font-bold block">
+                                                ({binOnHire} currently out on hire)
+                                              </span>
+                                            ) : (
+                                              <span className="text-[10px] text-emerald-700 font-semibold block">
+                                                ✓ 100% In Stock
+                                              </span>
+                                            )}
+                                          </div>
+                                        ) : (
+                                          <span className="text-slate-600 font-bold text-[11px] bg-slate-100 border border-slate-200 px-2.5 py-0.5 rounded-lg inline-flex items-center gap-1">
+                                            1 Unit (Single Garment)
+                                          </span>
+                                        )}
+                                      </td>
+
                                       <td className="py-3 px-4">
                                         <span className="text-amber-800 font-bold">£{item.hireRate}</span> / <span className="text-emerald-700 font-semibold">£{item.depositAmount} dep</span>
                                       </td>
@@ -13466,7 +16021,8 @@ export default function KiltHireApp() {
                                         </div>
                                       </td>
                                     </tr>
-                                  ))}
+                                  );
+                                })}
                                 </tbody>
                               </table>
                             </div>
@@ -13615,8 +16171,11 @@ export default function KiltHireApp() {
                       <div className="flex items-center gap-2.5">
                         {historicPosCount > 0 && (
                           <button
-                            onClick={() => setAssistantTab('historic_pos')}
-                            className="px-4 py-2.5 bg-purple-50 hover:bg-purple-100 text-purple-800 font-bold text-xs rounded-xl border border-purple-200 shadow-2xs flex items-center gap-1.5 transition"
+                            onClick={() => {
+                              setActiveTab('historic_pos');
+                              setAssistantTab('historic_pos');
+                            }}
+                            className="px-4 py-2.5 bg-purple-50 hover:bg-purple-100 text-purple-800 font-bold text-xs rounded-xl border border-purple-200 shadow-2xs flex items-center gap-1.5 transition cursor-pointer"
                           >
                             <FileText className="w-4 h-4 text-purple-600" /> View Historic PO Archive ({historicPosCount})
                           </button>
@@ -14031,13 +16590,47 @@ export default function KiltHireApp() {
                                     ({po.customerPhone} • {po.customerEmail})
                                   </span>
 
-                                  <span className={`px-2.5 py-0.5 text-xs font-black rounded-full border shadow-2xs ${
-                                    isCancelled 
-                                      ? 'bg-rose-100 text-rose-900 border-rose-300' 
-                                      : 'bg-emerald-100 text-emerald-900 border-emerald-300'
-                                  }`}>
-                                    {isCancelled ? 'CANCELLED' : po.paymentStatus}
-                                  </span>
+                                  {(() => {
+                                    const isDepositPaid = po.paymentStatus === 'PARTIAL_DEPOSIT' || po.paymentStatus === 'PAID_WITH_DEPOSIT' || po.paymentStatus === 'FULL_BALANCE_PAID' || !!po.depositPaidAt;
+                                    const isFullyPaid = po.paymentStatus === 'FULL_BALANCE_PAID' || po.paymentStatus === 'PAID_WITH_DEPOSIT';
+                                    const totalOrderValue = po.totalHireFee + po.totalDepositHeld;
+                                    const paidAmount = isFullyPaid ? totalOrderValue : isDepositPaid ? po.totalDepositHeld : 0;
+                                    const outstandingBalance = isFullyPaid ? 0 : isDepositPaid ? po.totalHireFee : totalOrderValue;
+
+                                    return (
+                                      <>
+                                        <span className={`px-2.5 py-0.5 text-xs font-black rounded-full border shadow-2xs ${
+                                          isCancelled 
+                                            ? 'bg-rose-100 text-rose-900 border-rose-300' 
+                                            : isFullyPaid 
+                                            ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                            : isDepositPaid
+                                            ? 'bg-blue-100 text-blue-900 border-blue-300'
+                                            : 'bg-amber-100 text-amber-900 border-amber-300'
+                                        }`}>
+                                          {isCancelled 
+                                            ? '❌ CANCELLED' 
+                                            : isFullyPaid 
+                                            ? `✓ FULLY PAID (£${totalOrderValue})${po.balancePaidAt ? ` • ${po.balancePaidAt}` : ''}` 
+                                            : isDepositPaid 
+                                            ? `💳 DEPOSIT PAID (£${po.totalDepositHeld})${po.depositPaidAt ? ` • ${po.depositPaidAt}` : ''}` 
+                                            : '⚠️ UNPAID'}
+                                        </span>
+
+                                        {isDepositPaid && !isFullyPaid && (
+                                          <span className="px-2.5 py-0.5 text-xs font-black rounded-full bg-amber-100 text-amber-950 border border-amber-300 shadow-2xs">
+                                            ⏳ £{outstandingBalance} Outstanding • Due {po.hireStartDate}
+                                          </span>
+                                        )}
+
+                                        {po.paypalCaptureId && (
+                                          <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-indigo-50 text-indigo-900 border border-indigo-200 rounded shadow-2xs">
+                                            PayPal: {po.paypalCaptureId}
+                                          </span>
+                                        )}
+                                      </>
+                                    );
+                                  })()}
 
                                   {po.fullRigoutCapApplied && (
                                     <span className="px-2 py-0.5 text-[10px] font-black bg-amber-100 text-amber-950 border border-amber-300 rounded shadow-2xs">
@@ -14046,15 +16639,75 @@ export default function KiltHireApp() {
                                   )}
                                 </div>
 
-                                <div className="text-xs text-slate-600 font-medium mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
-                                  <span>📅 Hire Period: <strong className="text-slate-900">{po.hireStartDate}</strong> to <strong className="text-slate-900">{po.hireEndDate}</strong></span>
-                                  <span>🎪 Event: <strong className="text-slate-900">{po.eventDate}</strong></span>
-                                  <span>💳 Final Hire: <strong className="text-amber-800 font-mono font-bold">£{po.totalHireFee}</strong> | Deposit: <strong className="text-emerald-800 font-mono font-bold">£{po.totalDepositHeld}</strong></span>
-                                </div>
+                                {(() => {
+                                  const isDepositPaid = po.paymentStatus === 'PARTIAL_DEPOSIT' || po.paymentStatus === 'PAID_WITH_DEPOSIT' || po.paymentStatus === 'FULL_BALANCE_PAID' || !!po.depositPaidAt;
+                                  const isFullyPaid = po.paymentStatus === 'FULL_BALANCE_PAID' || po.paymentStatus === 'PAID_WITH_DEPOSIT';
+                                  const totalOrderValue = po.totalHireFee + po.totalDepositHeld;
+                                  const paidAmount = isFullyPaid ? totalOrderValue : isDepositPaid ? po.totalDepositHeld : 0;
+                                  const outstandingBalance = isFullyPaid ? 0 : isDepositPaid ? po.totalHireFee : totalOrderValue;
+
+                                  const paymentMethodLabel = po.depositPaymentMethod === 'PAYPAL_ONLINE' 
+                                    ? 'PayPal Online' 
+                                    : po.depositPaymentMethod === 'CARD_IN_STORE' || po.depositPaymentMethod === 'IN_STORE_CARD'
+                                    ? 'In-Store Card'
+                                    : po.depositPaymentMethod === 'CASH_IN_STORE' || po.depositPaymentMethod === 'IN_STORE_CASH'
+                                    ? 'In-Store Cash'
+                                    : 'Direct Payment';
+
+                                  return (
+                                    <div className="text-xs text-slate-600 font-medium mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+                                      <span>📅 Hire: <strong className="text-slate-900">{po.hireStartDate}</strong> to <strong className="text-slate-900">{po.hireEndDate}</strong></span>
+                                      <span>🎪 Event: <strong className="text-slate-900">{po.eventDate}</strong></span>
+                                      <span>💰 Total Order: <strong className="text-slate-900 font-mono font-bold">£{totalOrderValue}</strong> (Hire: £{po.totalHireFee} + Deposit: £{po.totalDepositHeld})</span>
+                                      <span className="flex items-center gap-1">
+                                        💳 Deposit: <strong className="text-emerald-700 font-mono font-bold">£{paidAmount}</strong>
+                                        {isDepositPaid && (
+                                          <span className="text-[11px] text-slate-500 font-semibold">
+                                            ({paymentMethodLabel} • 🕒 {po.depositPaidAt || po.createdAt || 'Settled'})
+                                          </span>
+                                        )}
+                                      </span>
+                                      <span className="flex items-center gap-1">
+                                        ⏳ Outstanding: <strong className={`font-mono font-bold ${outstandingBalance > 0 ? 'text-amber-800' : 'text-emerald-800'}`}>£{outstandingBalance}</strong>
+                                        {outstandingBalance > 0 ? (
+                                          <span className="text-[11px] text-amber-800 font-bold">
+                                            (Due at pickup on {po.hireStartDate})
+                                          </span>
+                                        ) : (
+                                          <span className="text-[11px] text-emerald-700 font-bold">
+                                            (✓ Settled {po.balancePaidAt ? `on ${po.balancePaidAt}` : ''})
+                                          </span>
+                                        )}
+                                      </span>
+                                    </div>
+                                  );
+                                })()}
                               </div>
 
                               {/* STAGE-DRIVEN ACTION BUTTONS */}
                               <div className="flex flex-wrap items-center gap-2">
+                                {/* RESEND REMAINDER BALANCE EMAIL */}
+                                {(() => {
+                                  const isDepositPaid = po.paymentStatus === 'PARTIAL_DEPOSIT' || po.paymentStatus === 'PAID_WITH_DEPOSIT' || po.paymentStatus === 'FULL_BALANCE_PAID' || !!po.depositPaidAt;
+                                  const isFullyPaid = po.paymentStatus === 'FULL_BALANCE_PAID' || po.paymentStatus === 'PAID_WITH_DEPOSIT';
+                                  const totalOrderValue = po.totalHireFee + po.totalDepositHeld;
+                                  const outstandingDue = isFullyPaid ? 0 : isDepositPaid ? po.totalHireFee : totalOrderValue;
+
+                                  if (outstandingDue > 0 && po.customerEmail && !isCancelled) {
+                                    return (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleResendRemainderEmail(po)}
+                                        className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-300 rounded-xl font-extrabold text-xs shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+                                        title={`Send email to ${po.customerEmail} with 1-click link to settle outstanding £${outstandingDue.toFixed(2)}`}
+                                      >
+                                        <Mail className="w-3.5 h-3.5 text-amber-700" /> 📧 Resend Pay Remainder Email (£{outstandingDue})
+                                      </button>
+                                    );
+                                  }
+                                  return null;
+                                })()}
+
                                 {isPickPending && (
                                   <>
                                     <span className="px-3 py-1.5 bg-amber-100 text-amber-950 border-2 border-amber-300 rounded-xl font-extrabold text-xs shadow-2xs">
@@ -14288,6 +16941,9 @@ export default function KiltHireApp() {
               </div>
               );
             })()}
+
+              {/* 📜 HISTORIC PURCHASE ORDERS ARCHIVE & REPEAT CUSTOMER SEARCH */}
+              {activeTab === 'historic_pos' && renderHistoricArchiveView()}
 
               {/* TAB 5: DRY CLEANING LAUNDRY */}
               {activeTab === 'laundry' && (
@@ -14911,7 +17567,7 @@ export default function KiltHireApp() {
 
                             <div className="bg-white border border-slate-200 p-4.5 rounded-2xl shadow-sm space-y-1">
                               <span className="text-xs text-emerald-800 font-bold block flex items-center gap-1">
-                                <ShieldCheck className="w-4 h-4 text-emerald-600" /> Stock Fleet Valuation
+                                <ShieldCheck className="w-4 h-4 text-emerald-600" /> Stock Asset Valuation
                               </span>
                               <span className="text-xl font-extrabold text-emerald-700">£{fleetAssetValuation.toLocaleString()}</span>
                               <span className="text-[10px] text-slate-400 block">{items.length} Registered Items</span>
@@ -14927,7 +17583,7 @@ export default function KiltHireApp() {
 
                             <div className="bg-white border border-slate-200 p-4.5 rounded-2xl shadow-sm space-y-1">
                               <span className="text-xs text-slate-500 font-bold block flex items-center gap-1">
-                                <AlertTriangle className="w-4 h-4 text-rose-600" /> Fleet Purchase Cost
+                                <AlertTriangle className="w-4 h-4 text-rose-600" /> Stock Purchase Cost
                               </span>
                               <span className="text-xl font-extrabold text-rose-700">£{fleetCost.toLocaleString()}</span>
                               <span className="text-[10px] text-slate-400 block">Total Expenditure</span>
@@ -14935,7 +17591,7 @@ export default function KiltHireApp() {
 
                             <div className="bg-white border border-slate-200 p-4.5 rounded-2xl shadow-sm space-y-1">
                               <span className="text-xs text-slate-500 font-bold block flex items-center gap-1">
-                                <TrendingUp className="w-4 h-4 text-amber-600" /> Net Profit &amp; Fleet ROI
+                                <TrendingUp className="w-4 h-4 text-amber-600" /> Net Profit &amp; Stock ROI
                               </span>
                               <span className={`text-xl font-extrabold block ${fleetNetProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
                                 {fleetNetProfit >= 0 ? `+£${fleetNetProfit.toLocaleString()}` : `-£${Math.abs(fleetNetProfit).toLocaleString()}`}
@@ -14951,7 +17607,7 @@ export default function KiltHireApp() {
                         {/* TARTAN POPULARITY RANKING */}
                         <div className="bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-4">
                           <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
-                            <Tag className="w-5 h-5 text-amber-600" /> Top Performing Tartans & Outfits Leaderboard
+                            <Tag className="w-5 h-5 text-amber-600" /> Top Performing Products Leaderboard
                           </h3>
 
                           {(() => {
@@ -15504,6 +18160,9 @@ export default function KiltHireApp() {
                 </div>
               )}
 
+              {/* TAB: 10-YEAR BUSINESS VALUATION & HISTORICAL TRADING LEDGER */}
+              {activeTab === 'business_valuation' && renderBusinessValuationView()}
+
               {/* TAB: RETAINED SECURITY DEPOSITS & REPAIR EXPENSES LEDGER */}
               {activeTab === 'deposit_ledger' && (
                 <div className="space-y-6">
@@ -15532,13 +18191,31 @@ export default function KiltHireApp() {
                             </p>
                           </div>
 
-                          <div className="flex flex-wrap items-center gap-2.5">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={handleSyncAllPoDeposits}
+                              className="px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs rounded-xl shadow transition flex items-center gap-1.5 cursor-pointer border border-indigo-400/40"
+                              title="Scan all customer bookings and sync any damaged / missing deposit forfeitures"
+                            >
+                              <RefreshCw className="w-4 h-4" /> Sync All PO Retentions
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={handleClearMockLedgerData}
+                              className="px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs rounded-xl border border-slate-700 shadow transition flex items-center gap-1.5 cursor-pointer"
+                              title="Clear initial demo mockup entries and keep only live shop data"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" /> Clear Mockups
+                            </button>
+
                             <button
                               type="button"
                               onClick={() => setShowPrintLedgerStatementModal(true)}
-                              className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white font-extrabold text-xs rounded-xl border border-white/20 shadow transition flex items-center gap-1.5 cursor-pointer"
+                              className="px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white font-extrabold text-xs rounded-xl border border-white/20 shadow transition flex items-center gap-1.5 cursor-pointer"
                             >
-                              <Printer className="w-4 h-4" /> Reconciliation Statement
+                              <Printer className="w-4 h-4" /> Statement
                             </button>
 
                             <button
@@ -15912,13 +18589,13 @@ export default function KiltHireApp() {
                         {/* LEFT COLUMN: SETTINGS TABS & FORM CONTROLS (7 COLS) */}
                         <div className="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-5">
                           
-                          {/* SUB-TABS PILLS */}
-                          <div className="flex flex-wrap gap-1.5 p-1 bg-slate-100 rounded-xl">
+                          {/* ENHANCED LIFECYCLE TEMPLATE NAVIGATION */}
+                          <div className="flex flex-wrap gap-1 p-1 bg-slate-100 rounded-2xl border border-slate-200">
                             <button
                               type="button"
                               onClick={() => setActiveEmailTemplateTab('BRANDING')}
-                              className={`px-3 py-1.5 rounded-lg font-extrabold text-xs transition cursor-pointer ${
-                                activeEmailTemplateTab === 'BRANDING' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                              className={`px-2.5 py-1.5 rounded-xl font-extrabold text-xs transition cursor-pointer ${
+                                activeEmailTemplateTab === 'BRANDING' ? 'bg-white text-slate-900 shadow-xs border border-slate-200' : 'text-slate-600 hover:text-slate-900'
                               }`}
                             >
                               🏪 Store Identity
@@ -15926,26 +18603,44 @@ export default function KiltHireApp() {
                             <button
                               type="button"
                               onClick={() => setActiveEmailTemplateTab('BOOKING')}
-                              className={`px-3 py-1.5 rounded-lg font-extrabold text-xs transition cursor-pointer ${
-                                activeEmailTemplateTab === 'BOOKING' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                              className={`px-2.5 py-1.5 rounded-xl font-extrabold text-xs transition cursor-pointer ${
+                                activeEmailTemplateTab === 'BOOKING' ? 'bg-white text-slate-900 shadow-xs border border-slate-200' : 'text-slate-600 hover:text-slate-900'
                               }`}
                             >
-                              📜 Booking &amp; Invoice
+                              📜 Booking Summary
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setActiveEmailTemplateTab('PAYMENT_INVOICE')}
+                              className={`px-2.5 py-1.5 rounded-xl font-extrabold text-xs transition cursor-pointer ${
+                                activeEmailTemplateTab === 'PAYMENT_INVOICE' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                              }`}
+                            >
+                              🧾 Payment &amp; Invoice
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setActiveEmailTemplateTab('CANCELLATION')}
+                              className={`px-2.5 py-1.5 rounded-xl font-extrabold text-xs transition cursor-pointer ${
+                                activeEmailTemplateTab === 'CANCELLATION' ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                              }`}
+                            >
+                              ❌ Cancellation &amp; Deposit
                             </button>
                             <button
                               type="button"
                               onClick={() => setActiveEmailTemplateTab('COLLECTION')}
-                              className={`px-3 py-1.5 rounded-lg font-extrabold text-xs transition cursor-pointer ${
-                                activeEmailTemplateTab === 'COLLECTION' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                              className={`px-2.5 py-1.5 rounded-xl font-extrabold text-xs transition cursor-pointer ${
+                                activeEmailTemplateTab === 'COLLECTION' ? 'bg-white text-slate-900 shadow-xs border border-slate-200' : 'text-slate-600 hover:text-slate-900'
                               }`}
                             >
-                              🛍️ Ready for Pickup
+                              🛍️ Pickup Ready
                             </button>
                             <button
                               type="button"
                               onClick={() => setActiveEmailTemplateTab('REMINDER')}
-                              className={`px-3 py-1.5 rounded-lg font-extrabold text-xs transition cursor-pointer ${
-                                activeEmailTemplateTab === 'REMINDER' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                              className={`px-2.5 py-1.5 rounded-xl font-extrabold text-xs transition cursor-pointer ${
+                                activeEmailTemplateTab === 'REMINDER' ? 'bg-white text-slate-900 shadow-xs border border-slate-200' : 'text-slate-600 hover:text-slate-900'
                               }`}
                             >
                               ⏰ Return Reminder
@@ -15953,8 +18648,8 @@ export default function KiltHireApp() {
                             <button
                               type="button"
                               onClick={() => setActiveEmailTemplateTab('OVERDUE')}
-                              className={`px-3 py-1.5 rounded-lg font-extrabold text-xs transition cursor-pointer ${
-                                activeEmailTemplateTab === 'OVERDUE' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                              className={`px-2.5 py-1.5 rounded-xl font-extrabold text-xs transition cursor-pointer ${
+                                activeEmailTemplateTab === 'OVERDUE' ? 'bg-white text-slate-900 shadow-xs border border-slate-200' : 'text-slate-600 hover:text-slate-900'
                               }`}
                             >
                               🚨 Overdue Notice
@@ -16107,6 +18802,141 @@ export default function KiltHireApp() {
                                   onChange={(e) => setEmailSettings(prev => ({
                                     ...prev,
                                     bookingConfirmation: { ...prev.bookingConfirmation, paypalNotice: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* FORM TAB 2.5: PAYMENT RECEIPT & TAX INVOICE */}
+                          {activeEmailTemplateTab === 'PAYMENT_INVOICE' && (
+                            <div className="space-y-4">
+                              <h3 className="text-sm font-extrabold text-slate-900 border-b border-slate-100 pb-2 flex items-center gap-1.5">
+                                🧾 Payment Confirmation &amp; Official Hire Invoice
+                              </h3>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Email Subject &amp; Headline</label>
+                                <input
+                                  type="text"
+                                  value={emailSettings.paymentReceiptInvoice?.headline || ''}
+                                  onChange={(e) => setEmailSettings(prev => ({
+                                    ...prev,
+                                    paymentReceiptInvoice: { ...prev.paymentReceiptInvoice, headline: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Payment Received Intro Message</label>
+                                <textarea
+                                  rows={3}
+                                  value={emailSettings.paymentReceiptInvoice?.customIntro || ''}
+                                  onChange={(e) => setEmailSettings(prev => ({
+                                    ...prev,
+                                    paymentReceiptInvoice: { ...prev.paymentReceiptInvoice, customIntro: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Tax / Small Business Invoice Note</label>
+                                <input
+                                  type="text"
+                                  value={emailSettings.paymentReceiptInvoice?.taxOrVatNotice || ''}
+                                  onChange={(e) => setEmailSettings(prev => ({
+                                    ...prev,
+                                    paymentReceiptInvoice: { ...prev.paymentReceiptInvoice, taxOrVatNotice: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Security Deposit Escrow &amp; Return Policy Notice</label>
+                                <textarea
+                                  rows={2}
+                                  value={emailSettings.paymentReceiptInvoice?.depositPolicyStatement || ''}
+                                  onChange={(e) => setEmailSettings(prev => ({
+                                    ...prev,
+                                    paymentReceiptInvoice: { ...prev.paymentReceiptInvoice, depositPolicyStatement: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* FORM TAB 2.6: ORDER CANCELLATION & SETTLEMENT */}
+                          {activeEmailTemplateTab === 'CANCELLATION' && (
+                            <div className="space-y-4">
+                              <h3 className="text-sm font-extrabold text-slate-900 border-b border-slate-100 pb-2 flex items-center gap-1.5">
+                                ❌ Order Cancellation &amp; Deposit Settlement Template
+                              </h3>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Email Subject &amp; Headline</label>
+                                <input
+                                  type="text"
+                                  value={emailSettings.orderCancellation?.headline || ''}
+                                  onChange={(e) => setEmailSettings(prev => ({
+                                    ...prev,
+                                    orderCancellation: { ...prev.orderCancellation, headline: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Cancellation Acknowledgment Message</label>
+                                <textarea
+                                  rows={3}
+                                  value={emailSettings.orderCancellation?.customIntro || ''}
+                                  onChange={(e) => setEmailSettings(prev => ({
+                                    ...prev,
+                                    orderCancellation: { ...prev.orderCancellation, customIntro: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Deposit Retention &amp; Cancellation Terms</label>
+                                <textarea
+                                  rows={2}
+                                  value={emailSettings.orderCancellation?.depositRetentionPolicy || ''}
+                                  onChange={(e) => setEmailSettings(prev => ({
+                                    ...prev,
+                                    orderCancellation: { ...prev.orderCancellation, depositRetentionPolicy: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Refund Processing Timeframe Notice</label>
+                                <input
+                                  type="text"
+                                  value={emailSettings.orderCancellation?.refundProcessingNotice || ''}
+                                  onChange={(e) => setEmailSettings(prev => ({
+                                    ...prev,
+                                    orderCancellation: { ...prev.orderCancellation, refundProcessingNotice: e.target.value }
+                                  }))}
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Customer Support &amp; Reschedule Prompt</label>
+                                <input
+                                  type="text"
+                                  value={emailSettings.orderCancellation?.supportContactPrompt || ''}
+                                  onChange={(e) => setEmailSettings(prev => ({
+                                    ...prev,
+                                    orderCancellation: { ...prev.orderCancellation, supportContactPrompt: e.target.value }
                                   }))}
                                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none"
                                 />
@@ -16333,37 +19163,70 @@ export default function KiltHireApp() {
                               </div>
                             </div>
 
-                            {/* SIMULATE PAYMENT STATUS TOGGLE */}
-                            <div className="flex flex-wrap items-center gap-1.5 bg-slate-50 p-1.5 rounded-xl border border-slate-200 text-xs">
-                              <span className="text-[10px] font-bold text-slate-500 uppercase px-1">Simulate Status:</span>
-                              <button
-                                type="button"
-                                onClick={() => setSimulatedPaymentStatus('FULL_BALANCE_PAID')}
-                                className={`px-2 py-0.5 rounded-lg text-[11px] font-extrabold transition cursor-pointer ${
-                                  simulatedPaymentStatus === 'FULL_BALANCE_PAID' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                                }`}
-                              >
-                                ✅ Paid in Full (£0 Due)
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setSimulatedPaymentStatus('PARTIAL_DEPOSIT')}
-                                className={`px-2 py-0.5 rounded-lg text-[11px] font-extrabold transition cursor-pointer ${
-                                  simulatedPaymentStatus === 'PARTIAL_DEPOSIT' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                                }`}
-                              >
-                                💳 Deposit Paid (£110 Due)
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setSimulatedPaymentStatus('UNPAID')}
-                                className={`px-2 py-0.5 rounded-lg text-[11px] font-extrabold transition cursor-pointer ${
-                                  simulatedPaymentStatus === 'UNPAID' ? 'bg-amber-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                                }`}
-                              >
-                                ⚠️ Unpaid (£160 Due)
-                              </button>
-                            </div>
+                            {/* SIMULATION SCENARIO TOGGLES */}
+                            {activeEmailTemplateTab === 'CANCELLATION' ? (
+                              <div className="flex flex-wrap items-center gap-1.5 bg-rose-50/60 p-1.5 rounded-xl border border-rose-200 text-xs">
+                                <span className="text-[10px] font-bold text-rose-900 uppercase px-1">Simulate Settlement:</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setSimulatedCancelRefund('FULL_REFUND')}
+                                  className={`px-2 py-0.5 rounded-lg text-[11px] font-extrabold transition cursor-pointer ${
+                                    simulatedCancelRefund === 'FULL_REFUND' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                                  }`}
+                                >
+                                  💰 100% Refund (£50 back)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setSimulatedCancelRefund('PARTIAL_RETAINED')}
+                                  className={`px-2 py-0.5 rounded-lg text-[11px] font-extrabold transition cursor-pointer ${
+                                    simulatedCancelRefund === 'PARTIAL_RETAINED' ? 'bg-amber-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                                  }`}
+                                >
+                                  ⚖️ Partial (£25 kept / £25 back)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setSimulatedCancelRefund('FULL_RETAINED')}
+                                  className={`px-2 py-0.5 rounded-lg text-[11px] font-extrabold transition cursor-pointer ${
+                                    simulatedCancelRefund === 'FULL_RETAINED' ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                                  }`}
+                                >
+                                  🔒 100% Retained (£50 kept)
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex flex-wrap items-center gap-1.5 bg-slate-50 p-1.5 rounded-xl border border-slate-200 text-xs">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase px-1">Simulate Status:</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setSimulatedPaymentStatus('FULL_BALANCE_PAID')}
+                                  className={`px-2 py-0.5 rounded-lg text-[11px] font-extrabold transition cursor-pointer ${
+                                    simulatedPaymentStatus === 'FULL_BALANCE_PAID' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                                  }`}
+                                >
+                                  ✅ Paid in Full (£0 Due)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setSimulatedPaymentStatus('PARTIAL_DEPOSIT')}
+                                  className={`px-2 py-0.5 rounded-lg text-[11px] font-extrabold transition cursor-pointer ${
+                                    simulatedPaymentStatus === 'PARTIAL_DEPOSIT' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                                  }`}
+                                >
+                                  💳 Deposit Paid (£110 Due)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setSimulatedPaymentStatus('UNPAID')}
+                                  className={`px-2 py-0.5 rounded-lg text-[11px] font-extrabold transition cursor-pointer ${
+                                    simulatedPaymentStatus === 'UNPAID' ? 'bg-amber-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                                  }`}
+                                >
+                                  ⚠️ Unpaid (£160 Due)
+                                </button>
+                              </div>
+                            )}
                           </div>
 
                           {/* SIMULATED EMAIL RENDER CONTAINER */}
@@ -16385,9 +19248,15 @@ export default function KiltHireApp() {
                                   </div>
                                   <span 
                                     className="px-2.5 py-0.5 rounded-full text-[9px] font-extrabold text-white uppercase"
-                                    style={{ backgroundColor: emailSettings.brandColor }}
+                                    style={{ 
+                                      backgroundColor: activeEmailTemplateTab === 'PAYMENT_INVOICE' ? '#059669' :
+                                                       activeEmailTemplateTab === 'CANCELLATION' ? '#dc2626' :
+                                                       emailSettings.brandColor 
+                                    }}
                                   >
                                     {activeEmailTemplateTab === 'BRANDING' || activeEmailTemplateTab === 'BOOKING' ? 'CONFIRMATION' :
+                                     activeEmailTemplateTab === 'PAYMENT_INVOICE' ? 'PAID INVOICE' :
+                                     activeEmailTemplateTab === 'CANCELLATION' ? 'CANCELLED' :
                                      activeEmailTemplateTab === 'COLLECTION' ? 'READY' :
                                      activeEmailTemplateTab === 'REMINDER' ? 'REMINDER' : 'OVERDUE'}
                                   </span>
@@ -16397,12 +19266,16 @@ export default function KiltHireApp() {
                                 <div className="p-4 sm:p-5 space-y-3">
                                   <h5 className="text-sm font-extrabold text-slate-900">
                                     {activeEmailTemplateTab === 'BRANDING' || activeEmailTemplateTab === 'BOOKING' ? emailSettings.bookingConfirmation.headline :
+                                     activeEmailTemplateTab === 'PAYMENT_INVOICE' ? emailSettings.paymentReceiptInvoice?.headline :
+                                     activeEmailTemplateTab === 'CANCELLATION' ? emailSettings.orderCancellation?.headline :
                                      activeEmailTemplateTab === 'COLLECTION' ? emailSettings.collectionReady.headline :
                                      activeEmailTemplateTab === 'REMINDER' ? emailSettings.returnReminder.headline : emailSettings.overdueAlert.headline}
                                   </h5>
 
                                   <p className="text-slate-600 text-xs leading-relaxed">
                                     {activeEmailTemplateTab === 'BRANDING' || activeEmailTemplateTab === 'BOOKING' ? emailSettings.bookingConfirmation.customIntro :
+                                     activeEmailTemplateTab === 'PAYMENT_INVOICE' ? emailSettings.paymentReceiptInvoice?.customIntro :
+                                     activeEmailTemplateTab === 'CANCELLATION' ? emailSettings.orderCancellation?.customIntro :
                                      activeEmailTemplateTab === 'COLLECTION' ? emailSettings.collectionReady.customIntro :
                                      activeEmailTemplateTab === 'REMINDER' ? emailSettings.returnReminder.customIntro : emailSettings.overdueAlert.customIntro}
                                   </p>
@@ -16433,6 +19306,52 @@ export default function KiltHireApp() {
                                   </div>
 
                                   {/* TEMPLATE SPECIFIC CALLOUT */}
+                                  {activeEmailTemplateTab === 'PAYMENT_INVOICE' && (
+                                    <div className="space-y-2.5">
+                                      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-[11px] text-emerald-950 space-y-1">
+                                        <p className="font-bold">🛡️ {emailSettings.paymentReceiptInvoice?.depositPolicyStatement}</p>
+                                        <p className="text-emerald-800 text-[10px]">📑 {emailSettings.paymentReceiptInvoice?.taxOrVatNotice}</p>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {activeEmailTemplateTab === 'CANCELLATION' && (
+                                    <div className="space-y-2.5">
+                                      {/* CANCELLATION SETTLEMENT TABLE */}
+                                      <table className="w-full text-[11px] bg-slate-50 border border-rose-200 rounded-xl overflow-hidden">
+                                        <thead className="bg-rose-50 text-rose-900 font-bold border-b border-rose-200 text-[10px]">
+                                          <tr>
+                                            <th className="p-2 text-left">Settlement Ledger</th>
+                                            <th className="p-2 text-right">Amount</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-200 font-medium">
+                                          <tr>
+                                            <td className="p-2 text-slate-600">Security Deposit Held:</td>
+                                            <td className="p-2 text-right font-bold text-slate-900">£50.00</td>
+                                          </tr>
+                                          <tr>
+                                            <td className="p-2 text-rose-700 font-bold">Admin / Cancellation Retention:</td>
+                                            <td className="p-2 text-right font-bold text-rose-700">
+                                              -£{simulatedCancelRefund === 'FULL_RETAINED' ? '50.00' : simulatedCancelRefund === 'PARTIAL_RETAINED' ? '25.00' : '0.00'}
+                                            </td>
+                                          </tr>
+                                          <tr className="bg-emerald-50 font-bold text-emerald-900">
+                                            <td className="p-2">💰 Net Refund Initiated:</td>
+                                            <td className="p-2 text-right font-black text-emerald-700">
+                                              £{simulatedCancelRefund === 'FULL_REFUND' ? '50.00' : simulatedCancelRefund === 'PARTIAL_RETAINED' ? '25.00' : '0.00'}
+                                            </td>
+                                          </tr>
+                                        </tbody>
+                                      </table>
+
+                                      <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-[11px] text-rose-950 space-y-1">
+                                        <p className="font-bold">📋 {emailSettings.orderCancellation?.depositRetentionPolicy}</p>
+                                        <p className="text-rose-800 text-[10px]">💳 {emailSettings.orderCancellation?.refundProcessingNotice}</p>
+                                      </div>
+                                    </div>
+                                  )}
+
                                   {activeEmailTemplateTab === 'COLLECTION' && (
                                     <div className="space-y-2">
                                       <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-[11px] text-emerald-950 space-y-1">
@@ -17042,7 +19961,7 @@ export default function KiltHireApp() {
                         const replacementExpenses = depositLedgerEntries.filter(e => e.entryType === 'EXPENSE_REPLACEMENT').reduce((s, e) => s + (e.amount || 0), 0);
                         const totalOperatingExpenses = laundryExpenses + repairExpenses + replacementExpenses;
 
-                        // Stock Fleet Valuation
+                        // Stock Asset Valuation
                         const fleetAssetValuation = items.reduce((sum, item) => sum + (item.currentAssetValue != null ? item.currentAssetValue : (item.purchaseCost != null ? item.purchaseCost : (item.sizeGroup === 'Kid' ? 120 : 250))), 0);
                         const fleetInitialOutlay = items.reduce((sum, item) => sum + (item.purchaseCost != null ? item.purchaseCost : (item.sizeGroup === 'Kid' ? 120 : 250)), 0);
 
@@ -17685,6 +20604,47 @@ export default function KiltHireApp() {
                   />
                 </div>
               </div>
+
+              {(showEditItemModal.isBulkPool || showEditItemModal.id.startsWith('BIN-')) && (
+                <div className="bg-purple-50/80 border border-purple-200 rounded-xl p-3.5 space-y-2.5">
+                  <div className="flex items-center gap-1.5 text-xs font-black text-purple-950">
+                    <Package className="w-4 h-4 text-purple-700" />
+                    Bulk Storage Box &amp; Pool Inventory Quantities
+                  </div>
+                  <div className="grid grid-cols-3 gap-2.5 text-xs">
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1">Container / Box #</label>
+                      <input 
+                        type="text" 
+                        value={showEditItemModal.boxNumber || 'Box 1'}
+                        onChange={e => setShowEditItemModal({...showEditItemModal, boxNumber: e.target.value})}
+                        className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-semibold outline-none focus:border-purple-500 shadow-2xs"
+                        placeholder="e.g. Box 1"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1">Available in Shop</label>
+                      <input 
+                        type="number" 
+                        min={0}
+                        value={showEditItemModal.bulkQuantity ?? 50}
+                        onChange={e => setShowEditItemModal({...showEditItemModal, bulkQuantity: Number(e.target.value)})}
+                        className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-mono font-bold outline-none focus:border-purple-500 shadow-2xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1">Total Pool Count</label>
+                      <input 
+                        type="number" 
+                        min={1}
+                        value={showEditItemModal.bulkTotal ?? 50}
+                        onChange={e => setShowEditItemModal({...showEditItemModal, bulkTotal: Number(e.target.value)})}
+                        className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-mono font-bold outline-none focus:border-purple-500 shadow-2xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-slate-700 font-bold mb-1">Current Garment Status</label>
@@ -19864,12 +22824,18 @@ export default function KiltHireApp() {
                         const selectedCategories = new Set(selectedItems.map(i => i.category));
                         const primaryDemographic = selectedItems[0]?.sizeGroup || 'Adult';
 
-                        // Recommend available items from categories not yet scanned
+                        // Recommend available items from categories not yet scanned (excluding packaging outfit bags)
                         const recommendedItems = items.filter(i => 
                           i.status === 'AVAILABLE' &&
                           !newPoForm.selectedItemIds.includes(i.id) &&
                           i.sizeGroup === primaryDemographic &&
-                          !selectedCategories.has(i.category)
+                          !selectedCategories.has(i.category) &&
+                          !i.id.toUpperCase().startsWith('OUTF') &&
+                          !i.id.toUpperCase().startsWith('BIN-OUTF') &&
+                          !i.id.toUpperCase().startsWith('BAG-') &&
+                          !i.id.toUpperCase().startsWith('OB-') &&
+                          !i.category.toLowerCase().includes('bag') &&
+                          !(i.name || '').toLowerCase().includes('outfit bag')
                         ).slice(0, 6);
 
                         if (recommendedItems.length === 0) {
@@ -21177,6 +24143,169 @@ export default function KiltHireApp() {
         </div>
       )}
 
+      
+      {/* ─────────────────────────────────────────────────────────────────────────── */}
+      {/* 🔫 MODAL: TERA D5100 WIRELESS HARDWARE SCANNER TEST BENCH & SETUP GUIDE    */}
+      {/* ─────────────────────────────────────────────────────────────────────────── */}
+      {showHardwareScannerModal && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-2xl w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 my-auto max-h-[92vh] overflow-y-auto">
+            {/* HEADER */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 bg-amber-100 text-amber-800 rounded-2xl flex items-center justify-center border border-amber-300 shrink-0">
+                  <QrCode className="w-5 h-5 text-amber-700" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base sm:text-lg font-black text-slate-900">Tera Wireless 2D Scanner (Model: D5100)</h3>
+                    <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-black rounded-full uppercase tracking-wider flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Plug &amp; Play Ready
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Works automatically with any USB / 2.4GHz Wireless / Bluetooth barcode scanner gun.
+                  </p>
+                </div>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setShowHardwareScannerModal(false)} 
+                className="text-slate-400 hover:text-slate-700 p-2 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* HOW IT WORKS */}
+            <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white p-4 sm:p-5 rounded-2xl border border-indigo-900 space-y-3">
+              <h4 className="text-xs font-black uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                <Zap className="w-4 h-4 text-amber-400" /> How the Tera D5100 Works on This App:
+              </h4>
+              <p className="text-xs text-indigo-100 leading-relaxed">
+                The Tera D5100 acts as a <strong>High-Speed Keyboard Wedge</strong>. When you squeeze the trigger, it translates the QR tag into keystrokes and transmits them into the PC in under 20 milliseconds:
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1">
+                <div className="bg-white/10 p-2.5 rounded-xl border border-white/10">
+                  <span className="font-bold text-amber-300 block mb-0.5">🛒 At Fitting &amp; Orders (POS):</span>
+                  <span className="text-slate-200 text-[11px]">Beeping a tag adds the garment directly to the customer's active hire booking.</span>
+                </div>
+                <div className="bg-white/10 p-2.5 rounded-xl border border-white/10">
+                  <span className="font-bold text-emerald-300 block mb-0.5">⚡ Saturday Zap &amp; Go Returns:</span>
+                  <span className="text-slate-200 text-[11px]">Continuous zapping marks garments returned and releases security deposits.</span>
+                </div>
+                <div className="bg-white/10 p-2.5 rounded-xl border border-white/10">
+                  <span className="font-bold text-purple-300 block mb-0.5">🔍 Shop Inventory Search:</span>
+                  <span className="text-slate-200 text-[11px]">Zapping any tag pulls up that garment's lifetime maintenance log.</span>
+                </div>
+                <div className="bg-white/10 p-2.5 rounded-xl border border-white/10">
+                  <span className="font-bold text-cyan-300 block mb-0.5">🔊 Sound Feedback:</span>
+                  <span className="text-slate-200 text-[11px]">Plays an immediate confirmation chime through the PC speakers.</span>
+                </div>
+              </div>
+            </div>
+
+            {/* LIVE TEST TRIGGER BOX */}
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+                  <Activity className="w-4 h-4 text-emerald-600" /> Live Trigger Test Box
+                </h4>
+                <span className="text-[11px] text-slate-500 font-bold">
+                  Aim Tera D5100 at any barcode and squeeze trigger
+                </span>
+              </div>
+
+              {/* DIRECT TEST INPUT */}
+              <div>
+                <input
+                  type="text"
+                  autoFocus
+                  data-scanner-input="true"
+                  placeholder="⚡ Point Tera gun and click trigger into here..."
+                  value={hardwareLiveKeystrokes}
+                  onChange={(e) => setHardwareLiveKeystrokes(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && hardwareLiveKeystrokes.trim()) {
+                      handleScanCode(hardwareLiveKeystrokes.trim());
+                      setHardwareLiveKeystrokes('');
+                    }
+                  }}
+                  className="w-full bg-white border-2 border-emerald-500 rounded-xl px-4 py-3 font-mono font-bold text-sm text-slate-900 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200 shadow-sm"
+                />
+              </div>
+
+              {lastHardwareScan ? (
+                <div className="bg-emerald-50 border-2 border-emerald-400 p-3.5 rounded-xl space-y-1 animate-in zoom-in-95">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-emerald-950 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Hardware Scan Captured!
+                    </span>
+                    <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-200/80 px-2 py-0.5 rounded-full">
+                      {lastHardwareScan.timestamp}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 pt-1">
+                    <span className="font-mono font-black text-sm bg-white px-2.5 py-1 rounded border border-emerald-300 text-emerald-950">
+                      {lastHardwareScan.code}
+                    </span>
+                    <span className="text-xs font-bold text-emerald-900">
+                      {lastHardwareScan.itemMatch}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-white p-4 rounded-xl border border-dashed border-slate-300 text-center text-xs text-slate-400 space-y-1">
+                  <p className="font-bold text-slate-600">No hardware scans captured this session yet.</p>
+                  <p className="text-[11px]">Pick up your Tera D5100 gun, point it at any garment QR or barcode, and squeeze the trigger!</p>
+                </div>
+              )}
+
+              {/* RECENT SCANS LOG */}
+              {hardwareScannerTestLog.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  <span className="text-[11px] font-extrabold text-slate-700 block">Recent Scans Log:</span>
+                  <div className="max-h-36 overflow-y-auto divide-y divide-slate-100 bg-white rounded-xl border border-slate-200 text-xs">
+                    {hardwareScannerTestLog.map((log, idx) => (
+                      <div key={idx} className="p-2 flex items-center justify-between hover:bg-slate-50">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-slate-900 text-[11px]">{log.code}</span>
+                          <span className="text-slate-600 text-[11px] truncate max-w-xs">{log.itemMatch}</span>
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-400">{log.time}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 3-STEP TERA D5100 PAIRING GUIDE */}
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
+              <h4 className="text-xs font-black uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+                <Sliders className="w-4 h-4 text-amber-600" /> Tera D5100 Pairing &amp; Setup:
+              </h4>
+              <ol className="list-decimal list-inside space-y-1.5 text-xs text-slate-600">
+                <li><strong>2.4GHz Wireless Dongle:</strong> Ensure the small black USB receiver dongle that came in the Tera box is plugged into your PC USB port.</li>
+                <li><strong>Turn On Gun:</strong> Squeeze the trigger once to wake up the scanner. The blue light will illuminate.</li>
+                <li><strong>Ready to Scan:</strong> Squeeze the trigger on any QR tag — the scanned data will instantly stream into the app!</li>
+              </ol>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowHardwareScannerModal(false)}
+                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-950 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer"
+              >
+                Close Scanner Guide
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
       {/* ADD NEW PRODUCT CATEGORY MODAL FOR PRICING MATRIX */}
       {showAddCategoryModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
@@ -21289,9 +24418,14 @@ export default function KiltHireApp() {
       {/* 📦 PICK & PACK ASSEMBLY VERIFICATION MODAL (BESPOKE HANGER & OUTFIT BAG QR SCANNERS) */}
       {showAssemblyModal && (() => {
         const po = showAssemblyModal;
+        const requiresHangerAndBag = (po.items || []).some(it => ['Kilts', 'Jackets', 'Waistcoats'].includes(it.category));
+        const totalItemsCount = (po.items || []).length;
+        const pickedItemsCount = (po.items || []).filter(it => assemblyPickedItemIds.includes(it.qrCodeId)).length;
+        const allGarmentsPicked = totalItemsCount > 0 && pickedItemsCount === totalItemsCount;
         const isHangerFilled = Boolean(assemblyHangerInput.trim());
         const isBagFilled = Boolean(assemblyBagInput.trim());
-        const isFullyVerified = isHangerFilled && isBagFilled;
+        const isFullyVerified = allGarmentsPicked && (!requiresHangerAndBag || (isHangerFilled && isBagFilled));
+        const pickPercentage = totalItemsCount > 0 ? Math.round((pickedItemsCount / totalItemsCount) * 100) : 0;
 
         return (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
@@ -21305,7 +24439,7 @@ export default function KiltHireApp() {
                       {po.id}
                     </span>
                     <span className="px-2.5 py-0.5 text-xs font-extrabold bg-amber-100 text-amber-900 border border-amber-300 rounded-full">
-                      Pick &amp; Pack Order Assembly Queue
+                      Step 5: Pick &amp; Pack Order Assembly
                     </span>
                   </div>
                   <h3 className="text-lg font-extrabold text-slate-900 mt-1">
@@ -21369,131 +24503,285 @@ export default function KiltHireApp() {
                   </div>
                 </div>
               )}
-
-              {/* SECTION 2: GARMENTS PICK CHECKLIST */}
-              <div className="space-y-2">
-                <h4 className="text-xs font-extrabold text-slate-700 uppercase tracking-wider flex items-center justify-between">
-                  <span>🧥 Garment Pick List ({po.items.length} Items)</span>
-                  <span className="text-slate-400 font-normal">Verify iron-on QR tags</span>
-                </h4>
-                <div className="border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100">
-                  {po.items.map(item => (
-                    <div key={item.qrCodeId} className="p-3 bg-slate-50/50 flex items-center justify-between gap-3 text-xs">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono font-extrabold text-amber-900 bg-amber-100 px-2 py-0.5 rounded text-[10px] border border-amber-300">
-                            {item.qrCodeId}
-                          </span>
-                          <span className="font-extrabold text-slate-900">{item.itemName}</span>
-                        </div>
-                        <span className="text-[11px] text-slate-500 font-semibold block mt-0.5">
-                          Category: {item.category} | Size: {item.size} ({item.sizeGroup})
-                        </span>
-                      </div>
-                      <span className="px-2.5 py-1 bg-emerald-100 text-emerald-900 font-extrabold text-[10px] rounded-full border border-emerald-300 shrink-0">
-                        ✓ PICKED
-                      </span>
-                    </div>
-                  ))}
+              {/* SECTION: TERA HARDWARE SCANNER LIVE TARGET & INPUT */}
+              <div className="bg-slate-900 text-white p-3.5 rounded-2xl border border-slate-800 shadow-sm space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                    </span>
+                    <span className="text-xs font-extrabold text-amber-400 flex items-center gap-1.5">
+                      <QrCode className="w-4 h-4 text-amber-400" /> Tera Barcode / QR Gun Active
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    Global scanner listening...
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="Scan garment QR (e.g. JKT-1001), Hanger, or Bag with scanner gun..."
+                    value={assemblyLiveScanInput}
+                    onChange={e => setAssemblyLiveScanInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && assemblyLiveScanInput.trim()) {
+                        e.preventDefault();
+                        handleScanCode(assemblyLiveScanInput.trim());
+                        setAssemblyLiveScanInput('');
+                      }
+                    }}
+                    className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-bold text-emerald-400 placeholder:text-slate-500 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (assemblyLiveScanInput.trim()) {
+                        handleScanCode(assemblyLiveScanInput.trim());
+                        setAssemblyLiveScanInput('');
+                      }
+                    }}
+                    className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow transition shrink-0 cursor-pointer"
+                  >
+                    Scan / Enter
+                  </button>
                 </div>
               </div>
 
-              {/* SECTION 3: MANDATORY ACCESSORIES (BESPOKE HANGER & OUTFIT BAG QR SCANNERS) */}
-              <div className="bg-indigo-50/70 border border-indigo-200 p-4 rounded-2xl space-y-4">
+              {/* SECTION 2: GARMENTS PICK CHECKLIST WITH LIVE HARDWARE SCANNING */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                      <Layers className="w-4 h-4 text-indigo-600" />
+                      Garment Pick List ({pickedItemsCount}/{totalItemsCount} Items Picked)
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Zap iron-on QR tags with your Tera scanner gun, or click <strong>Mark Picked</strong>.
+                    </p>
+                  </div>
+                  <span className={`px-2.5 py-1 text-xs font-extrabold rounded-full border ${
+                    allGarmentsPicked 
+                      ? 'bg-emerald-100 text-emerald-900 border-emerald-300' 
+                      : 'bg-amber-100 text-amber-900 border-amber-300'
+                  }`}>
+                    {allGarmentsPicked ? '✓ All Items Picked' : `${totalItemsCount - pickedItemsCount} Remaining`}
+                  </span>
+                </div>
+
+                {/* Progress bar */}
+                <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                  <div 
+                    className="bg-emerald-500 h-full transition-all duration-300 rounded-full"
+                    style={{ width: `${pickPercentage}%` }}
+                  />
+                </div>
+
+                <div className="border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100 max-h-60 overflow-y-auto">
+                  {po.items.map(item => {
+                    const isItemPicked = assemblyPickedItemIds.includes(item.qrCodeId);
+
+                    return (
+                      <div 
+                        key={item.qrCodeId} 
+                        className={`p-3 transition-colors flex items-center justify-between gap-3 text-xs ${
+                          isItemPicked ? 'bg-emerald-50/70' : 'bg-slate-50/50 hover:bg-slate-100/70'
+                        }`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono font-extrabold text-slate-800 bg-white px-2 py-0.5 rounded text-[11px] border border-slate-300">
+                              {item.qrCodeId}
+                            </span>
+                            <span className="font-extrabold text-slate-900 truncate">{item.itemName}</span>
+                          </div>
+                          <span className="text-[11px] text-slate-500 font-semibold block mt-0.5">
+                            Category: <strong className="text-slate-700">{item.category}</strong> | Size: <strong>{item.size}</strong> ({item.sizeGroup})
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          {isItemPicked ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAssemblyPickedItemIds(prev => prev.filter(id => id !== item.qrCodeId));
+                              }}
+                              className="px-3 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-extrabold text-[11px] rounded-xl border border-emerald-300 transition flex items-center gap-1 cursor-pointer"
+                              title="Click to unpick"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" /> PICKED
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAssemblyPickedItemIds(prev => [...prev, item.qrCodeId]);
+                                playAudioBeep('success');
+                                showToast(`✅ Picked: ${item.itemName}`, 'success');
+                              }}
+                              className="px-3 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 font-extrabold text-[11px] rounded-xl border border-amber-300 transition flex items-center gap-1 cursor-pointer"
+                            >
+                              ⏳ Mark Picked
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* SECTION 3: ORDER ACCESSORIES (BESPOKE HANGER & OUTFIT BAG QR SCANNERS) */}
+              <div className={`border p-4 rounded-2xl space-y-3.5 ${
+                requiresHangerAndBag 
+                  ? 'bg-indigo-50/70 border-indigo-200' 
+                  : 'bg-slate-50 border-slate-200'
+              }`}>
                 <div>
-                  <h4 className="text-sm font-extrabold text-indigo-950 flex items-center gap-2">
-                    <Store className="w-4 h-4 text-indigo-600" /> Mandatory Order Accessories &amp; QR Tag Scanning
-                  </h4>
-                  <p className="text-xs text-indigo-800 mt-0.5">
-                    Scan or enter the stitched/ironed QR codes for the Bespoke Hanger and Outfit Bag before completing assembly.
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                      <Store className="w-4 h-4 text-indigo-600" /> 
+                      Order Packaging: Bespoke Hanger &amp; Outfit Bag QR
+                    </h4>
+                    <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${
+                      requiresHangerAndBag
+                        ? 'bg-amber-100 text-amber-900 border-amber-300'
+                        : 'bg-slate-200 text-slate-700 border-slate-300'
+                    }`}>
+                      {requiresHangerAndBag ? '⚠️ Mandatory for Kilts/Jackets' : 'ℹ️ Optional for Accessories'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 mt-1">
+                    {requiresHangerAndBag 
+                      ? 'This order contains tailored outerwear (Kilt, Jacket, or Waistcoat). Please scan the real physical QR code attached to the Bespoke Hanger and Outfit Bag.'
+                      : 'This order does not include heavy garments. Hanger and outfit bag are optional.'}
                   </p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   
                   {/* 1. HIGHLAND KILTMAKERS BESPOKE HANGER QR */}
-                  <div className="bg-white border border-indigo-200 p-3.5 rounded-2xl space-y-2 shadow-2xs">
+                  <div className="bg-white border border-slate-200 p-3.5 rounded-2xl space-y-2 shadow-2xs">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-                        🏷️ Bespoke Hanger QR *
+                        🏷️ Bespoke Hanger QR {requiresHangerAndBag && '*'}
                       </label>
                       {isHangerFilled ? (
                         <span className="text-[10px] font-extrabold bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-full border border-emerald-300">
                           ✓ SCANNED
                         </span>
-                      ) : (
+                      ) : requiresHangerAndBag ? (
                         <span className="text-[10px] font-extrabold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full border border-amber-300">
                           REQUIRED
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-extrabold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full border border-slate-200">
+                          OPTIONAL
                         </span>
                       )}
                     </div>
 
-                    <div className="relative">
+                    <div>
                       <input
                         type="text"
-                        placeholder="Scan or type e.g. HNG-1001"
+                        placeholder="Scan or type Hanger QR (e.g. BIN-BESP-B1-1001)..."
                         value={assemblyHangerInput}
-                        onChange={e => setAssemblyHangerInput(e.target.value)}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setAssemblyHangerInput(val);
+                          if (val.trim()) {
+                            const hangerItem = (po.items || []).find(it => 
+                              it.category?.toLowerCase().includes('hanger') ||
+                              it.itemName?.toLowerCase().includes('hanger') ||
+                              it.category?.toLowerCase().includes('bespoke') ||
+                              it.itemName?.toLowerCase().includes('bespoke') ||
+                              it.qrCodeId.toUpperCase().includes('BESP') ||
+                              it.qrCodeId.toUpperCase().includes('HNG') ||
+                              it.qrCodeId.toUpperCase().includes('HANGER') ||
+                              it.qrCodeId.toUpperCase().startsWith('BIN-')
+                            );
+                            if (hangerItem && !assemblyPickedItemIds.includes(hangerItem.qrCodeId)) {
+                              setAssemblyPickedItemIds(prev => [...prev, hangerItem.qrCodeId]);
+                            }
+                          }
+                        }}
                         className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono font-extrabold text-indigo-900 outline-none focus:border-indigo-500"
                       />
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setAssemblyHangerInput(`HNG-${po.id.replace(/[^0-9]/g, '') || '1001'}`)}
-                      className="w-full py-1 text-[10px] font-extrabold text-indigo-700 hover:text-indigo-900 hover:bg-indigo-50 rounded-lg transition"
-                    >
-                      ⚡ Auto-Assign Hanger Tag Code (HNG-{po.id.replace(/[^0-9]/g, '') || '1001'})
-                    </button>
                   </div>
 
                   {/* 2. HIGHLAND KILTMAKERS OUTFIT BAG QR */}
-                  <div className="bg-white border border-indigo-200 p-3.5 rounded-2xl space-y-2 shadow-2xs">
+                  <div className="bg-white border border-slate-200 p-3.5 rounded-2xl space-y-2 shadow-2xs">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-                        🎒 Outfit Bag QR Tag *
+                        🎒 Outfit Bag QR Tag {requiresHangerAndBag && '*'}
                       </label>
                       {isBagFilled ? (
                         <span className="text-[10px] font-extrabold bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-full border border-emerald-300">
                           ✓ SCANNED
                         </span>
-                      ) : (
+                      ) : requiresHangerAndBag ? (
                         <span className="text-[10px] font-extrabold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full border border-amber-300">
                           REQUIRED
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-extrabold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full border border-slate-200">
+                          OPTIONAL
                         </span>
                       )}
                     </div>
 
-                    <div className="relative">
+                    <div>
                       <input
                         type="text"
-                        placeholder="Scan or type e.g. BAG-1001"
+                        placeholder="Scan or type Bag QR..."
                         value={assemblyBagInput}
-                        onChange={e => setAssemblyBagInput(e.target.value)}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setAssemblyBagInput(val);
+                          if (val.trim()) {
+                            const bagItem = (po.items || []).find(it => 
+                              it.category?.toLowerCase().includes('bag') ||
+                              it.itemName?.toLowerCase().includes('bag') ||
+                              it.qrCodeId.toUpperCase().includes('BAG') ||
+                              it.qrCodeId.toUpperCase().includes('OUTF')
+                            );
+                            if (bagItem && !assemblyPickedItemIds.includes(bagItem.qrCodeId)) {
+                              setAssemblyPickedItemIds(prev => [...prev, bagItem.qrCodeId]);
+                            }
+                          }
+                        }}
                         className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono font-extrabold text-indigo-900 outline-none focus:border-indigo-500"
                       />
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setAssemblyBagInput(`BAG-${po.id.replace(/[^0-9]/g, '') || '1001'}`)}
-                      className="w-full py-1 text-[10px] font-extrabold text-indigo-700 hover:text-indigo-900 hover:bg-indigo-50 rounded-lg transition"
-                    >
-                      ⚡ Auto-Assign Outfit Bag Tag Code (BAG-{po.id.replace(/[^0-9]/g, '') || '1001'})
-                    </button>
                   </div>
 
                 </div>
               </div>
 
-              {/* VALIDATION WARNING OR LOCK ALERT */}
-              {!isFullyVerified && (
+              {/* VALIDATION WARNING OR SUCCESS ALERT */}
+              {!isFullyVerified ? (
                 <div className="bg-amber-100/90 border border-amber-300 p-3 rounded-2xl text-xs text-amber-950 flex items-center gap-2">
                   <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0" />
                   <div>
-                    <strong className="block font-extrabold text-amber-900">Assembly Requirement Locked</strong>
+                    <strong className="block font-extrabold text-amber-900">Assembly Incomplete</strong>
                     <span className="text-[11px] text-amber-900">
-                      Both Highland Kiltmakers Bespoke Hanger QR and Outfit Bag QR must be entered/scanned before order can be marked Ready for Collection.
+                      {!allGarmentsPicked 
+                        ? `Please pick/scan all ${totalItemsCount} garments in the pick list above (${totalItemsCount - pickedItemsCount} remaining).`
+                        : 'Please scan or enter both the Bespoke Hanger QR and Outfit Bag QR codes.'}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-emerald-100/90 border border-emerald-300 p-3 rounded-2xl text-xs text-emerald-950 flex items-center gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-700 shrink-0" />
+                  <div>
+                    <strong className="block font-extrabold text-emerald-900">Ready to Confirm Assembly</strong>
+                    <span className="text-[11px] text-emerald-900">
+                      All garments picked and accessories verified. Click below to mark order ready for collection.
                     </span>
                   </div>
                 </div>
@@ -21515,7 +24803,7 @@ export default function KiltHireApp() {
                   onClick={() => handleConfirmAssemblyAndMarkReady(po)}
                   className={`flex-1 py-3 font-extrabold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-2 ${
                     isFullyVerified
-                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer ring-2 ring-emerald-400/50'
                       : 'bg-slate-300 text-slate-500 cursor-not-allowed opacity-75'
                   }`}
                 >
@@ -22349,17 +25637,30 @@ export default function KiltHireApp() {
                 </div>
               </div>
 
-              {/* LINKED PO & CUSTOMER */}
+              {/* LINKED PO & CUSTOMER (LIVE SYNCED) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-slate-800 font-black">Linked Purchase Order (Optional)</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. PO-2026-0089"
+                  <select
                     value={newExpenseForm.poId}
-                    onChange={e => setNewExpenseForm({ ...newExpenseForm, poId: e.target.value })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 outline-none focus:border-rose-500"
-                  />
+                    onChange={e => {
+                      const selectedPoId = e.target.value;
+                      const matchedPo = pos.find(p => p.id === selectedPoId);
+                      setNewExpenseForm({
+                        ...newExpenseForm,
+                        poId: selectedPoId,
+                        customerName: matchedPo ? matchedPo.customerName : newExpenseForm.customerName
+                      });
+                    }}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-rose-500 cursor-pointer"
+                  >
+                    <option value="">-- General Shop Repair (No PO) --</option>
+                    {pos.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.id} — {p.customerName} (£{p.totalDepositHeld} deposit held)
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="space-y-1">

@@ -18,6 +18,9 @@ export interface LaundryRecord {
   dateSent: string;
   sentByStaff: string;
   cleanerName?: string;
+  treatmentType?: string; // e.g. "Standard Dry Clean & Steam", "Specialist Wool Wine Stain Extraction"
+  cost?: number; // £ cleaning fee attached to this specific item cycle
+  invoiceRef?: string; // Receipt / invoice reference number
   dateReturned?: string;
   returnedByStaff?: string;
   notes?: string;
@@ -29,6 +32,15 @@ export interface RepairRecord {
   sentByStaff: string;
   reason: string;
   severity: 'Minor' | 'Medium' | 'Severe';
+  executionType?: 'IN_HOUSE' | 'OUTSOURCED';
+  staffLaborHours?: number;
+  staffHourlyRate?: number;
+  staffLaborCost?: number;
+  outsourcedProviderName?: string;
+  outsourcedCost?: number;
+  outsourcedInvoiceRef?: string;
+  materialsCost?: number;
+  cost?: number; // Total repair expense (£)
   dateFixed?: string;
   fixedByStaff?: string;
   fixedNotes?: string;
@@ -56,6 +68,20 @@ export interface AlterationTask {
   collectionDate?: string; // Target completion deadline
   eventDate?: string;
   assignedTailor?: string; // e.g. "Mary (Seamstress)"
+  
+  // Workshop Accounting & Labor/Outsourced Cost Tracking
+  executionType?: 'IN_HOUSE' | 'OUTSOURCED';
+  staffLaborHours?: number; // In-house hours spent (e.g. 1.5 hrs)
+  staffHourlyRate?: number; // In-house staff hourly rate (£/hr)
+  staffLaborCost?: number; // Auto-calculated (hours * rate)
+  outsourcedProviderName?: string; // e.g. "Edinburgh Highland Tailoring Ltd"
+  outsourcedCost?: number; // External contractor invoice fee (£)
+  outsourcedInvoiceRef?: string; // e.g. "INV-8831"
+  materialsCost?: number; // Cost of buckles, straps, lining, thread (£)
+  totalCost?: number; // Total job expense (labor/outsourced + materials)
+  isSyncedToExpenses?: boolean; // Posted to statutory P&L / loss ledger
+  expenseLedgerEntryId?: string;
+  
   createdAt: string;
   startedAt?: string;
   completedAt?: string;
@@ -66,7 +92,10 @@ export interface AlterationTask {
 export type DepositLedgerEntryType = 
   | 'DEPOSIT_RETAINED' 
   | 'EXPENSE_DRY_CLEANING' 
+  | 'EXPENSE_SPECIALIST_CLEANING'
   | 'EXPENSE_TAILOR_REPAIR' 
+  | 'EXPENSE_OUTSOURCED_ALTERATION'
+  | 'EXPENSE_IN_HOUSE_LABOR'
   | 'EXPENSE_REPLACEMENT' 
   | 'DEPOSIT_REFUNDED';
 
@@ -100,6 +129,20 @@ export interface StoreEmailSettings {
     paypalNotice: string;
     policyNotice: string;
     showMeasurements: boolean;
+  };
+  paymentReceiptInvoice: {
+    headline: string;
+    customIntro: string;
+    taxOrVatNotice: string;
+    depositPolicyStatement: string;
+    showItemizedSummary: boolean;
+  };
+  orderCancellation: {
+    headline: string;
+    customIntro: string;
+    depositRetentionPolicy: string;
+    refundProcessingNotice: string;
+    supportContactPrompt: string;
   };
   collectionReady: {
     headline: string;
@@ -148,7 +191,9 @@ export interface KiltItem {
   registeredByStaff?: string;
   conditionNotes?: string;
   laundryHistory?: LaundryRecord[];
+  totalLifetimeCleaningCost?: number; // Cumulative cleaning outlay on this specific garment
   repairHistory?: RepairRecord[];
+  totalLifetimeRepairCost?: number; // Cumulative repair & alteration outlay on this specific garment
   isBulkPool?: boolean; // True for bulk bin items (Sgian-dubhs, Kilt Pins, Belts, Garters)
   bulkQuantity?: number; // Current available count in shop bin
   bulkTotal?: number; // Total pool inventory count
@@ -219,6 +264,8 @@ export interface POLineItem {
   size: string;
   hireRate: number;
   depositAmount: number;
+  picked?: boolean;
+  pickedAt?: string;
   returned: boolean;
   returnedAt?: string;
   returnCondition?: 'GOOD_CLEAN' | 'NEEDS_CLEANING' | 'HEAVY_SOILING_CLEANING' | 'NEEDS_REPAIR' | 'MISSING';
@@ -305,14 +352,25 @@ export interface AuditLog {
 
 export type StaffRole = 'Master Admin' | 'Admin' | 'Shop Assistant' | 'Senior Hire Specialist' | 'Inventory & Workshop Staff' | 'Accountant & Auditor';
 
+export type EmploymentType = 'FULL_TIME' | 'PART_TIME' | 'DIRECTOR_DRAWING' | 'CONTRACTOR' | 'HOURLY';
+
 export interface StaffUser {
   id: string;
   name: string;
-  role: StaffRole;
+  role: StaffRole; // System permission level (Master Admin, Admin, Shop Assistant, Accountant & Auditor)
+  jobTitle?: string; // Operational Title: e.g. "IT & Business Development", "Store Owner & Managing Director", "Senior Hire Specialist", etc.
+  responsibilities?: string[]; // e.g. ["IT / Technical Systems", "Business Development", "Customer Fittings", "Workshop & Tailoring", "Cash & Bank Auditing"]
+  employmentType?: EmploymentType;
+  monthlySalary?: number; // Monthly remuneration in £ (e.g. 2800.00)
+  hourlyRate?: number; // Optional hourly rate in £
+  hoursPerWeek?: number; // Standard working hours per week (e.g. 37.5)
+  payNotes?: string; // e.g. "Paid 28th monthly via BACS / PAYE", "Director drawing & dividends"
+  phone?: string;
   email: string;
   pin: string;
   avatar?: string;
   registeredAt: string;
+  notes?: string;
 }
 
 export interface StaffInvite {
@@ -324,5 +382,26 @@ export interface StaffInvite {
   createdByName: string;
   status: 'PENDING' | 'REGISTERED' | 'EXPIRED';
   usedAt?: string;
+}
+
+export interface HistoricalFinancialYear {
+  id: string; // e.g. "FY-2025"
+  year: number; // e.g. 2025
+  label: string; // e.g. "2025 / 2026 Financial Year"
+  turnover: number; // Gross hire revenue & sales in £
+  alterationsCost?: number; // In-house & outsourced alterations, repairs, hardware & tailoring (£)
+  subHiresCost?: number; // External mill sub-hire wholesale invoices from House of Edgar/mills (£)
+  costOfSales: number; // Combined direct cost of sales (alterations + sub-hires) (£)
+  operatingExpenses: number; // Rent, utilities, rates, dry cleaning, insurance, software in £
+  staffPayroll: number; // Total wages, PAYE & director drawings in £
+  netProfitBeforeTax: number; // EBITDA / Operating profit in £ (Gross - Alterations - SubHires - Wages - Utilities)
+  taxPaid: number; // UK Corporation tax in £
+  retainedEarnings: number; // Net profit after tax in £ (EBITDA - Tax)
+  yearEndAssetValuation: number; // Garment stock inventory valuation + equipment at year end in £
+  fleetGrowthOrDepreciation?: number; // YoY garment stock appreciation/expansion (+) or depreciation (-)
+  totalHiresCount?: number; // Total wedding/hire events serviced that year
+  isVerifiedByAccountant?: boolean;
+  notes?: string; // Key milestones, notes
+  updatedAt: string;
 }
 

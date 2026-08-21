@@ -21,11 +21,13 @@ import {
   StaffInvite,
   CategoryPriceSetting,
   CalendarNote,
+  HistoricalFinancialYear,
+  DepositLedgerEntry,
 } from '../app/types';
 
-// Guard: throw a helpful error if called server-side
+// Guard: throw a helpful error if db is not initialized
 function requireDb() {
-  if (!db) throw new Error('Firestore is only available on the client side.');
+  if (!db) throw new Error('Firestore is not initialized. Please verify Firebase configuration.');
   return db;
 }
 
@@ -275,3 +277,52 @@ export function subscribeCalendarNotes(onUpdate: (notes: CalendarNote[]) => void
     onUpdate(snap.docs.map(d => d.data() as CalendarNote));
   });
 }
+
+// --- 10-YEAR HISTORICAL FINANCIAL LEDGER --------------------------------------
+
+export async function getHistoricalFinancialYears(): Promise<HistoricalFinancialYear[]> {
+  const snap = await getDocs(collection(requireDb(), 'historical_financial_years'));
+  return snap.docs.map(d => d.data() as HistoricalFinancialYear);
+}
+
+export async function upsertHistoricalFinancialYear(yearData: HistoricalFinancialYear): Promise<void> {
+  await setDoc(doc(requireDb(), 'historical_financial_years', yearData.id), sanitizeForFirestore(yearData), { merge: true });
+}
+
+export async function deleteHistoricalFinancialYearFS(id: string): Promise<void> {
+  await deleteDoc(doc(requireDb(), 'historical_financial_years', id));
+}
+
+export function subscribeHistoricalFinancialYears(onUpdate: (years: HistoricalFinancialYear[]) => void): Unsubscribe {
+  return onSnapshot(collection(requireDb(), 'historical_financial_years'), (snap) => {
+    onUpdate(snap.docs.map(d => d.data() as HistoricalFinancialYear));
+  });
+}
+
+// --- DEPOSIT LEDGER ENTRIES & EXPENSES ----------------------------------------
+
+export async function getDepositLedgerEntries(): Promise<DepositLedgerEntry[]> {
+  const snap = await getDocs(collection(requireDb(), 'deposit_ledger_entries'));
+  return snap.docs.map(d => d.data() as DepositLedgerEntry);
+}
+
+export async function upsertDepositLedgerEntry(entry: DepositLedgerEntry): Promise<void> {
+  await setDoc(doc(requireDb(), 'deposit_ledger_entries', entry.id), sanitizeForFirestore(entry), { merge: true });
+}
+
+export async function deleteDepositLedgerEntryFS(id: string): Promise<void> {
+  await deleteDoc(doc(requireDb(), 'deposit_ledger_entries', id));
+}
+
+export async function clearAllDepositLedgerEntriesFS(): Promise<void> {
+  const snap = await getDocs(collection(requireDb(), 'deposit_ledger_entries'));
+  await Promise.all(snap.docs.map(d => deleteDoc(doc(requireDb(), 'deposit_ledger_entries', d.id))));
+}
+
+export function subscribeDepositLedgerEntries(onUpdate: (entries: DepositLedgerEntry[]) => void): Unsubscribe {
+  return onSnapshot(collection(requireDb(), 'deposit_ledger_entries'), (snap) => {
+    onUpdate(snap.docs.map(d => d.data() as DepositLedgerEntry));
+  });
+}
+
+

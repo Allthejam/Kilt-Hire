@@ -12,14 +12,14 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-// Only initialise Firebase on the client - never during SSR / pre-rendering
+// Initialise Firebase app and services safely across client and server
 let app: FirebaseApp | undefined;
 let auth: Auth | undefined;
 let db: Firestore | undefined;
 
-if (typeof window !== 'undefined') {
+if (firebaseConfig.apiKey) {
   app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-  auth = getAuth(app);
+  auth = typeof window !== 'undefined' ? getAuth(app) : undefined;
   db = getFirestore(app);
 }
 
