@@ -4,7 +4,7 @@ export interface BrevoEmailPayload {
   toEmail: string;
   toName: string;
   subject?: string;
-  emailType?: 'BOOKING_CONFIRMATION' | 'READY_FOR_COLLECTION' | 'RETURN_REMINDER' | 'OVERDUE_ALERT' | 'TEST_EMAIL' | 'CUSTOM';
+  emailType?: 'BOOKING_CONFIRMATION' | 'PAYMENT_RECEIPT_INVOICE' | 'ORDER_CANCELLATION' | 'READY_FOR_COLLECTION' | 'RETURN_REMINDER' | 'OVERDUE_ALERT' | 'DAMAGE_RECONCILIATION' | 'TEST_EMAIL' | 'CUSTOM';
   orderData?: any;
   emailSettings?: any;
   customMessage?: string;
@@ -103,18 +103,17 @@ export function generateCollectionReadyEmailHtml({
 
         ${isFullyPaid ? `
           <div style="background: #ecfdf5; border: 1px solid #a7f3d0; padding: 16px; border-radius: 12px; color: #065f46; margin-bottom: 20px;">
-            <p style="margin: 0; font-weight: bold;">✓ Fully Paid (£${totalHireFee} Hire Fee + £${totalDepositHeld} Deposit)</p>
+            <p style="margin: 0; font-weight: bold;">✓ Fully Paid (£${totalHireFee.toFixed(2)} Hire Fee + £${totalDepositHeld.toFixed(2)} Deposit Held)</p>
             <p style="margin: 4px 0 0 0; font-size: 13px;">Your order is completely paid for. Simply present your order ID <strong>${poId}</strong> at store collection!</p>
           </div>
         ` : `
-          <div style="background: #fffbe6; border: 1px solid #ffe58f; padding: 16px; border-radius: 12px; color: #722ed1; margin-bottom: 20px;">
-            <p style="margin: 0; font-weight: bold; color: #b7eb8f;">⚠️ Action Required: Outstanding Balance Due</p>
-            <p style="margin: 6px 0 0 0; font-size: 13px; color: #520339;">
-              Please pay your outstanding balance online or in store upon collection. 
-              <strong>Note:</strong> Failure to collect your reserved outfit on your scheduled collection date without notice may result in forfeiture of your deposit.
+          <div style="background: #eff6ff; border: 1px solid #bfdbfe; padding: 16px; border-radius: 12px; color: #1e40af; margin-bottom: 20px;">
+            <p style="margin: 0; font-weight: 800; color: #1e40af;">💳 Deposit Paid: £${totalDepositHeld.toFixed(2)} | Remaining Hire Balance: £${totalHireFee.toFixed(2)}</p>
+            <p style="margin: 6px 0 0 0; font-size: 13px; color: #334155;">
+              You can pay the remaining £${totalHireFee.toFixed(2)} balance online or tap your card at our counter upon collection.
             </p>
           </div>
-        `}
+        ` }
 
         <p style="font-size: 13px; color: #64748b;">If you have any questions or need to change your collection time, please reply to this email or call the shop.</p>
         <p style="margin-bottom: 0;">Warm regards,<br><strong>Allan & The Highland Kilt Hire Team</strong></p>

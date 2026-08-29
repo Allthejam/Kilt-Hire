@@ -24,6 +24,7 @@ interface EmailPayload {
       shoeSize: string;
     };
     amountPaid?: number;
+    depositPaidAmount?: number;
     paymentMethod?: string;
     paymentDate?: string;
     cancellationReason?: string;
@@ -127,8 +128,14 @@ export async function POST(request: Request) {
       </html>
     `;
 
+    const depositHeld = typeof orderData?.depositPaidAmount === 'number' 
+      ? orderData.depositPaidAmount 
+      : typeof orderData?.amountPaid === 'number' 
+        ? orderData.amountPaid 
+        : typeof orderData?.totalDepositHeld === 'number' 
+          ? orderData.totalDepositHeld 
+          : 50;
     const totalFee = typeof orderData?.totalHireFee === 'number' ? orderData.totalHireFee : 110;
-    const depositHeld = typeof orderData?.totalDepositHeld === 'number' ? orderData.totalDepositHeld : 50;
     const itemsListHtml = orderData?.items?.map(it => `
       <tr style="border-bottom:1px solid #f1f5f9;">
         <td style="padding:10px 0;font-size:13px;font-weight:700;color:#1e293b;">${it.itemName}</td>
@@ -203,6 +210,31 @@ export async function POST(request: Request) {
           ${itemsListHtml}
         </table>
 
+        ${!isFullyPaid && outstandingAmount > 0 ? `
+          <!-- PAYPAL PAYMENT BUTTON -->
+          <div style="background-color:#eff6ff;border:1px solid #bfdbfe;border-radius:14px;padding:20px;text-align:center;margin-bottom:20px;">
+            <p style="margin:0 0 6px 0;font-size:12px;font-weight:800;color:#1e40af;text-transform:uppercase;letter-spacing:0.5px;">
+              💳 Online Settlement • Secure Checkout
+            </p>
+            <p style="margin:0 0 14px 0;font-size:13px;color:#334155;font-weight:600;">
+              ${isDepositPaid ? `Security deposit of £${depositHeld.toFixed(2)} is paid. Pay the remaining £${totalFee.toFixed(2)} hire fee online:` : `Secure your reservation by paying online:`}
+            </p>
+            <div style="margin-bottom:10px;">
+              <a href="${paypalLink}" style="background-color:#0070ba;color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:12px;font-size:14px;font-weight:900;display:inline-block;box-shadow:0 4px 12px rgba(0,112,186,0.3);letter-spacing:0.3px;">
+                💳 Settle £${outstandingAmount.toFixed(2)} ${isDepositPaid ? 'Remaining Balance' : 'Total'} via PayPal / Card
+              </a>
+            </div>
+            <p style="margin:0;font-size:11px;color:#64748b;">
+              ${paypalNotice} • Supports PayPal, Debit Cards &amp; Credit Cards
+            </p>
+          </div>
+        ` : `
+          <div style="background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:14px;margin-bottom:20px;font-size:12px;color:#166534;text-align:center;">
+            <strong>✅ Payment Status: Paid in Full (£0.00 Outstanding)</strong><br>
+            Your hire outfit and refundable deposit are fully settled in advance.
+          </div>
+        `}
+
         <div style="background-color:#fffbe6;border:1px solid #ffe58f;border-radius:12px;padding:14px;margin-bottom:20px;font-size:12px;color:#78350f;">
           <strong>📋 Store Policy:</strong> ${policyNotice}
         </div>
@@ -218,6 +250,7 @@ export async function POST(request: Request) {
 
       const paidAmount = typeof orderData?.amountPaid === 'number' ? orderData.amountPaid : (totalFee + depositHeld);
       const remainingBalance = Math.max(0, (totalFee + depositHeld) - paidAmount);
+      const paypalLink = orderData?.paypalPaymentLink || `http://localhost:3006/pay?po=${orderData?.poId || 'PO-1001'}&hire=${totalFee}&deposit=${depositHeld}&amount=${remainingBalance}&name=${encodeURIComponent(toName || 'Customer')}`;
 
       htmlContent = emailShell(headline, 'PAID INVOICE', `
         <div style="text-align:center;margin-bottom:24px;">
@@ -275,6 +308,26 @@ export async function POST(request: Request) {
             </td>
           </tr>
         </table>
+
+        ${remainingBalance > 0 ? `
+          <!-- OUTSTANDING BALANCE PAYPAL SETTLEMENT -->
+          <div style="background-color:#eff6ff;border:1px solid #bfdbfe;border-radius:14px;padding:18px;text-align:center;margin-bottom:20px;">
+            <p style="margin:0 0 4px 0;font-size:12px;font-weight:800;color:#1e40af;text-transform:uppercase;">
+              💳 Remaining Balance Outstanding: £${remainingBalance.toFixed(2)}
+            </p>
+            <p style="margin:0 0 12px 0;font-size:12px;color:#475569;">
+              You can settle the remaining balance online prior to collection, or pay at our shop counter:
+            </p>
+            <div style="margin-bottom:8px;">
+              <a href="${paypalLink}" style="background-color:#0070ba;color:#ffffff;text-decoration:none;padding:13px 26px;border-radius:12px;font-size:13px;font-weight:900;display:inline-block;box-shadow:0 4px 12px rgba(0,112,186,0.25);">
+                💳 Pay Remaining £${remainingBalance.toFixed(2)} Balance via PayPal / Card
+              </a>
+            </div>
+            <p style="margin:0;font-size:10px;color:#64748b;">
+              Instant automated receipt issued upon online settlement
+            </p>
+          </div>
+        ` : ''}
 
         <!-- ESCROW & SECURITY DEPOSIT ADVICE -->
         <div style="background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:14px;margin-bottom:16px;font-size:12px;color:#166534;">
@@ -532,9 +585,13 @@ export async function POST(request: Request) {
 
     if (!brevoResponse.ok) {
       console.error('Brevo API Error:', brevoData);
+      let errorMsg = brevoData.message || 'Failed to dispatch email via Brevo.';
+      if (typeof errorMsg === 'string' && errorMsg.includes('unrecognised IP address')) {
+        errorMsg = 'Brevo IP Restriction: Your internet IP address changed and is not authorized in Brevo. Go to https://app.brevo.com/security/authorised_ips to add it or turn off Authorized IPs.';
+      }
       return NextResponse.json({
         success: false,
-        error: brevoData.message || 'Failed to dispatch email via Brevo.',
+        error: errorMsg,
         details: brevoData
       }, { status: brevoResponse.status });
     }

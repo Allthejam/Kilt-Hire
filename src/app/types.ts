@@ -313,6 +313,7 @@ export interface PurchaseOrder {
   fullRigoutDiscount: number;
   totalHireFee: number;
   totalDepositHeld: number;
+  depositPaidAmount?: number;
   paypalTransactionId?: string;
   paypalCaptureId?: string;
   paypalRefundId?: string;

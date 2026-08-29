@@ -1,5 +1,6 @@
 'use client';
 
+import { getUkTimestamp } from '@/lib/date-utils';
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Script from 'next/script';
@@ -115,12 +116,13 @@ function PaymentContent() {
             if (poId && poId !== 'PO-SAMPLE-001') {
               try {
                 const isPaidFull = selectedMode === 'FULL' || amountToPay >= totalOrderValue;
-                const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16);
+                const nowStr = getUkTimestamp();
                 await upsertPurchaseOrder({
                   id: poId,
                   paymentStatus: isPaidFull ? 'FULL_BALANCE_PAID' : 'PARTIAL_DEPOSIT',
                   depositPaymentMethod: 'PAYPAL_ONLINE',
                   depositPaidAt: nowStr,
+                  depositPaidAmount: amountToPay,
                   balancePaidAt: isPaidFull ? nowStr : undefined,
                   orderStatus: 'DEPOSIT_PAID_CONFIRMED',
                   paypalTransactionId: paypalOrderId,
@@ -132,20 +134,25 @@ function PaymentContent() {
               }
             }
 
-            // Automatically send "Deposit Received & Confirmed" email with direct remainder payment link
+            // Automatically send official "Payment & Invoice" email with fresh remainder payment link
             const targetEmail = captureData.payerEmail || searchParams.get('email');
             if (targetEmail) {
               const isPaidFull = selectedMode === 'FULL' || amountToPay >= totalOrderValue;
+              const remainingAmt = Math.max(0, totalOrderValue - amountToPay);
+              const remainderLink = typeof window !== 'undefined' 
+                ? `${window.location.origin}/pay?po=${poId}&hire=${hireFee}&deposit=${deposit}&amount=${remainingAmt}&name=${encodeURIComponent(customerName)}` 
+                : '';
+
               fetch('/api/send-email', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   toEmail: targetEmail,
                   toName: customerName,
-                  emailType: 'BOOKING_CONFIRMATION',
+                  emailType: 'PAYMENT_RECEIPT_INVOICE',
                   subject: isPaidFull 
-                    ? `✓ Full Payment Received & Confirmed - Order #${poId}` 
-                    : `💳 Deposit Received & Booking Confirmed - Order #${poId}`,
+                    ? `🧾 Official Payment Receipt & Tax Invoice (Paid in Full) - Order #${poId}` 
+                    : `🧾 Security Deposit Receipt & Balance Invoice - Order #${poId}`,
                   orderData: {
                     poId: poId,
                     customerName: customerName,
@@ -153,11 +160,14 @@ function PaymentContent() {
                     hireEndDate: searchParams.get('end') || 'Scheduled Return',
                     totalHireFee: hireFee,
                     totalDepositHeld: deposit,
+                    amountPaid: amountToPay,
+                    paymentDate: getUkTimestamp(),
+                    paymentMethod: 'PayPal Online Checkout',
                     paymentStatus: isPaidFull ? 'FULL_BALANCE_PAID' : 'PARTIAL_DEPOSIT',
-                    paypalPaymentLink: typeof window !== 'undefined' ? `${window.location.origin}/pay?po=${poId}&hire=${hireFee}&deposit=${deposit}&amount=${hireFee}&name=${encodeURIComponent(customerName)}` : ''
+                    paypalPaymentLink: remainderLink
                   }
                 })
-              }).catch(e => console.warn('Automatic email dispatch note:', e));
+              }).catch(e => console.warn('Automatic payment receipt email dispatch note:', e));
             }
 
             setPaymentSuccess(true);

@@ -1,5 +1,6 @@
 'use client';
 
+import { getUkTimestamp } from '@/lib/date-utils';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BrowserMultiFormatReader, BarcodeFormat } from '@zxing/browser';
 import { DecodeHintType } from '@zxing/library';
@@ -13,6 +14,7 @@ import {
   onAuthStateChanged,
 } from 'firebase/auth';
 import { auth } from '../lib/firebase';
+
 import {
   getStaffProfiles,
   getStaffProfileById,
@@ -325,7 +327,7 @@ export default function KiltHireApp() {
   // Full Rigout Price Cap & Security Deposit Cap Settings (Master Admin Configurable)
   const [maxRigoutCapPrice, setMaxRigoutCapPrice] = useState<number>(120); // Adult Hire Fee Cap
   const [kidMaxRigoutCapPrice, setKidMaxRigoutCapPrice] = useState<number>(80); // Kids Hire Fee Cap
-  const [adultMaxDepositCapPrice, setAdultMaxDepositCapPrice] = useState<number>(60); // Adult Security Deposit Cap
+  const [adultMaxDepositCapPrice, setAdultMaxDepositCapPrice] = useState<number>(50); // Adult Security Deposit Cap
   const [kidMaxDepositCapPrice, setKidMaxDepositCapPrice] = useState<number>(40); // Kids Security Deposit Cap
 
   // Category Pricing Matrix State (Duplicated for Adults and Kids)
@@ -1381,7 +1383,7 @@ export default function KiltHireApp() {
   const addAuditLog = (action: string, details: string, relatedQrCode?: string) => {
     const newLog: AuditLog = {
       id: `LOG-${Date.now()}-${Math.floor(Math.random()*1000)}`,
-      timestamp: new Date().toISOString().replace('T', ' ').slice(0, 16),
+      timestamp: getUkTimestamp(),
       staffName: currentUser ? currentUser.name : 'System',
       action,
       details,
@@ -1552,7 +1554,7 @@ export default function KiltHireApp() {
         email: cleanEmail,
         pin: regPin.trim() || '1234',
         avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-        registeredAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
+        registeredAt: getUkTimestamp()
       };
 
       // Save to Firestore
@@ -1561,7 +1563,7 @@ export default function KiltHireApp() {
       const updatedInvite = {
         ...inviteMatch,
         status: 'REGISTERED' as const,
-        usedAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
+        usedAt: getUkTimestamp()
       };
       await upsertInvite(updatedInvite);
 
@@ -1596,7 +1598,7 @@ export default function KiltHireApp() {
       code,
       email: newInviteEmail.trim(),
       role: newInviteRole,
-      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+      createdAt: getUkTimestamp(),
       createdByName: currentUser?.name || 'Master Admin',
       status: 'PENDING'
     };
@@ -1653,7 +1655,7 @@ export default function KiltHireApp() {
         role: directStaffForm.role,
         email: cleanEmail,
         pin: cleanPin,
-        registeredAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
+        registeredAt: getUkTimestamp()
       };
 
       await upsertStaffProfile(uid, newStaffUser);
@@ -1729,7 +1731,7 @@ export default function KiltHireApp() {
     if (confirm("Reset audit activity trail to clean state?")) {
       const cleanLog: AuditLog = {
         id: `LOG-${Date.now()}`,
-        timestamp: new Date().toISOString().replace('T', ' ').slice(0, 16),
+        timestamp: getUkTimestamp(),
         staffName: currentUser?.name || 'Allan',
         action: 'CLEARED_AUDIT_TRAIL',
         details: 'Master Admin cleared demo audit history.'
@@ -2070,7 +2072,7 @@ export default function KiltHireApp() {
             paymentStatus: isPaypal ? 'UNPAID' : 'PAID_WITH_DEPOSIT',
             orderStatus: isPaypal ? 'RESERVED_PENDING_PAYMENT' : 'DEPOSIT_PAID_CONFIRMED',
             depositPaymentMethod: fittingForm.depositMethod,
-            depositPaidAt: isPaypal ? undefined : new Date().toISOString().replace('T', ' ').slice(0, 16),
+            depositPaidAt: isPaypal ? undefined : getUkTimestamp(),
             measurements: {
               waistInches: outfit.waistInches,
               chestInches: outfit.chestInches,
@@ -2081,7 +2083,7 @@ export default function KiltHireApp() {
               notes: `Role: ${outfit.roleLabel} | Party Lead: ${fittingForm.customerName}${isLegacyPaper ? ' | 📖 Paper Diary Legacy Entry' : ''}`
             },
             issuedByStaff: currentUser?.name || 'Allan',
-            createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+            createdAt: getUkTimestamp(),
             notes: isLegacyPaper 
               ? `📖 Legacy Paper Diary Entry (${fittingForm.eventType} Hire: ${outfit.roleLabel}). Payment & Deposit handled offline previously.`
               : `${fittingForm.eventType} Hire - Paid Separately (${outfit.roleLabel}). Lead: ${fittingForm.customerName}`
@@ -2149,7 +2151,7 @@ export default function KiltHireApp() {
           paymentStatus: isPaypal ? 'UNPAID' : 'PAID_WITH_DEPOSIT',
           orderStatus: isPaypal ? 'RESERVED_PENDING_PAYMENT' : 'DEPOSIT_PAID_CONFIRMED',
           depositPaymentMethod: fittingForm.depositMethod,
-          depositPaidAt: isPaypal ? undefined : new Date().toISOString().replace('T', ' ').slice(0, 16),
+          depositPaidAt: isPaypal ? undefined : getUkTimestamp(),
           measurements: {
             waistInches: fittingForm.outfits[0].waistInches,
             chestInches: fittingForm.outfits[0].chestInches,
@@ -2160,7 +2162,7 @@ export default function KiltHireApp() {
             notes: `Master Order: ${fittingForm.outfits.length} Outfits (${fittingForm.outfits.map(o => o.roleLabel).join(', ')})${isLegacyPaper ? ' | 📖 Paper Diary Legacy Entry' : ''}`
           },
           issuedByStaff: currentUser?.name || 'Allan',
-          createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+          createdAt: getUkTimestamp(),
           notes: isLegacyPaper
             ? `📖 Legacy Paper Diary Order for ${fittingForm.customerName} (${fittingForm.outfits.length} Outfit(s)). Deposit & Payment handled offline previously.`
             : `${fittingForm.eventType} Order for ${fittingForm.customerName} (${fittingForm.outfits.length} Outfit(s))`
@@ -2255,7 +2257,7 @@ export default function KiltHireApp() {
               destination: 'BAG_FOR_CUSTOMER',
               collectionDate: fittingForm.collectionDate,
               eventDate: fittingForm.eventDate,
-              createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
+              createdAt: getUkTimestamp()
             });
           }
         });
@@ -2368,18 +2370,12 @@ export default function KiltHireApp() {
   };
 
   const handleConfirmAssemblyAndMarkReady = async (po: PurchaseOrder) => {
-    const requiresHangerAndBag = (po.items || []).some(it => ['Kilts', 'Jackets', 'Waistcoats'].includes(it.category));
     const cleanHanger = assemblyHangerInput.trim().toUpperCase();
     const cleanBag = assemblyBagInput.trim().toUpperCase();
 
     const allPicked = (po.items || []).length > 0 && po.items.every(it => assemblyPickedItemIds.includes(it.qrCodeId));
     if (!allPicked) {
       showToast('⚠️ All garments in the rigout must be scanned and picked before marking ready for collection!', 'warning');
-      return;
-    }
-
-    if (requiresHangerAndBag && (!cleanHanger || !cleanBag)) {
-      showToast('⚠️ This order contains Kilts/Jackets/Waistcoats and requires BOTH Hanger QR and Outfit Bag QR before marking ready!', 'warning');
       return;
     }
 
@@ -2395,10 +2391,10 @@ export default function KiltHireApp() {
         items: updatedLineItems,
         orderStatus: 'READY_FOR_COLLECTION',
         hangerQr: cleanHanger || po.hangerQr,
-        hangerScannedAt: cleanHanger ? new Date().toISOString().replace('T', ' ').slice(0, 16) : po.hangerScannedAt,
+        hangerScannedAt: cleanHanger ? getUkTimestamp() : po.hangerScannedAt,
         outfitBagQr: cleanBag || po.outfitBagQr,
-        outfitBagScannedAt: cleanBag ? new Date().toISOString().replace('T', ' ').slice(0, 16) : po.outfitBagScannedAt,
-        assembledAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+        outfitBagScannedAt: cleanBag ? getUkTimestamp() : po.outfitBagScannedAt,
+        assembledAt: getUkTimestamp(),
         assembledByStaff: currentUser?.name || 'Allan'
       };
 
@@ -2424,14 +2420,18 @@ export default function KiltHireApp() {
 
       // Generate Brevo Collection Email Preview
       const isFullyPaid = po.paymentStatus === 'FULL_BALANCE_PAID' || po.paymentStatus === 'PAID_WITH_DEPOSIT';
+      const actualDeposit = po.depositPaidAmount ?? po.totalDepositHeld;
+      const totalOrderValue = po.totalHireFee + po.totalDepositHeld;
+      const remainingHireFee = isFullyPaid ? 0 : Math.max(0, totalOrderValue - actualDeposit);
+
       const emailHtml = generateCollectionReadyEmailHtml({
         customerName: po.customerName,
         poId: po.id,
         eventDate: po.eventDate,
         collectionDate: po.hireStartDate,
         isFullyPaid,
-        totalHireFee: po.totalHireFee,
-        totalDepositHeld: po.totalDepositHeld,
+        totalHireFee: remainingHireFee,
+        totalDepositHeld: actualDeposit,
         itemsCount: po.items.length
       });
 
@@ -2763,7 +2763,7 @@ export default function KiltHireApp() {
         ...po,
         paymentStatus: 'PAID_WITH_DEPOSIT',
         depositPaymentMethod: method,
-        depositPaidAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
+        depositPaidAt: getUkTimestamp()
       };
       await upsertPurchaseOrder(updatedPo);
       setPos(prev => prev.map(p => p.id === po.id ? updatedPo : p));
@@ -2771,6 +2771,59 @@ export default function KiltHireApp() {
       showToast(`💳 Outstanding balance of £${po.totalHireFee} marked paid in store via ${method === 'CARD_IN_STORE' ? 'Card' : 'Cash'} for PO ${po.id}!`, 'success');
     } catch (err: any) {
       showToast(`Failed to update payment status: ${err.message}`, 'warning');
+    }
+  };
+
+    const handleSendPaymentReceiptInvoice = async (po: PurchaseOrder) => {
+    if (!po.customerEmail) {
+      showToast(`⚠️ Order ${po.id} does not have a customer email address on file.`, 'warning');
+      return;
+    }
+
+    const originUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3006';
+    const isDepositPaid = po.paymentStatus === 'PARTIAL_DEPOSIT' || po.paymentStatus === 'PAID_WITH_DEPOSIT' || po.paymentStatus === 'FULL_BALANCE_PAID' || !!po.depositPaidAt;
+    const isFullyPaid = po.paymentStatus === 'FULL_BALANCE_PAID' || po.paymentStatus === 'PAID_WITH_DEPOSIT';
+    const totalOrderValue = po.totalHireFee + po.totalDepositHeld;
+    const amountPaid = isFullyPaid ? totalOrderValue : isDepositPaid ? (po.depositPaidAmount ?? po.totalDepositHeld) : 0;
+    const remainingDue = Math.max(0, totalOrderValue - amountPaid);
+
+    const paypalLink = `${originUrl}/pay?po=${po.id}&hire=${po.totalHireFee}&deposit=${po.totalDepositHeld}&amount=${remainingDue}&name=${encodeURIComponent(po.customerName)}`;
+
+    try {
+      showToast(`📤 Sending Payment Receipt & Invoice to ${po.customerEmail}...`, 'info');
+      const res = await sendBrevoEmail({
+        toEmail: po.customerEmail,
+        toName: po.customerName,
+        emailType: 'PAYMENT_RECEIPT_INVOICE',
+        subject: `🧾 Official Payment Receipt & Tax Invoice - Order #${po.id}`,
+        emailSettings: emailSettings,
+        orderData: {
+          poId: po.id,
+          customerName: po.customerName,
+          customerPhone: po.customerPhone,
+          hireStartDate: po.hireStartDate,
+          hireEndDate: po.hireEndDate,
+          eventDate: po.eventDate,
+          items: po.items.map(li => ({ itemName: li.itemName, category: li.category, size: li.size })),
+          totalHireFee: po.totalHireFee,
+          totalDepositHeld: po.totalDepositHeld,
+          amountPaid: amountPaid,
+          paymentDate: po.depositPaidAt || getUkTimestamp(),
+          paymentMethod: po.depositPaymentMethod === 'PAYPAL_ONLINE' ? 'PayPal Online Settlement' : 'In-Store Counter Settlement',
+          paymentStatus: po.paymentStatus,
+          paypalPaymentLink: paypalLink
+        }
+      });
+
+      if (res.success) {
+        addAuditLog('SENT_PAYMENT_RECEIPT_INVOICE_EMAIL', `Dispatched payment receipt & invoice email (£${amountPaid.toFixed(2)} paid) to ${po.customerEmail} for PO ${po.id}`, po.id);
+        playAudioBeep('success');
+        showToast(`📧 Payment Receipt & Tax Invoice successfully sent to ${po.customerEmail}!`, 'success');
+      } else {
+        showToast(`⚠️ Could not send invoice: ${res.error}`, 'warning');
+      }
+    } catch (err: any) {
+      showToast(`Invoice email error: ${err.message}`, 'warning');
     }
   };
 
@@ -2783,10 +2836,11 @@ export default function KiltHireApp() {
     const originUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3006';
     const isDepositPaid = po.paymentStatus === 'PARTIAL_DEPOSIT' || po.paymentStatus === 'PAID_WITH_DEPOSIT' || po.paymentStatus === 'FULL_BALANCE_PAID' || !!po.depositPaidAt;
     const isFullyPaid = po.paymentStatus === 'FULL_BALANCE_PAID' || po.paymentStatus === 'PAID_WITH_DEPOSIT';
+    const actualDeposit = po.depositPaidAmount ?? po.totalDepositHeld;
     const totalOrderValue = po.totalHireFee + po.totalDepositHeld;
-    const outstandingDue = isFullyPaid ? 0 : isDepositPaid ? po.totalHireFee : totalOrderValue;
+    const outstandingDue = isFullyPaid ? 0 : isDepositPaid ? Math.max(0, totalOrderValue - actualDeposit) : totalOrderValue;
 
-    const paypalLink = `${originUrl}/pay?po=${po.id}&hire=${po.totalHireFee}&deposit=${po.totalDepositHeld}&amount=${outstandingDue}&name=${encodeURIComponent(po.customerName)}`;
+    const paypalLink = `${originUrl}/pay?po=${po.id}&hire=${outstandingDue}&deposit=${actualDeposit}&amount=${outstandingDue}&name=${encodeURIComponent(po.customerName)}`;
 
     try {
       showToast(`📤 Sending remainder payment link (£${outstandingDue}) to ${po.customerEmail}...`, 'info');
@@ -2890,7 +2944,7 @@ export default function KiltHireApp() {
 
     if (result.success) {
       if (targetPo) {
-        const updatedPo = { ...targetPo, readyNotificationSentAt: new Date().toISOString().replace('T', ' ').slice(0, 16) };
+        const updatedPo = { ...targetPo, readyNotificationSentAt: getUkTimestamp() };
         await upsertPurchaseOrder(updatedPo);
         setPos(prev => prev.map(p => p.id === targetPo.id ? updatedPo : p));
       }
@@ -3983,7 +4037,7 @@ export default function KiltHireApp() {
       depositAmount: derivedPricing.deposit,
       status: 'AVAILABLE',
       conditionNotes: regForm.conditionNotes,
-      registeredAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+      registeredAt: getUkTimestamp(),
       registeredByStaff: currentUser.name,
       repairHistory: []
     };
@@ -4094,7 +4148,7 @@ export default function KiltHireApp() {
           ...i,
           status: 'RETIRED' as const,
           retiredReason: reasonText,
-          retiredAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+          retiredAt: getUkTimestamp(),
           retiredByStaff: currentUser.name
         };
       }
@@ -4141,7 +4195,7 @@ export default function KiltHireApp() {
 
     const repairEntry = {
       id: `REP-${Date.now().toString().slice(-4)}`,
-      dateSent: new Date().toISOString().replace('T', ' ').slice(0, 16),
+      dateSent: getUkTimestamp(),
       sentByStaff: currentUser.name,
       reason: repairReason || 'Requires repair & inspection',
       severity: repairSeverity
@@ -4180,7 +4234,7 @@ export default function KiltHireApp() {
           if (idx === 0) {
             return {
               ...h,
-              dateFixed: new Date().toISOString().replace('T', ' ').slice(0, 16),
+              dateFixed: getUkTimestamp(),
               fixedByStaff: currentUser.name,
               fixedNotes: 'Repaired, cleaned and passed quality check.'
             };
@@ -4234,7 +4288,7 @@ export default function KiltHireApp() {
       destination: newAlterationForm.destination,
       collectionDate: newAlterationForm.collectionDate || undefined,
       assignedTailor: newAlterationForm.assignedTailor || undefined,
-      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
+      createdAt: getUkTimestamp()
     };
 
     const updated = [newTask, ...alterationTasks];
@@ -4249,7 +4303,7 @@ export default function KiltHireApp() {
     const task = alterationTasks.find(t => t.id === taskId);
     if (!task) return;
 
-    const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const nowStr = getUkTimestamp();
     const updatedTasks = alterationTasks.map(t => {
       if (t.id === taskId) {
         return {
@@ -4321,7 +4375,7 @@ export default function KiltHireApp() {
       reason: newExpenseForm.reason,
       vendorOrPayer: newExpenseForm.vendorOrPayer,
       invoiceRef: newExpenseForm.invoiceRef || undefined,
-      date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+      date: getUkTimestamp(),
       recordedByStaff: currentUser?.name || 'Staff',
       status: 'SETTLED',
       notes: newExpenseForm.notes || undefined
@@ -4355,7 +4409,7 @@ export default function KiltHireApp() {
       amount: Number(deductDepositForm.deductAmount),
       reason: deductDepositForm.reason,
       vendorOrPayer: `Customer (${po.customerName})`,
-      date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+      date: getUkTimestamp(),
       recordedByStaff: currentUser?.name || 'Staff',
       status: 'SETTLED',
       notes: deductDepositForm.notes || undefined
@@ -4452,7 +4506,7 @@ export default function KiltHireApp() {
           if (idx === 0) {
             return {
               ...h,
-              dateReturned: new Date().toISOString().replace('T', ' ').slice(0, 16),
+              dateReturned: getUkTimestamp(),
               returnedByStaff: currentUser.name,
               notes: 'Dry cleaned & ready for rotation.'
             };
@@ -4481,7 +4535,7 @@ export default function KiltHireApp() {
     const item = items.find(i => i.id === codeId);
     if (!item) return;
 
-    const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const now = getUkTimestamp();
     const newRecord: LaundryRecord = {
       id: `LAUN-${Date.now()}`,
       dateSent: now,
@@ -4564,7 +4618,7 @@ export default function KiltHireApp() {
     const cleaningItems = items.filter(i => i.status === 'NEEDS_CLEANING');
     if (cleaningItems.length === 0) return;
 
-    const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const now = getUkTimestamp();
     const updatedItems = items.map(i => {
       if (i.status === 'NEEDS_CLEANING') {
         const history = i.laundryHistory || [];
@@ -4615,7 +4669,7 @@ export default function KiltHireApp() {
     let totalRefundedDeposit = 0;
     let totalHeldDepositForRepair = 0;
     let totalHeldDepositForMissing = 0;
-    const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const now = getUkTimestamp();
 
     const updatedPoItems: POLineItem[] = activeReturnPo.items.map(li => {
       const itemConfig = returnChecklist[li.qrCodeId] || { condition: 'GOOD_CLEAN', notes: '' };
@@ -4762,7 +4816,7 @@ export default function KiltHireApp() {
           ? `Missing item forfeiture (£${totalHeldDepositForMissing})`
           : `Late return penalty fee (£${retainedLateFee})`,
         vendorOrPayer: `Customer (${activeReturnPo.customerName})`,
-        date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+        date: getUkTimestamp(),
         recordedByStaff: currentUser?.name || 'Staff',
         status: 'SETTLED',
         notes: `Automatically recorded from PO ${activeReturnPo.id} check-in. Net customer refund: £${netRefundToCustomer}.`
@@ -4793,7 +4847,7 @@ export default function KiltHireApp() {
         if (refundRes.ok && refundData.success) {
           updatedPo.paypalRefundId = refundData.refundId;
           updatedPo.paypalRefundAmount = refundData.amountRefunded;
-          updatedPo.paypalRefundDate = new Date().toISOString().replace('T', ' ').slice(0, 16);
+          updatedPo.paypalRefundDate = getUkTimestamp();
           await upsertPurchaseOrder(updatedPo);
           setPos(prev => prev.map(p => p.id === activeReturnPo.id ? updatedPo : p));
           showToast(`💸 PayPal Deposit Refund of £${netRefundToCustomer.toFixed(2)} dispatched to customer's account! (Refund ID: ${refundData.refundId})`, 'success');
@@ -4870,7 +4924,7 @@ export default function KiltHireApp() {
       category: batchForm.category,
       sizeGroup: batchForm.sizeGroup,
       count,
-      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+      createdAt: getUkTimestamp(),
       createdByName: currentUser.name,
       qrCodes
     };
@@ -4919,7 +4973,7 @@ export default function KiltHireApp() {
       binId = `${binPrefixTag}${currentNum}`;
     }
 
-    const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const now = getUkTimestamp();
     
     const newBinItem: KiltItem = {
       id: binId,
@@ -5110,7 +5164,7 @@ export default function KiltHireApp() {
       return;
     }
 
-    const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const now = getUkTimestamp();
     const updatedBatch: QRBatch = {
       ...batch,
       isPrinted: true,
@@ -5145,7 +5199,7 @@ export default function KiltHireApp() {
     }
 
     const isFullSheet = selectedCodesForReprint.length === 0;
-    const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const now = getUkTimestamp();
     const newReprintLog: QRReprintLog = {
       id: `REPRINT-${Date.now().toString().slice(-4)}`,
       reprintedAt: now,
@@ -5298,7 +5352,7 @@ export default function KiltHireApp() {
 
   // PRINT BULK STORAGE BOX SIDE LABEL (Sets isPrinted: true and triggers print)
   const handlePrintBulkBinLabel = async (bin: KiltItem) => {
-    const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const now = getUkTimestamp();
     const updatedBin: KiltItem = {
       ...bin,
       isPrinted: true,
@@ -5443,7 +5497,7 @@ export default function KiltHireApp() {
       paymentStatus: 'PAID_WITH_DEPOSIT',
       orderStatus: 'OUT_ON_HIRE',
       issuedByStaff: currentUser.name,
-      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+      createdAt: getUkTimestamp(),
       notes: newPoForm.notes
     };
 
@@ -5564,7 +5618,7 @@ export default function KiltHireApp() {
       orderStatus: 'CANCELLED',
       paymentStatus: cancelRefundOption === 'FULL_REFUND_ISSUED' ? 'REFUNDED' : po.paymentStatus,
       cancellationRecord: {
-        cancelledAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+        cancelledAt: getUkTimestamp(),
         cancelledByStaff: currentUser?.name || 'Staff',
         reason: cancelReasonInput.trim(),
         depositRefundStatus: cancelRefundOption,
@@ -5640,7 +5694,7 @@ export default function KiltHireApp() {
         if (refundRes.ok && refundData.success) {
           updatedPo.paypalRefundId = refundData.refundId;
           updatedPo.paypalRefundAmount = refundData.amountRefunded;
-          updatedPo.paypalRefundDate = new Date().toISOString().replace('T', ' ').slice(0, 16);
+          updatedPo.paypalRefundDate = getUkTimestamp();
           await upsertPurchaseOrder(updatedPo);
           setPos(prev => prev.map(p => p.id === po.id ? updatedPo : p));
           showToast(`💸 PayPal Refund of £${refundData.amountRefunded} processed instantly! (ID: ${refundData.refundId})`, 'success');
@@ -6464,7 +6518,7 @@ export default function KiltHireApp() {
       costOfSales: cos > 0 ? cos : yearData.costOfSales,
       netProfitBeforeTax: netProfit,
       retainedEarnings: retained,
-      updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
+      updatedAt: getUkTimestamp()
     };
 
     const existingIdx = historicalYears.findIndex(y => y.id === updatedYear.id || y.year === updatedYear.year);
@@ -9885,8 +9939,8 @@ export default function KiltHireApp() {
                                   return { isMatch: true, label: item.size || 'Standard Size', diffText: '' };
                                 };
 
-                                // Helper: Detect Outfit Bags (only used during Pick & Pack assembly, NOT fitting)
-                                const isFittingOutfitBagItem = (it: KiltItem) => {
+                                // Helper: Detect Packaging Containers (Bespoke Hangers & Outfit Bags are strictly for Pick & Pack, never fitting catalog)
+                                const isPackagingContainerItem = (it: KiltItem) => {
                                   const idUp = (it.id || '').toUpperCase();
                                   const catLow = (it.category || '').toLowerCase().trim();
                                   const nameLow = (it.name || '').toLowerCase().trim();
@@ -9895,18 +9949,37 @@ export default function KiltHireApp() {
                                     idUp.startsWith('BIN-OUTF') ||
                                     idUp.startsWith('BAG-') ||
                                     idUp.startsWith('OB-') ||
+                                    idUp.startsWith('BIN-BESP') ||
+                                    idUp.startsWith('HNG-') ||
+                                    idUp.startsWith('HANGER') ||
+                                    idUp.startsWith('BESP-') ||
                                     catLow.includes('outfit bag') ||
                                     catLow === 'outfit bags' ||
                                     catLow === 'outfit' ||
                                     catLow === 'bags' ||
                                     catLow === 'bag' ||
-                                    nameLow.includes('outfit bag')
+                                    catLow.includes('hanger') ||
+                                    catLow === 'hangers' ||
+                                    catLow.includes('bespoke hanger') ||
+                                    nameLow.includes('outfit bag') ||
+                                    nameLow.includes('bespoke hanger') ||
+                                    nameLow.includes('hanger')
                                   );
                                 };
 
-                                const isFittingOutfitBagCategory = (cat: string) => {
+                                const isPackagingContainerCategory = (cat: string) => {
                                   const c = (cat || '').toLowerCase().trim();
-                                  return c.includes('outfit bag') || c === 'outfit bags' || c === 'outfit' || c === 'bags' || c === 'bag' || c.startsWith('outf');
+                                  return (
+                                    c.includes('outfit bag') ||
+                                    c === 'outfit bags' ||
+                                    c === 'outfit' ||
+                                    c === 'bags' ||
+                                    c === 'bag' ||
+                                    c.startsWith('outf') ||
+                                    c.includes('hanger') ||
+                                    c === 'hangers' ||
+                                    c.includes('bespoke hanger')
+                                  );
                                 };
 
                                 // Extract all available categories from Master Pricing Matrix + stock (excluding Outfit Bags)
@@ -9915,12 +9988,12 @@ export default function KiltHireApp() {
                                     ...pricingMatrix.map(pm => pm.category),
                                     ...items.map(it => it.category)
                                   ])
-                                ).filter(cat => Boolean(cat) && !isFittingOutfitBagCategory(cat));
+                                ).filter(cat => Boolean(cat) && !isPackagingContainerCategory(cat));
 
                                 // Base stock available on dates (excluding Outfit Bags)
                                 const allDateAvailableItems = items.filter(item => {
                                   if (item.status === 'RETIRED') return false;
-                                  if (isFittingOutfitBagItem(item)) return false;
+                                  if (isPackagingContainerItem(item)) return false;
                                   const isOutsourced = !!(item.isOutsourcedDefault || item.id.startsWith('EXT-'));
                                   if (isOutsourced) return false;
                                   const avail = getItemAvailability(item);
@@ -9941,7 +10014,7 @@ export default function KiltHireApp() {
                                 const visibleItems = items.filter(item => {
                                   if (item.status === 'RETIRED') return false;
                                   // OUTF outfit bags are strictly for pick & pack stage, never selectable in fitting
-                                  if (isFittingOutfitBagItem(item)) return false;
+                                  if (isPackagingContainerItem(item)) return false;
 
                                   const isOutsourced = !!(item.isOutsourcedDefault || item.id.startsWith('EXT-'));
 
@@ -10046,7 +10119,7 @@ export default function KiltHireApp() {
                                             <option value="OUTSOURCED">🏬 Outsourced &amp; Sub-Hire Defaults ({items.filter(i => !!(i.isOutsourcedDefault || i.id.startsWith('EXT-'))).length} Always Available)</option>
                                             {availableCategoryOptions.map(catName => {
                                               const availableInCatQuantity = items.filter(i => {
-                                                if (isFittingOutfitBagItem(i)) return false;
+                                                if (isPackagingContainerItem(i)) return false;
                                                 if ((i.category || '').trim().toLowerCase() !== catName.trim().toLowerCase() || i.status === 'RETIRED') return false;
                                                 if (!!(i.isOutsourcedDefault || i.id.startsWith('EXT-'))) return false;
                                                 return true;
@@ -11751,7 +11824,7 @@ export default function KiltHireApp() {
                                               : isFullyPaid 
                                               ? `✓ FULLY PAID (£${totalOrderValue})${po.balancePaidAt ? ` • ${po.balancePaidAt}` : ''}` 
                                               : isDepositPaid 
-                                              ? `💳 DEPOSIT PAID (£${po.totalDepositHeld})${po.depositPaidAt ? ` • ${po.depositPaidAt}` : ''}` 
+                                              ? `💳 DEPOSIT PAID (£${po.depositPaidAmount ?? po.totalDepositHeld})${po.depositPaidAt ? ` • ${po.depositPaidAt}` : ''}` 
                                               : '⚠️ UNPAID'}
                                           </span>
 
@@ -11774,9 +11847,11 @@ export default function KiltHireApp() {
                                   {(() => {
                                     const isDepositPaid = po.paymentStatus === 'PARTIAL_DEPOSIT' || po.paymentStatus === 'PAID_WITH_DEPOSIT' || po.paymentStatus === 'FULL_BALANCE_PAID' || !!po.depositPaidAt;
                                     const isFullyPaid = po.paymentStatus === 'FULL_BALANCE_PAID' || po.paymentStatus === 'PAID_WITH_DEPOSIT';
+                                    const depositPaid = po.depositPaidAmount ?? po.totalDepositHeld;
                                     const totalOrderValue = po.totalHireFee + po.totalDepositHeld;
-                                    const paidAmount = isFullyPaid ? totalOrderValue : isDepositPaid ? po.totalDepositHeld : 0;
-                                    const outstandingBalance = isFullyPaid ? 0 : isDepositPaid ? po.totalHireFee : totalOrderValue;
+                                    const actualHireFee = totalOrderValue - depositPaid;
+                                    const paidAmount = isFullyPaid ? totalOrderValue : isDepositPaid ? depositPaid : 0;
+                                    const outstandingBalance = isFullyPaid ? 0 : isDepositPaid ? Math.max(0, totalOrderValue - depositPaid) : totalOrderValue;
 
                                     const paymentMethodLabel = po.depositPaymentMethod === 'PAYPAL_ONLINE' 
                                       ? 'PayPal Online' 
@@ -11790,7 +11865,7 @@ export default function KiltHireApp() {
                                       <div className="text-xs text-slate-600 font-medium mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200 shadow-2xs">
                                         <span>📅 Hire: <strong className="text-slate-900">{po.hireStartDate}</strong> to <strong className={isOutOnHire && !isComplete ? overdueInfo.textColor : 'text-slate-900'}>{po.hireEndDate}</strong></span>
                                         <span>🎪 Event: <strong className="text-slate-900">{po.eventDate}</strong></span>
-                                        <span>💰 Total Order: <strong className="text-slate-900 font-mono font-bold">£{totalOrderValue}</strong> (Hire: £{po.totalHireFee} + Deposit: £{po.totalDepositHeld})</span>
+                                        <span>💰 Total Order: <strong className="text-slate-900 font-mono font-bold">£{totalOrderValue}</strong> (Hire: £{actualHireFee} + Deposit: £{depositPaid})</span>
                                         <span className="flex items-center gap-1">
                                           💳 Deposit: <strong className="text-emerald-700 font-mono font-bold">£{paidAmount}</strong>
                                           {isDepositPaid && (
@@ -11818,6 +11893,25 @@ export default function KiltHireApp() {
 
                               {/* STAGE-DRIVEN ACTION BUTTONS */}
                               <div className="flex flex-wrap items-center gap-2">
+                                                                    {/* SEND PAYMENT RECEIPT & INVOICE EMAIL */}
+                                  {(() => {
+                                    const isDepositPaid = po.paymentStatus === 'PARTIAL_DEPOSIT' || po.paymentStatus === 'PAID_WITH_DEPOSIT' || po.paymentStatus === 'FULL_BALANCE_PAID' || !!po.depositPaidAt;
+                                    if (isDepositPaid && po.customerEmail && !isCancelled) {
+                                      return (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleSendPaymentReceiptInvoice(po)}
+                                          className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 border border-emerald-300 rounded-xl font-extrabold text-xs shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+                                          title={`Dispatch official payment receipt & hire tax invoice to ${po.customerEmail}`}
+                                        >
+                                          <FileText className="w-3.5 h-3.5 text-emerald-700" /> 🧾 Send Payment Receipt &amp; Invoice
+                                        </button>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
+
+
                                   {/* RESEND REMAINDER BALANCE EMAIL (For any PO with outstanding balance) */}
                                   {(() => {
                                     const isDepositPaid = po.paymentStatus === 'PARTIAL_DEPOSIT' || po.paymentStatus === 'PAID_WITH_DEPOSIT' || po.paymentStatus === 'FULL_BALANCE_PAID' || !!po.depositPaidAt;
@@ -14142,7 +14236,7 @@ export default function KiltHireApp() {
                                             category: bin.category,
                                             sizeGroup: 'Adult',
                                             count: 1,
-                                            createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+                                            createdAt: getUkTimestamp(),
                                             createdByName: currentUser?.name || 'Allan',
                                             qrCodes: [bin.id],
                                             isPrinted: false
@@ -16593,9 +16687,10 @@ export default function KiltHireApp() {
                                   {(() => {
                                     const isDepositPaid = po.paymentStatus === 'PARTIAL_DEPOSIT' || po.paymentStatus === 'PAID_WITH_DEPOSIT' || po.paymentStatus === 'FULL_BALANCE_PAID' || !!po.depositPaidAt;
                                     const isFullyPaid = po.paymentStatus === 'FULL_BALANCE_PAID' || po.paymentStatus === 'PAID_WITH_DEPOSIT';
+                                    const depositPaid = po.depositPaidAmount ?? po.totalDepositHeld;
                                     const totalOrderValue = po.totalHireFee + po.totalDepositHeld;
-                                    const paidAmount = isFullyPaid ? totalOrderValue : isDepositPaid ? po.totalDepositHeld : 0;
-                                    const outstandingBalance = isFullyPaid ? 0 : isDepositPaid ? po.totalHireFee : totalOrderValue;
+                                    const actualHireFee = totalOrderValue - depositPaid;
+                                    const outstandingBalance = isFullyPaid ? 0 : isDepositPaid ? Math.max(0, totalOrderValue - depositPaid) : totalOrderValue;
 
                                     return (
                                       <>
@@ -16613,7 +16708,7 @@ export default function KiltHireApp() {
                                             : isFullyPaid 
                                             ? `✓ FULLY PAID (£${totalOrderValue})${po.balancePaidAt ? ` • ${po.balancePaidAt}` : ''}` 
                                             : isDepositPaid 
-                                            ? `💳 DEPOSIT PAID (£${po.totalDepositHeld})${po.depositPaidAt ? ` • ${po.depositPaidAt}` : ''}` 
+                                            ? `💳 DEPOSIT PAID (£${depositPaid})${po.depositPaidAt ? ` • ${po.depositPaidAt}` : ''}` 
                                             : '⚠️ UNPAID'}
                                         </span>
 
@@ -16642,9 +16737,11 @@ export default function KiltHireApp() {
                                 {(() => {
                                   const isDepositPaid = po.paymentStatus === 'PARTIAL_DEPOSIT' || po.paymentStatus === 'PAID_WITH_DEPOSIT' || po.paymentStatus === 'FULL_BALANCE_PAID' || !!po.depositPaidAt;
                                   const isFullyPaid = po.paymentStatus === 'FULL_BALANCE_PAID' || po.paymentStatus === 'PAID_WITH_DEPOSIT';
+                                  const depositPaid = po.depositPaidAmount ?? po.totalDepositHeld;
                                   const totalOrderValue = po.totalHireFee + po.totalDepositHeld;
-                                  const paidAmount = isFullyPaid ? totalOrderValue : isDepositPaid ? po.totalDepositHeld : 0;
-                                  const outstandingBalance = isFullyPaid ? 0 : isDepositPaid ? po.totalHireFee : totalOrderValue;
+                                  const actualHireFee = totalOrderValue - depositPaid;
+                                  const paidAmount = isFullyPaid ? totalOrderValue : isDepositPaid ? depositPaid : 0;
+                                  const outstandingBalance = isFullyPaid ? 0 : isDepositPaid ? Math.max(0, totalOrderValue - depositPaid) : totalOrderValue;
 
                                   const paymentMethodLabel = po.depositPaymentMethod === 'PAYPAL_ONLINE' 
                                     ? 'PayPal Online' 
@@ -16658,7 +16755,7 @@ export default function KiltHireApp() {
                                     <div className="text-xs text-slate-600 font-medium mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200 shadow-2xs">
                                       <span>📅 Hire: <strong className="text-slate-900">{po.hireStartDate}</strong> to <strong className="text-slate-900">{po.hireEndDate}</strong></span>
                                       <span>🎪 Event: <strong className="text-slate-900">{po.eventDate}</strong></span>
-                                      <span>💰 Total Order: <strong className="text-slate-900 font-mono font-bold">£{totalOrderValue}</strong> (Hire: £{po.totalHireFee} + Deposit: £{po.totalDepositHeld})</span>
+                                      <span>💰 Total Order: <strong className="text-slate-900 font-mono font-bold">£{totalOrderValue}</strong> (Hire: £{actualHireFee} + Deposit: £{depositPaid})</span>
                                       <span className="flex items-center gap-1">
                                         💳 Deposit: <strong className="text-emerald-700 font-mono font-bold">£{paidAmount}</strong>
                                         {isDepositPaid && (
@@ -24424,7 +24521,8 @@ export default function KiltHireApp() {
         const allGarmentsPicked = totalItemsCount > 0 && pickedItemsCount === totalItemsCount;
         const isHangerFilled = Boolean(assemblyHangerInput.trim());
         const isBagFilled = Boolean(assemblyBagInput.trim());
-        const isFullyVerified = allGarmentsPicked && (!requiresHangerAndBag || (isHangerFilled && isBagFilled));
+        // Hanger and Outfit Bag are purely optional packaging (e.g. for customers wearing outfit out / direct hand-out)
+        const isFullyVerified = allGarmentsPicked;
         const pickPercentage = totalItemsCount > 0 ? Math.round((pickedItemsCount / totalItemsCount) * 100) : 0;
 
         return (
@@ -24646,18 +24744,12 @@ export default function KiltHireApp() {
                       <Store className="w-4 h-4 text-indigo-600" /> 
                       Order Packaging: Bespoke Hanger &amp; Outfit Bag QR
                     </h4>
-                    <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${
-                      requiresHangerAndBag
-                        ? 'bg-amber-100 text-amber-900 border-amber-300'
-                        : 'bg-slate-200 text-slate-700 border-slate-300'
-                    }`}>
-                      {requiresHangerAndBag ? '⚠️ Mandatory for Kilts/Jackets' : 'ℹ️ Optional for Accessories'}
+                    <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border bg-slate-100 text-slate-700 border-slate-300">
+                      ℹ️ Optional Packaging (Hanger &amp; Bag)
                     </span>
                   </div>
                   <p className="text-xs text-slate-600 mt-1">
-                    {requiresHangerAndBag 
-                      ? 'This order contains tailored outerwear (Kilt, Jacket, or Waistcoat). Please scan the real physical QR code attached to the Bespoke Hanger and Outfit Bag.'
-                      : 'This order does not include heavy garments. Hanger and outfit bag are optional.'}
+                    Optional packaging container QR scan. If the customer is collecting in a bag, scan the Hanger and Bag tags below. If the customer is wearing the outfit directly out or taking items unbagged, you can leave these blank.
                   </p>
                 </div>
 
@@ -24667,15 +24759,11 @@ export default function KiltHireApp() {
                   <div className="bg-white border border-slate-200 p-3.5 rounded-2xl space-y-2 shadow-2xs">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-                        🏷️ Bespoke Hanger QR {requiresHangerAndBag && '*'}
+                        🏷️ Bespoke Hanger QR <span className="text-slate-400 font-normal text-[10px]">(Optional)</span>
                       </label>
                       {isHangerFilled ? (
                         <span className="text-[10px] font-extrabold bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-full border border-emerald-300">
                           ✓ SCANNED
-                        </span>
-                      ) : requiresHangerAndBag ? (
-                        <span className="text-[10px] font-extrabold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full border border-amber-300">
-                          REQUIRED
                         </span>
                       ) : (
                         <span className="text-[10px] font-extrabold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full border border-slate-200">
@@ -24717,15 +24805,11 @@ export default function KiltHireApp() {
                   <div className="bg-white border border-slate-200 p-3.5 rounded-2xl space-y-2 shadow-2xs">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-                        🎒 Outfit Bag QR Tag {requiresHangerAndBag && '*'}
+                        🎒 Outfit Bag QR Tag <span className="text-slate-400 font-normal text-[10px]">(Optional)</span>
                       </label>
                       {isBagFilled ? (
                         <span className="text-[10px] font-extrabold bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-full border border-emerald-300">
                           ✓ SCANNED
-                        </span>
-                      ) : requiresHangerAndBag ? (
-                        <span className="text-[10px] font-extrabold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full border border-amber-300">
-                          REQUIRED
                         </span>
                       ) : (
                         <span className="text-[10px] font-extrabold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full border border-slate-200">
@@ -24769,9 +24853,7 @@ export default function KiltHireApp() {
                   <div>
                     <strong className="block font-extrabold text-amber-900">Assembly Incomplete</strong>
                     <span className="text-[11px] text-amber-900">
-                      {!allGarmentsPicked 
-                        ? `Please pick/scan all ${totalItemsCount} garments in the pick list above (${totalItemsCount - pickedItemsCount} remaining).`
-                        : 'Please scan or enter both the Bespoke Hanger QR and Outfit Bag QR codes.'}
+                      Please pick/scan all {totalItemsCount} garments in the pick list above ({totalItemsCount - pickedItemsCount} remaining) to complete assembly.
                     </span>
                   </div>
                 </div>
@@ -24905,48 +24987,87 @@ export default function KiltHireApp() {
                 )}
 
                 <div className="space-y-2">
-                  <h4 className="text-xs font-black uppercase tracking-wider border-b border-slate-300 pb-1">
-                    Garments Pick List ({po.items.length} Items)
-                  </h4>
+                  <div className="flex items-center justify-between border-b border-slate-300 pb-1">
+                    <h4 className="text-xs font-black uppercase tracking-wider">
+                      Garments Pick &amp; Customer Return List ({po.items.length} Items)
+                    </h4>
+                    <span className="text-[10px] font-bold text-slate-500">
+                      Staff Pick (Left) • Customer Return Packing (Right)
+                    </span>
+                  </div>
+
                   <table className="w-full text-left text-xs border border-slate-300">
                     <thead className="bg-slate-100 border-b border-slate-300 font-extrabold uppercase text-[10px]">
                       <tr>
                         <th className="p-2 border-r border-slate-300">Item QR Tag</th>
                         <th className="p-2 border-r border-slate-300">Garment Name</th>
+                        <th className="p-2 border-r border-slate-300">Wearer Name</th>
                         <th className="p-2 border-r border-slate-300">Category</th>
-                        <th className="p-2 border-r border-slate-300">Size / Demographic</th>
-                        <th className="p-2 text-center">Pick Status</th>
+                        <th className="p-2 border-r border-slate-300">Size</th>
+                        <th className="p-2 text-center border-r border-slate-300 bg-amber-50/70">Staff Pick</th>
+                        <th className="p-2 text-center bg-emerald-50/70 text-emerald-950 font-black">Customer Return (In Bag)</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-200 font-bold">
-                      {po.items.map(item => (
-                        <tr key={item.qrCodeId}>
-                          <td className="p-2 border-r border-slate-300 font-mono font-black">{item.qrCodeId}</td>
-                          <td className="p-2 border-r border-slate-300">{item.itemName}</td>
-                          <td className="p-2 border-r border-slate-300">{item.category}</td>
-                          <td className="p-2 border-r border-slate-300">{item.size} ({item.sizeGroup})</td>
-                          <td className="p-2 text-center">[ &nbsp; ] PICKED</td>
-                        </tr>
-                      ))}
+                    <tbody className="divide-y divide-slate-200 font-bold text-[11px]">
+                      {po.items.map(item => {
+                        // Extract wearer name if formatted as "Item Name (Role: Wearer Name)"
+                        const wearerMatch = item.itemName?.match(/:\s*([^)]+)\)/);
+                        const roleMatch = item.itemName?.match(/\(([^:)]+)(?::|\))/);
+                        const wearerDisplay = wearerMatch ? wearerMatch[1].trim() : (po.customerName || 'Customer');
+                        const cleanItemName = item.itemName ? item.itemName.replace(/\s*\([^)]*\)/g, '').trim() : item.category;
+
+                        return (
+                          <tr key={item.qrCodeId}>
+                            <td className="p-2 border-r border-slate-300 font-mono font-black">{item.qrCodeId}</td>
+                            <td className="p-2 border-r border-slate-300">{cleanItemName}</td>
+                            <td className="p-2 border-r border-slate-300 text-slate-800">
+                              <span className="font-bold">{wearerDisplay}</span>
+                              {roleMatch && roleMatch[1].trim() !== wearerDisplay && (
+                                <span className="block text-[9px] text-slate-500 uppercase">{roleMatch[1].trim()}</span>
+                              )}
+                            </td>
+                            <td className="p-2 border-r border-slate-300">{item.category}</td>
+                            <td className="p-2 border-r border-slate-300">{item.size} <span className="text-slate-500 font-normal">({item.sizeGroup})</span></td>
+                            <td className="p-2 text-center border-r border-slate-300 bg-amber-50/30 whitespace-nowrap">
+                              [ &nbsp; ] PICKED
+                            </td>
+                            <td className="p-2 text-center bg-emerald-50/30 text-emerald-950 font-black whitespace-nowrap">
+                              [ &nbsp; ] IN BAG ✓
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
 
+                {/* CUSTOMER PACKING GUIDE & ACCESSORIES CHECKLIST */}
                 <div className="border-2 border-slate-900 p-4 rounded-xl space-y-3 bg-slate-50/50">
-                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-950">
-                    Mandatory Outfit Accessories Verification Checklist
-                  </h4>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-950">
+                      🎒 Customer Packing &amp; Return Verification Checklist
+                    </h4>
+                    <span className="text-[10px] font-extrabold text-amber-800">
+                      Please tick off each item above before returning your bag to the shop
+                    </span>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-4 text-xs font-bold">
                     <div className="border border-slate-300 p-3 rounded-lg bg-white space-y-1">
                       <span>[ &nbsp; ] Highland Kiltmakers Bespoke Hanger</span>
-                      <p className="text-[10px] font-mono text-slate-600">Scanned Hanger QR Tag: __________________</p>
+                      <p className="text-[10px] font-mono text-slate-600">Scanned Hanger QR Tag: {po.hangerQr || '__________________'}</p>
                     </div>
                     <div className="border border-slate-300 p-3 rounded-lg bg-white space-y-1">
                       <span>[ &nbsp; ] Highland Kiltmakers Outfit Bag</span>
-                      <p className="text-[10px] font-mono text-slate-600">Scanned Outfit Bag QR Tag: __________________</p>
+                      <p className="text-[10px] font-mono text-slate-600">Scanned Outfit Bag QR Tag: {po.outfitBagQr || '__________________'}</p>
                     </div>
                   </div>
-                  <div className="pt-2 text-xs font-bold text-slate-700 flex justify-between">
+
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    💡 <strong>Customer Note:</strong> To ensure prompt release of your security deposit, please confirm that all items listed above (including accessories, belt, sporran, cufflinks, and shoes) are placed inside your outfit bag upon return.
+                  </p>
+
+                  <div className="pt-2 text-xs font-bold text-slate-700 flex justify-between border-t border-slate-200">
                     <span>Assembly Completed By: ___________________________</span>
                     <span>Date / Time: _______________</span>
                   </div>
@@ -25993,4 +26114,3 @@ export default function KiltHireApp() {
     </div>
   );
 }
-

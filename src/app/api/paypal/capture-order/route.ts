@@ -1,3 +1,4 @@
+import { getUkTimestamp } from '@/lib/date-utils';
 import { NextResponse } from 'next/server';
 import { capturePayPalOrder } from '@/lib/paypal';
 import { upsertPurchaseOrder, addAuditLogFS } from '@/lib/firestore';
@@ -19,7 +20,7 @@ export async function POST(request: Request) {
 
     if (captureResult.success && poId && poId !== 'PO-SAMPLE-001') {
       try {
-        const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16);
+        const nowStr = getUkTimestamp();
         const amountNum = typeof captureResult.amountPaid === 'number' 
           ? captureResult.amountPaid 
           : parseFloat(String(captureResult.amountPaid || '0')) || 0;
@@ -29,6 +30,7 @@ export async function POST(request: Request) {
           paymentStatus: 'PARTIAL_DEPOSIT',
           depositPaymentMethod: 'PAYPAL_ONLINE',
           depositPaidAt: nowStr,
+          depositPaidAmount: amountNum,
           paypalTransactionId: orderId,
           paypalCaptureId: captureResult.captureId,
           paypalPayerEmail: captureResult.payerEmail
