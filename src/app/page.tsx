@@ -4591,23 +4591,78 @@ export default function KiltHireApp() {
     showToast(`Deleted "${tartanName}" from catalog.`, 'info');
   };
 
+  // Derive Bulk Storage Box Bins: live bulk pool items + any orphaned BATCH-BIN-* batches whose item record was removed
+  const getDisplayedBulkBins = (): KiltItem[] => {
+    const liveBulkBins = items.filter(i => i.isBulkPool && !i.isOutsourcedDefault);
+    const liveIds = new Set(liveBulkBins.map(i => i.id));
+    const orphanedBatchBins: KiltItem[] = batches
+      .filter(b => b.isBulkBatch || b.id.startsWith('BATCH-BIN-'))
+      .map(b => {
+        const binId = b.bulkBinId || (b.qrCodes && b.qrCodes[0]) || b.id;
+        if (liveIds.has(binId)) return null;
+        const boxMatch = b.title.match(/^(Box\s+[^:]+):\s*(.+)$/i);
+        const boxNumber = boxMatch ? boxMatch[1].trim() : 'Box 1';
+        const cleanTitle = b.title.replace(/\s*\(\d+\s*Items in Box\)\s*$/i, '').trim();
+        const priceEntry = pricingMatrix.find(pm => pm.category === b.category);
+        const hireRate = b.sizeGroup === 'Kid' ? (priceEntry?.kidHireRate ?? 5) : (priceEntry?.adultHireRate ?? 5);
+        const depositAmount = b.sizeGroup === 'Kid' ? (priceEntry?.kidDeposit ?? 5) : (priceEntry?.adultDeposit ?? 5);
+        return {
+          id: binId,
+          name: cleanTitle || b.category,
+          category: b.category,
+          sizeGroup: b.sizeGroup,
+          tartanOrColour: 'Standard',
+          size: 'One Size / Bulk Pool',
+          brandMake: 'Highland Craftsmen',
+          hireRate,
+          depositAmount,
+          status: 'AVAILABLE' as ItemStatus,
+          isBulkPool: true,
+          boxNumber,
+          bulkTotal: b.count || 0,
+          bulkQuantity: b.count || 0,
+          registeredAt: b.createdAt,
+          isPrinted: b.isPrinted,
+          printedAt: b.printedAt,
+          printedBy: b.printedBy,
+        } as KiltItem;
+      })
+      .filter((x): x is KiltItem => x !== null);
+    return [...liveBulkBins, ...orphanedBatchBins];
+  };
+
   // Update Bulk Bin Pool Quantity
   const handleUpdateBulkBinQuantity = (binId: string, newTotal: number, newAvailable: number) => {
     const cleanTotal = Math.max(0, newTotal);
     const cleanAvail = Math.min(cleanTotal, Math.max(0, newAvailable));
-    setItems(prev => prev.map(i => {
-      if (i.id === binId) {
-        const updated = {
-          ...i,
-          bulkTotal: cleanTotal,
-          bulkQuantity: cleanAvail,
-          status: (cleanAvail > 0 ? 'AVAILABLE' : 'ON_HIRE') as ItemStatus
-        };
-        upsertItem(updated).catch(err => console.warn('Failed to update bulk bin in Firestore:', err));
-        return updated;
+    setItems(prev => {
+      const exists = prev.some(i => i.id === binId);
+      if (exists) {
+        return prev.map(i => {
+          if (i.id === binId) {
+            const updated = {
+              ...i,
+              bulkTotal: cleanTotal,
+              bulkQuantity: cleanAvail,
+              status: (cleanAvail > 0 ? 'AVAILABLE' : 'ON_HIRE') as ItemStatus
+            };
+            upsertItem(updated).catch(err => console.warn('Failed to update bulk bin in Firestore:', err));
+            return updated;
+          }
+          return i;
+        });
       }
-      return i;
-    }));
+      const fallbackBin = getDisplayedBulkBins().find(b => b.id === binId);
+      if (!fallbackBin) return prev;
+      const restored: KiltItem = {
+        ...fallbackBin,
+        bulkTotal: cleanTotal,
+        bulkQuantity: cleanAvail,
+        status: (cleanAvail > 0 ? 'AVAILABLE' : 'ON_HIRE') as ItemStatus
+      };
+      upsertItem(restored).catch(err => console.warn('Failed to restore bulk bin in Firestore:', err));
+      return [restored, ...prev];
+    });
     addAuditLog('UPDATED_BULK_BIN', `Updated bulk storage bin (${binId}): ${cleanAvail} available / ${cleanTotal} total.`, binId);
     showToast(`📦 Adjusted ${binId} bin pool count to ${cleanAvail} available.`, 'success');
   };
@@ -5280,7 +5335,9 @@ export default function KiltHireApp() {
       depositAmount: editBulkBinForm.depositAmount
     };
 
-    setItems(prev => prev.map(i => i.id === updatedBin.id ? updatedBin : i));
+    setItems(prev => prev.some(i => i.id === updatedBin.id)
+      ? prev.map(i => i.id === updatedBin.id ? updatedBin : i)
+      : [updatedBin, ...prev]);
     if (selectedBulkBinForPrint?.id === updatedBin.id) {
       setSelectedBulkBinForPrint(updatedBin);
     }
@@ -5360,7 +5417,9 @@ export default function KiltHireApp() {
       printedBy: currentUser?.name || 'Allan'
     };
 
-    setItems(prev => prev.map(i => i.id === bin.id ? updatedBin : i));
+    setItems(prev => prev.some(i => i.id === bin.id)
+      ? prev.map(i => i.id === bin.id ? updatedBin : i)
+      : [updatedBin, ...prev]);
     setSelectedBulkBinForPrint(updatedBin);
     await upsertItem(updatedBin);
 
@@ -14699,6 +14758,11 @@ export default function KiltHireApp() {
                       </div>
 
                       {/* SUB-FILTER TABS */}
+                      {(() => {
+                        const displayedBulkBins = getDisplayedBulkBins();
+                        const serializedBatches = batches.filter(b => !b.isBulkBatch && !b.id.startsWith('BATCH-BIN-'));
+                        return (
+                          <>
                       <div className="no-print flex items-center gap-2 border-b border-slate-200 pb-2">
                         <button
                           onClick={() => setBatchTabFilter('ALL')}
@@ -14708,7 +14772,7 @@ export default function KiltHireApp() {
                               : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
                           }`}
                         >
-                          All Labels ({batches.filter(b => !b.isBulkBatch).length + items.filter(i => i.isBulkPool && !i.isOutsourcedDefault).length})
+                          All Labels ({serializedBatches.length + displayedBulkBins.length})
                         </button>
                         <button
                           onClick={() => setBatchTabFilter('SERIALIZED')}
@@ -14718,7 +14782,7 @@ export default function KiltHireApp() {
                               : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
                           }`}
                         >
-                          🏷️ Serialized Garment Batches ({batches.filter(b => !b.isBulkBatch).length})
+                          🏷️ Serialized Garment Batches ({serializedBatches.length})
                         </button>
                         <button
                           onClick={() => setBatchTabFilter('BULK_BINS')}
@@ -14728,7 +14792,7 @@ export default function KiltHireApp() {
                               : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
                           }`}
                         >
-                          📦 Bulk Storage Box Bins ({items.filter(i => i.isBulkPool && !i.isOutsourcedDefault).length})
+                          📦 Bulk Storage Box Bins ({displayedBulkBins.length})
                         </button>
                       </div>
 
@@ -14737,12 +14801,12 @@ export default function KiltHireApp() {
                         <div className="space-y-3">
                           <div className="flex items-center justify-between">
                             <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                              <Package className="w-4 h-4 text-emerald-600" /> 📦 Bulk Storage Box Bins ({items.filter(i => i.isBulkPool && !i.isOutsourcedDefault).length})
+                              <Package className="w-4 h-4 text-emerald-600" /> 📦 Bulk Storage Box Bins ({displayedBulkBins.length})
                             </h3>
                             <span className="text-[11px] text-slate-500 font-semibold">Print box side labels & manage available quantities</span>
                           </div>
 
-                          {items.filter(i => i.isBulkPool && !i.isOutsourcedDefault).length === 0 ? (
+                          {displayedBulkBins.length === 0 ? (
                             <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center space-y-3 shadow-sm">
                               <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
                                 <Package className="w-6 h-6" />
@@ -14773,7 +14837,7 @@ export default function KiltHireApp() {
                             </div>
                           ) : (
                             <div className="no-print grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                              {items.filter(i => i.isBulkPool && !i.isOutsourcedDefault).map(bin => {
+                              {displayedBulkBins.map(bin => {
                                 const onHireCount = Math.max(0, (bin.bulkTotal || 0) - (bin.bulkQuantity || 0));
                                 const boxDisplay = bin.boxNumber || 'Box 1';
                                 const isBinPrinted = Boolean(bin.isPrinted || batches.some(b => (b.bulkBinId === bin.id || b.id === bin.id) && b.isPrinted));
@@ -14917,13 +14981,13 @@ export default function KiltHireApp() {
                         <div className="space-y-3 pt-2">
                           <div className="flex items-center justify-between">
                             <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                              <Printer className="w-4 h-4 text-amber-600" /> 🏷️ Serialized Garment Tag Batches ({batches.filter(b => !b.isBulkBatch).length})
+                              <Printer className="w-4 h-4 text-amber-600" /> 🏷️ Serialized Garment Tag Batches ({serializedBatches.length})
                             </h3>
                             <span className="text-[11px] text-slate-500 font-semibold">Individual iron-on tags (Kilts, Jackets, Sporrans)</span>
                           </div>
 
                           <div className="no-print grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {batches.filter(b => !b.isBulkBatch).map(batch => (
+                            {serializedBatches.map(batch => (
                               <div key={batch.id} className={`bg-white border rounded-2xl p-5 shadow-sm transition ${
                                 batch.isPrinted ? 'border-emerald-300 bg-emerald-50/20' : 'border-slate-200 hover:border-amber-400'
                               }`}>
@@ -15015,6 +15079,9 @@ export default function KiltHireApp() {
                           </div>
                         </div>
                       )}
+                          </>
+                        );
+                      })()}
 
                       {/* BATCH PRINT PREVIEW & REPRINT MANAGER MODAL */}
                       {selectedBatchForPrint && (
